@@ -38,7 +38,7 @@ if [[ "$(uname -m)" == "aarch64" ]]; then REPO_ARCH=sbsa; fi
 log "Base packages"
 sudo apt-get update -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl wget \
-  htop tmux jq ca-certificates "linux-headers-$(uname -r)"
+  htop tmux jq ca-certificates python3.12-dev "linux-headers-$(uname -r)"
 
 # 2. NVIDIA driver (R580+ is required by CUDA 13)
 log "NVIDIA driver"

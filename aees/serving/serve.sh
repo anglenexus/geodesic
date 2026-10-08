@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 # serve.sh - run the Qwen3-4B SGLang server with the plan's baseline flags in a tmux session.
 #
-# Usage:  ./serve.sh start | stop | restart | status | logs
+# Usage:  ./serve.sh start | stop | restart | status | logs | dashboard [stop] | tunnel
+#
+# Ports (one convention for every script): model API on PORT (30000), dashboard web server on
+# DASH_PORT (8000). Both bind to 127.0.0.1 on the GPU host; reach them from a laptop with the single
+# tunnel command that `./serve.sh tunnel` prints.
 #
 # Options (env vars):
 #   HOST=127.0.0.1  PORT=30000      bind address (use an SSH tunnel, or 0.0.0.0 + API_KEY + firewall rule)
+#   DASH_PORT=8000  RESULTS_DIR=~/qwen-serve/results   dashboard web server port and folder it serves
 #   API_KEY=...                     require a bearer token on the API
 #   MEM_FRACTION=0.85  CONTEXT_LEN=32768
 #   TOOL_PARSER=qwen25              qwen3_coder for Qwen3.5 models
 #   REASONING_PARSER=               qwen3 for the hybrid Qwen/Qwen3-4B
 #   EXTRA_ARGS="--kv-cache-dtype fp8_e5m2"   any extra sglang flags (experiment arms)
+#   SERVER_ENV="PYTHONPATH=... FI_TRACE_DIR=..."  extra environment for the server process
 #   MODEL_ID / MODEL_DIR / WORK_DIR  must match what setup_host.sh used
 set -euo pipefail
 
@@ -25,9 +31,13 @@ TOOL_PARSER="${TOOL_PARSER:-qwen25}"
 REASONING_PARSER="${REASONING_PARSER:-}"
 API_KEY="${API_KEY:-}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
+SERVER_ENV="${SERVER_ENV:-}"
 SESSION="${SESSION:-sglang}"
 CUDA_HOME_DIR="/usr/local/cuda-13.0"
 LOG_DIR="$WORK_DIR/logs"
+DASH_PORT="${DASH_PORT:-8000}"
+RESULTS_DIR="${RESULTS_DIR:-$WORK_DIR/results}"
+DASH_SESSION="${DASH_SESSION:-dashboard}"
 URL="http://127.0.0.1:$PORT"
 AUTH=()
 if [[ -n "$API_KEY" ]]; then AUTH=(-H "Authorization: Bearer $API_KEY"); fi
@@ -46,9 +56,43 @@ summary() {
     -d "{\"model\":\"$SERVED_NAME\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello in five words.\"}],\"max_tokens\":32,\"temperature\":0}" \
     | python3 -c "import json,sys; r=json.load(sys.stdin); print('reply:', r['choices'][0]['message']['content'])"
   echo "Endpoint: http://$HOST:$PORT/v1   model name: $SERVED_NAME"
-  if [[ "$HOST" == "127.0.0.1" ]]; then
-    echo "From a laptop: ssh -N -L $PORT:localhost:$PORT $(whoami)@<this-host-ip>"
+  tunnel
+}
+
+public_ip() {
+  local ip
+  ip=$(curl -s --max-time 3 https://ifconfig.me 2>/dev/null || true)
+  [[ "$ip" =~ ^[0-9.]+$ ]] || ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  echo "${ip:-<gpu-host-ip>}"
+}
+
+tunnel() {
+  echo "--- from your laptop (one tunnel for both) ---"
+  echo "ssh -N -L $PORT:127.0.0.1:$PORT -L $DASH_PORT:127.0.0.1:$DASH_PORT $(whoami)@$(public_ip)"
+  echo "  API:       http://127.0.0.1:$PORT/v1      (smoke_test.py uses this by default)"
+  echo "  dashboard: http://127.0.0.1:$DASH_PORT/    (after ./serve.sh dashboard)"
+  echo "  Add -i <key> or use your ssh host alias if that's how you normally log in."
+}
+
+dashboard() {
+  if [[ "${1:-}" == "stop" ]]; then
+    tmux kill-session -t "$DASH_SESSION" 2>/dev/null || true
+    echo "Dashboard server stopped."
+    return
   fi
+  mkdir -p "$RESULTS_DIR"
+  if ! tmux has-session -t "$DASH_SESSION" 2>/dev/null; then
+    tmux new-session -d -s "$DASH_SESSION" \
+      "cd '$RESULTS_DIR' && python3 -m http.server $DASH_PORT --bind 127.0.0.1"
+    sleep 1
+  fi
+  if curl -sf -o /dev/null "http://127.0.0.1:$DASH_PORT/"; then
+    echo "Dashboard server: serving $RESULTS_DIR on 127.0.0.1:$DASH_PORT"
+  else
+    echo "Dashboard server did not start; is port $DASH_PORT in use? Try: DASH_PORT=8001 $0 dashboard"
+    exit 1
+  fi
+  tunnel
 }
 
 start() {
@@ -66,6 +110,7 @@ start() {
 #!/usr/bin/env bash
 source "$WORK_DIR/.venv/bin/activate"
 export CUDA_HOME=$CUDA_HOME_DIR PATH=$CUDA_HOME_DIR/bin:\$PATH LD_LIBRARY_PATH=$CUDA_HOME_DIR/lib64:\${LD_LIBRARY_PATH:-}
+${SERVER_ENV:+export $SERVER_ENV}
 sglang serve "$MODEL_DIR" \\
   --served-model-name $SERVED_NAME \\
   --host $HOST --port $PORT \\
@@ -107,6 +152,11 @@ stop() {
 status() {
   if running; then echo "tmux session '$SESSION': running"; else echo "tmux session '$SESSION': not running"; fi
   if ready; then echo "API: ready at $URL/v1"; else echo "API: not responding"; fi
+  if curl -sf -o /dev/null "http://127.0.0.1:$DASH_PORT/"; then
+    echo "Dashboard: serving $RESULTS_DIR on 127.0.0.1:$DASH_PORT"
+  else
+    echo "Dashboard: not running (./serve.sh dashboard)"
+  fi
   nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader
 }
 
@@ -116,5 +166,7 @@ case "${1:-}" in
   restart) stop; sleep 3; start ;;
   status)  status ;;
   logs)    tail -n 100 -f "$LOG_DIR/latest.log" ;;
-  *)       echo "Usage: $0 {start|stop|restart|status|logs}"; exit 1 ;;
+  dashboard) dashboard "${2:-}" ;;
+  tunnel)  tunnel ;;
+  *)       echo "Usage: $0 {start|stop|restart|status|logs|dashboard [stop]|tunnel}"; exit 1 ;;
 esac

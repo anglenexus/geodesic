@@ -11,6 +11,7 @@ All percentiles, including p99.9, are computed here from per-request data
 import argparse
 import html
 import json
+import os
 import pathlib
 import re
 
@@ -286,7 +287,91 @@ def fig_tail(raw):
     return fig
 
 
-def fig_gpu(run_dir):
+def fig_cold(df, slo):
+    b = df[(df.arm == "baseline") & (df.workload == "agent")]
+    cold = b[b["mode"] == "cold"]
+    if cold.empty:
+        return None
+    L, P = lab(slo["pct"]), plab(slo["pct"])
+    rows = []
+    for c in sorted(cold.value):
+        w = b[(b["mode"] == "conc") & (b.value == c)]
+        k = cold[cold.value == c].iloc[0]
+        rows.append((f"c={int(c)}", k, w.iloc[0] if not w.empty else None))
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("TTFT p50 (ms)", f"TTFT {P} (ms)"))
+    for j, col in enumerate(["ttft_p50", f"ttft_{L}"], 1):
+        fig.add_trace(go.Bar(x=[r[0] for r in rows], y=[r[1][col] for r in rows], name="cold (empty cache, all arrive at once)",
+                             legendgroup="cold", showlegend=j == 1, marker_color="#d1495b"), row=1, col=j)
+        fig.add_trace(go.Bar(x=[r[0] for r in rows], y=[r[2][col] if r[2] is not None else None for r in rows],
+                             name="warm (steady state)", legendgroup="warm", showlegend=j == 1,
+                             marker_color="#1f6feb"), row=1, col=j)
+    fig.update_layout(barmode="group", height=380)
+    return fig
+
+
+def fig_kv_time(run_dir, df):
+    names = {"sglang:token_usage": ("KV pool in use (%)", 100.0), "sglang:cache_hit_rate": ("Prefix-cache hit rate (%)", 100.0),
+             "sglang:num_running_reqs": ("Running requests", 1.0), "sglang:num_queue_reqs": ("Queued requests", 1.0)}
+    frames = []
+    for arm_dir in sorted(p for p in run_dir.iterdir() if p.is_dir()):
+        f = arm_dir / "metrics_ts.csv"
+        if f.exists() and f.stat().st_size:
+            d = pd.read_csv(f, names=["t", "metric", "value"])
+            d = d[d.metric.isin(list(names))].groupby(["t", "metric"], as_index=False).value.mean()
+            if not d.empty:
+                d["arm"] = arm_dir.name
+                d["minutes"] = (d.t - d.t.min()) / 60
+                frames.append(d)
+    if not frames:
+        return None
+    allm = pd.concat(frames)
+    present = [m for m in names if m in set(allm.metric)]
+    fig = make_subplots(rows=len(present), cols=1, shared_xaxes=True, vertical_spacing=0.05,
+                        subplot_titles=[names[m][0] for m in present])
+    for d in frames:
+        a = d.arm.iloc[0]
+        for i, m in enumerate(present, 1):
+            x = d[d.metric == m]
+            scale = names[m][1] if x.value.max() <= 1.0 else 1.0  # fractions -> %, leave counts alone
+            fig.add_trace(go.Scatter(x=x.minutes, y=x.value * scale, mode="lines", name=a, legendgroup=a,
+                                     showlegend=i == 1, line=dict(color=ARM_COLORS.get(a), width=1)), row=i, col=1)
+    # mark where each baseline test point started
+    man = run_dir / "manifest.jsonl"
+    base = next((d for d in frames if d.arm.iloc[0] == "baseline"), None)
+    if man.exists() and base is not None and present:
+        t0 = base.t.min()
+        pts = [json.loads(ln) for ln in man.read_text().splitlines() if ln.strip()]
+        pts = [r for r in pts if r["arm"] == "baseline" and r.get("start")]
+        fig.add_trace(go.Scatter(x=[(r["start"] - t0) / 60 for r in pts], y=[0] * len(pts), mode="markers",
+                                 marker=dict(symbol="triangle-up", size=8, color="#59636e"), name="baseline test point",
+                                 text=[f"{r['workload']} {r['mode']}={r['value']}" for r in pts],
+                                 hovertemplate="%{text}<extra></extra>"), row=1, col=1)
+    fig.update_xaxes(title_text="Minutes since setting started", row=len(present), col=1)
+    fig.update_layout(height=230 * len(present) + 80)
+    return fig
+
+
+def quality_table(run_dir):
+    rows, base = [], None
+    for arm in ARM_ORDER:
+        f = run_dir / arm / "quality.json"
+        if not f.exists():
+            continue
+        q = json.loads(f.read_text())
+        cases = q["cases"]
+        if arm == "baseline":
+            base = cases
+        agree = ""
+        if base is not None:
+            same = sum(1 for a, b in zip(cases, base) if a.get("tool") == b.get("tool") and a.get("args") == b.get("args"))
+            agree = f"{same / len(cases):.0%}"
+        rows.append({"setting": arm, "prompts": len(cases), "correct tool": f"{q['summary']['tool_ok']:.0%}",
+                     "correct tool + arguments": f"{q['summary']['args_ok']:.0%}",
+                     "identical to baseline": agree if arm != "baseline" else "–"})
+    return pd.DataFrame(rows) if rows else None
+
+
+def fig_gpu(run_dir, total_gib=None):
     frames = []
     for arm_dir in sorted(p for p in run_dir.iterdir() if p.is_dir()):
         f = arm_dir / "gpu.csv"
@@ -313,6 +398,9 @@ def fig_gpu(run_dir):
                                      showlegend=i == 1, line=dict(color=ARM_COLORS.get(a), width=1)),
                           row=i, col=1)
     fig.update_xaxes(title_text="Minutes since arm start", row=3, col=1)
+    if total_gib:
+        fig.update_yaxes(range=[0, total_gib], row=1, col=1)
+        fig.add_hline(y=total_gib, line_dash="dot", line_color="#adb5bd", row=1, col=1)
     fig.update_layout(height=620)
     return fig
 
@@ -367,6 +455,13 @@ def kpis(df, slo):
                     f"{int(r.n_ttft):,} requests, agent workload, c={int(r.value)}"))
         out.append(("ITL p50 / p99 / p99.9", f"{r.itl_p50:.1f} / {r.itl_p99:.1f} / {r.itl_p999:.1f} ms",
                     f"{int(r.n_itl):,} inter-token gaps"))
+    cd = b[(b.workload == "agent") & (b["mode"] == "cold")].sort_values("value")
+    if not cd.empty:
+        r = cd.iloc[-1]
+        w = ag[ag.value == r.value] if not ag.empty else ag
+        warm_txt = f" vs {w.iloc[0][f'ttft_{L}']:,.0f} ms warm" if not w.empty else ""
+        out.append((f"Cold-start TTFT {P}", f"{r[f'ttft_{L}']:,.0f} ms",
+                    f"empty prefix cache, c={int(r.value)}{warm_txt}"))
     bu = b[b["mode"] == "burst"]
     if not bu.empty:
         r = bu.iloc[0]
@@ -433,6 +528,8 @@ def build(run_dir, slo):
     cap, hit = server_facts(run_dir)
     meta = json.loads((run_dir / "meta.json").read_text()) if (run_dir / "meta.json").exists() else {}
     P = plab(slo["pct"])
+    mt = re.search(r"(\d+)\s*MiB", meta.get("gpu", ""))
+    total_gib = int(mt.group(1)) / 1024 if mt else None
 
     sections = [
         ("Capacity: throughput vs latency (baseline)",
@@ -441,6 +538,10 @@ def build(run_dir, slo):
         ("Latency percentiles vs concurrency (baseline)",
          "p50 is the typical request; p99 and p99.9 are the tail users notice. Log scales on both axes.",
          fig_percentiles(df)),
+        ("Cold start vs steady state (baseline, agent workload)",
+         "Cold: prefix cache emptied and every request arrives at once, so the 16 shared system prompts all miss "
+         "together. Warm: the same prompts already cached, as in steady agent traffic. Capacity charts use warm points.",
+         fig_cold(df, slo)),
         ("QPS sweep: Poisson arrivals (baseline, agent workload)",
          "Where achieved load falls below the ideal line, the server is saturated and queueing delay grows.",
          fig_rate(df, slo)),
@@ -454,7 +555,12 @@ def build(run_dir, slo):
         ("KV-cache capacity and prefix-cache hit rate",
          "Pool capacity comes from the server log; hit rate from /metrics at the end of each sweep.",
          fig_kv(cap, hit)),
-        ("GPU telemetry", "Sampled once per second during each setting's run.", fig_gpu(run_dir)),
+        ("KV cache over time",
+         "Sampled from SGLang's /metrics once per second. Pool usage shows when the KV cache fills; hit rate shows "
+         "how fast the prefix cache warms; queued requests show when the server is saturated. Triangles mark where "
+         "each baseline test point started.", fig_kv_time(run_dir, df)),
+        ("GPU telemetry", "Sampled once per second. Memory is flat by design: SGLang reserves the KV pool at "
+         "startup, so this shows headroom, not KV efficiency.", fig_gpu(run_dir, total_gib)),
     ]
 
     parts, first = [], True
@@ -477,6 +583,12 @@ def build(run_dir, slo):
                     "ran; change vs baseline in brackets. Lower is better for latency.</p><div class='scroll'>"
                     + abl.to_html(index=False, classes="tbl", border=0) + "</div></section>")
 
+    qt = quality_table(run_dir)
+    if qt is not None:
+        abl_html += ("<h2>Tool-call quality by setting</h2><section><p class='why'>37 tool-call prompts (4 tools plus "
+                     "5 needing no tool) at temperature 0 against each server setting. A KV or kernel setting that "
+                     "changes answers shows up as lower accuracy or lower agreement with baseline.</p>"
+                     + qt.to_html(index=False, classes="tbl", border=0) + "</section>")
     cols = ["arm", "workload", "mode", "value", "num_prompts", "failed", "req_s", "out_tok_s"] + \
            [f"{m}_{lab(p)}" for m in ("ttft", "itl", "e2e") for p in PCTS] + ["n_ttft", "meets"]
     table = df[cols].copy()
@@ -508,8 +620,9 @@ number of requests behind each TTFT percentile; treat p99.9 with fewer than 1,00
 <div class="scroll">{table.to_html(index=False, classes="tbl", border=0, na_rep="–")}</div></section>
 <h2>Method</h2><section><ul>{flags}</ul>
 <p class="why">Workloads: agent = 16 shared 4K-token system prompts + 128-token question, 256 output tokens;
-chat = 1K in / 256 out; long = 8K in / 256 out. Fixed output length, prefix cache flushed before every point,
-load from sglang.bench_serving on the same host.</p>{cmds}</section>
+chat = 1K in / 256 out; long = 8K in / 256 out. Fixed output length. The prefix cache is flushed before every point;
+agent points then send the same prompts once, unmeasured, so they measure a warm cache (mode "cold" points skip this).
+Load from sglang.bench_serving on the same host.</p>{cmds}</section>
 </main></body></html>"""
     (run_dir / "dashboard.html").write_text(page)
     return run_dir / "dashboard.html"
@@ -523,7 +636,9 @@ def main():
     ap.add_argument("--slo-pct", type=float, default=99, choices=[50, 90, 99, 99.9])
     a = ap.parse_args()
     out = build(a.run_dir, dict(ttft=a.slo_ttft_ms, itl=a.slo_itl_ms, pct=a.slo_pct))
-    print(out)
+    port = os.environ.get("DASH_PORT", "8000")
+    print(f"{out}\nWith ./serve.sh dashboard running and the tunnel open: "
+          f"http://127.0.0.1:{port}/{a.run_dir.resolve().name}/dashboard.html")
 
 
 if __name__ == "__main__":

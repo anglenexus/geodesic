@@ -22,8 +22,10 @@ import os
 import pathlib
 import shlex
 import shutil
+import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -42,8 +44,8 @@ WORKLOADS = {
 }
 FULL = {  # concurrency sweeps per arm; "_other" applies to arms not listed
     "baseline": {"agent": [1, 4, 16, 32, 64, 128, 256], "chat": [1, 4, 16, 32, 64, 128, 256],
-                 "long": [1, 4, 8, 16, 32]},
-    "fp8_kv": {"agent": [1, 16, 64, 128], "chat": [1, 16, 64, 128], "long": [8, 16, 32]},
+                 "long": [1, 4, 8, 16, 32, 48, 64]},
+    "fp8_kv": {"agent": [1, 16, 64, 128], "chat": [1, 16, 64, 128], "long": [8, 16, 32, 48, 64]},
     "_other": {"agent": [1, 16, 64, 128], "chat": [1, 16, 64, 128]},
 }
 QUICK = {
@@ -51,6 +53,92 @@ QUICK = {
     "_other": {"agent": [16, 64]},
 }
 RATES_FULL, RATES_QUICK = [1, 2, 4, 8, 16, 32], [2, 8]  # offered req/s for the QPS sweep
+COLD_FULL, COLD_QUICK = [16, 64], [16]  # agent points measured from an empty prefix cache (baseline only)
+SERVED_NAME = os.environ.get("SERVED_NAME", "qwen3-4b")
+METRIC_RE = re.compile(r"^(sglang:[A-Za-z0-9_:]+)(?:\{[^}]*\})?\s+([-+0-9.eE]+|NaN|[+-]?Inf)\s*$")
+
+# Tool-call quality check: same prompts against every server setting, temperature 0.
+Q_TOOLS = [
+    {"type": "function", "function": {"name": "get_weather", "description": "Current weather for a city",
+     "parameters": {"type": "object", "properties": {"city": {"type": "string"},
+                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["city"]}}},
+    {"type": "function", "function": {"name": "convert_currency", "description": "Convert an amount between currencies",
+     "parameters": {"type": "object", "properties": {"amount": {"type": "number"},
+                    "from_currency": {"type": "string", "description": "ISO code"},
+                    "to_currency": {"type": "string", "description": "ISO code"}},
+                    "required": ["amount", "from_currency", "to_currency"]}}},
+    {"type": "function", "function": {"name": "create_event", "description": "Add an event to the user's calendar",
+     "parameters": {"type": "object", "properties": {"title": {"type": "string"},
+                    "date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "time": {"type": "string", "description": "HH:MM, 24-hour"}},
+                    "required": ["title", "date", "time"]}}},
+    {"type": "function", "function": {"name": "search_docs", "description": "Search the company documentation",
+     "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+]
+
+
+def quality_cases():
+    cases = []
+    for i, c in enumerate(["Paris", "Tokyo", "Austin", "Nairobi", "Lima", "Oslo", "Seoul", "Cairo"]):
+        u = ["celsius", "fahrenheit"][i % 2]
+        cases.append((f"What's the weather in {c} right now, in {u}?", "get_weather", {"city": c, "unit": u}))
+    for amt, a, b in [(100, "USD", "EUR"), (250, "GBP", "JPY"), (75.5, "EUR", "USD"), (1200, "JPY", "USD"),
+                      (60, "CAD", "EUR"), (9, "AUD", "GBP"), (500, "CHF", "USD"), (42, "USD", "INR")]:
+        cases.append((f"Convert {amt} {a} to {b}.", "convert_currency",
+                      {"amount": amt, "from_currency": a, "to_currency": b}))
+    for t, d, tm in [("Team sync", "2026-10-12", "09:30"), ("Dentist", "2026-11-03", "14:00"),
+                     ("Quarterly review", "2026-12-01", "10:00"), ("Lunch with Ana", "2026-10-20", "12:15"),
+                     ("Flight to Denver", "2026-11-18", "07:45"), ("Gym", "2026-10-15", "18:00"),
+                     ("Board meeting", "2027-01-09", "16:30"), ("Call with vendor", "2026-10-29", "11:00")]:
+        cases.append((f"Put '{t}' on my calendar for {d} at {tm}.", "create_event", {"title": t, "date": d, "time": tm}))
+    for q in ["rate limits", "refund policy", "SSO setup", "data retention", "API keys", "webhooks",
+              "billing cycle", "export to CSV"]:
+        cases.append((f"Search our docs for '{q}'.", "search_docs", {"query": q}))
+    for q in ["Say hi in five words.", "What is 2+2? Answer with just the number.", "Name three primary colors.",
+              "Translate 'good morning' to Spanish.", "Is a tomato a fruit? One sentence."]:
+        cases.append((q, None, None))
+    return cases
+
+
+def args_match(expected, got):
+    for k, v in expected.items():
+        g = got.get(k)
+        if isinstance(v, (int, float)):
+            try:
+                if abs(float(g) - float(v)) > 1e-6:
+                    return False
+            except (TypeError, ValueError):
+                return False
+        elif str(g).strip().lower() != str(v).strip().lower():
+            return False
+    return True
+
+
+class MetricsSampler(threading.Thread):
+    """Samples SGLang's Prometheus gauges once a second into a CSV (time, metric, value)."""
+
+    def __init__(self, url, path):
+        super().__init__(daemon=True)
+        self.url, self.path, self.stop_evt = url, path, threading.Event()
+
+    def run(self):
+        with open(self.path, "a") as f:
+            while not self.stop_evt.is_set():
+                t = time.time()
+                try:
+                    with urllib.request.urlopen(self.url, timeout=5) as r:
+                        for line in r.read().decode().splitlines():
+                            m = METRIC_RE.match(line)
+                            if m and not m.group(1).endswith(("_bucket", "_sum", "_count", "_created", "_total")):
+                                f.write(f"{t:.2f},{m.group(1)},{m.group(2)}\n")
+                    f.flush()
+                except Exception:
+                    pass
+                self.stop_evt.wait(1.0)
+
+    def stop(self):
+        self.stop_evt.set()
+        self.join(timeout=5)
 REQUIRED_FLAGS = ["--backend", "--dataset-name", "--num-prompts", "--max-concurrency",
                   "--request-rate", "--output-file", "--output-details", "--seed",
                   "--random-input-len", "--random-output-len", "--random-range-ratio",
@@ -185,7 +273,11 @@ class Runner:
             cmd += ["--max-concurrency", str(conc)]
         return cmd, n
 
-    def run_point(self, arm, wl, mode, value, n, conc=None, rate=None, record=True):
+    def run_point(self, arm, wl, mode, value, n, conc=None, rate=None, record=True, warm=None):
+        """warm=True: flush, then send the identical prompts once (unrecorded) so the measured pass sees
+        the steady state of a warm prefix cache. Defaults to True for agent points except mode 'cold'."""
+        if warm is None:
+            warm = record and wl == "agent" and mode != "cold"
         key = (arm, wl, mode, str(value))
         if record and key in self.done:
             print(f"  skip (already done): {arm} {wl} {mode}={value}")
@@ -199,7 +291,11 @@ class Runner:
             print("   ", shlex.join(cmd))
             return
         out.unlink(missing_ok=True)
-        self.http("/flush_cache", "POST")  # every point starts from an empty prefix cache
+        self.http("/flush_cache", "POST")  # every point starts from an empty prefix cache...
+        if warm:  # ...then agent points warm it with the same prompts (dataset depends only on seed/size)
+            wcmd, _ = self.bench_cmd(wl, arm_dir / "_warm.jsonl", n, 64, None)
+            with open(arm_dir / "_warm.log", "w") as f:
+                subprocess.run(wcmd, stdout=f, stderr=subprocess.STDOUT, timeout=self.a.point_timeout)
         t0 = time.time()
         with open(arm_dir / f"{name}.log", "w") as f:
             try:
@@ -212,7 +308,7 @@ class Runner:
         if rc == 0 and res is None:
             rc = -1
         if record:
-            rec = dict(arm=arm, workload=wl, mode=mode, value=value, num_prompts=n,
+            rec = dict(arm=arm, workload=wl, mode=mode, value=value, num_prompts=n, warm=bool(warm),
                        max_concurrency=conc, request_rate=rate, rc=rc,
                        file=str(out.relative_to(self.dir)), start=round(t0, 1), seconds=round(dt, 1))
             with open(self.manifest, "a") as f:
@@ -226,13 +322,54 @@ class Runner:
         else:
             print(f"  {arm} {wl} {mode}={value}: FAILED rc={rc}; see {arm_dir / (name + '.log')}")
 
+    def quality_check(self, arm):
+        path = self.dir / arm / "quality.json"
+        if self.a.dry_run:
+            print(f"    quality check: {len(quality_cases())} tool-call prompts at temperature 0")
+            return
+        if path.exists():
+            print("  skip (already done): quality check")
+            return
+        rows = []
+        for prompt, tool, expected in quality_cases():
+            body = json.dumps({"model": SERVED_NAME, "messages": [{"role": "user", "content": prompt}],
+                               "tools": Q_TOOLS, "temperature": 0, "max_tokens": 256}).encode()
+            row = dict(prompt=prompt, expected_tool=tool, expected_args=expected)
+            try:
+                req = urllib.request.Request(f"http://127.0.0.1:{self.a.port}/v1/chat/completions", data=body,
+                                             headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    msg = json.loads(r.read())["choices"][0]["message"]
+                calls = msg.get("tool_calls") or []
+                row["content"] = (msg.get("content") or "")[:300]
+                row["tool"] = calls[0]["function"]["name"] if calls else None
+                raw = calls[0]["function"]["arguments"] if calls else None
+                row["raw_args"] = raw
+                try:
+                    args = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                    row["valid_json"] = calls != [] and isinstance(args, dict)
+                except Exception:
+                    args, row["valid_json"] = {}, False
+                row["args"] = args
+                row["tool_ok"] = row["tool"] == tool
+                row["args_ok"] = (tool is None and not calls) or (row["tool_ok"] and args_match(expected or {}, args))
+            except Exception as e:
+                row.update(error=str(e)[:200], tool_ok=False, args_ok=False, valid_json=False)
+            rows.append(row)
+        n = len(rows)
+        summ = dict(n=n, tool_ok=sum(r["tool_ok"] for r in rows) / n, args_ok=sum(r["args_ok"] for r in rows) / n)
+        path.write_text(json.dumps(dict(summary=summ, cases=rows), indent=1))
+        print(f"  quality: correct tool {summ['tool_ok']:.0%}, correct tool + arguments {summ['args_ok']:.0%} ({n} prompts)")
+
     def run_arm(self, arm):
         plan = QUICK if self.a.quick else FULL
         sweeps = plan.get(arm, plan["_other"])
         if not self.restart(arm):
             return
-        gpu = None
+        gpu = sampler = None
         if not self.a.dry_run:
+            sampler = MetricsSampler(f"http://127.0.0.1:{self.a.port}/metrics", self.dir / arm / "metrics_ts.csv")
+            sampler.start()
             gpu = subprocess.Popen(
                 ["nvidia-smi", "--query-gpu=timestamp,utilization.gpu,memory.used,power.draw",
                  "--format=csv,noheader,nounits", "-l", "1"],
@@ -246,8 +383,11 @@ class Runner:
                     m = self.http("/metrics")
                     if m:
                         (self.dir / arm / f"metrics_{wl}.txt").write_text(m)
+            self.quality_check(arm)
             if arm == "baseline":
                 q = self.a.quick
+                for c in (COLD_QUICK if q else COLD_FULL):  # cold start: empty cache, everyone arrives at once
+                    self.run_point(arm, "agent", "cold", c, n_prompts("agent", c, q), conc=c, warm=False)
                 for r in (RATES_QUICK if q else RATES_FULL):
                     n = max(30, r * 10) if q else max(60, r * 30)
                     self.run_point(arm, "agent", "rate", r, n, rate=r)
@@ -258,6 +398,8 @@ class Runner:
         finally:
             if gpu:
                 gpu.terminate()
+            if sampler:
+                sampler.stop()
             if not self.a.dry_run:
                 self.collect_server_files(arm)
         self.dashboard()
@@ -276,7 +418,9 @@ def main():
     ap.add_argument("--quick", action="store_true", help="small version of every test (~15 min)")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and commands only")
     ap.add_argument("--resume", type=pathlib.Path, help="results dir of an interrupted run")
-    ap.add_argument("--out", type=pathlib.Path, default=pathlib.Path("results"))
+    ap.add_argument("--out", type=pathlib.Path, default=pathlib.Path(os.environ.get(
+        "RESULTS_DIR", pathlib.Path(os.environ.get("WORK_DIR", "~/qwen-serve")).expanduser() / "results")),
+        help="results folder, the one ./serve.sh dashboard serves (default ~/qwen-serve/results)")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 30000)))
     ap.add_argument("--work-dir", type=pathlib.Path,
                     default=pathlib.Path(os.environ.get("WORK_DIR", "~/qwen-serve")).expanduser())
@@ -300,6 +444,7 @@ def main():
     if not a.dry_run and not a.no_restore and arms and arms[-1] != "baseline":
         r.restart("baseline", note="restoring baseline server")
     print(f"\nDone. Dashboard: {r.dir / 'dashboard.html'}")
+    print(f"View it: ./serve.sh dashboard, then http://127.0.0.1:{os.environ.get('DASH_PORT', '8000')}/{r.dir.name}/dashboard.html")
 
 
 if __name__ == "__main__":
