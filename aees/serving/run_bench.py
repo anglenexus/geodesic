@@ -232,7 +232,7 @@ class Runner:
         print(f"\n=== {note or 'arm ' + arm}: {ARMS[arm][1]} ===\n  serve.sh restart  EXTRA_ARGS='{extra}'")
         if self.a.dry_run:
             return True
-        p = subprocess.run([str(self.serve), "restart"], env=dict(os.environ, EXTRA_ARGS=extra),
+        p = subprocess.run(["bash", str(self.serve), "restart"], env=dict(os.environ, EXTRA_ARGS=extra),
                            capture_output=True, text=True)
         (self.dir / arm).mkdir(parents=True, exist_ok=True)
         (self.dir / arm / "server_start.txt").write_text(p.stdout + p.stderr)

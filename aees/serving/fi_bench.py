@@ -28,7 +28,10 @@ import time
 OUT = pathlib.Path(os.environ.get("FI_OUT") or pathlib.Path(os.environ.get(
     "RESULTS_DIR", pathlib.Path(os.environ.get("WORK_DIR", "~/qwen-serve")).expanduser() / "results")) / "fi")
 QH, KVH, HD, LAYERS = 32, 8, 128, 36  # Qwen3-4B attention
-PEAK_GBS = {"A100-SXM4-80GB": 2039, "A100 80GB PCIe": 1935, "A100": 1555, "H100": 3350, "L40S": 864}
+# Peak HBM/GDDR bandwidth (GB/s), only for the reference line on the 2a chart. First substring match wins,
+# so longer / more specific names come before shorter ones ("A100" before "A10", "L40S" before "L4").
+PEAK_GBS = {"A100-SXM4-80GB": 2039, "A100 80GB PCIe": 1935, "A100": 1555, "H100 PCIe": 2000, "H100": 3350,
+            "H200": 4800, "L40S": 864, "L40": 864, "A10G": 600, "A10": 600, "L4": 300, "A6000": 768, "T4": 320}
 
 
 def log(msg):
@@ -48,6 +51,7 @@ def env_info():
     name = torch.cuda.get_device_name()
     peak = next((v for k, v in PEAK_GBS.items() if k.lower() in name.lower()), None)
     return dict(gpu=name, peak_gbs=peak, sm=".".join(map(str, torch.cuda.get_device_capability())),
+                sms=torch.cuda.get_device_properties(0).multi_processor_count,
                 torch=torch.__version__, cuda=torch.version.cuda, flashinfer=flashinfer.__version__,
                 time=time.strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -430,7 +434,7 @@ def diagram_jit():
     b += _box(x2, yA, W, H, "Cache lookup", ["JIT cache dir on local disk", "+ prebuilt cubin / jit-cache wheels"])
     b += _box(x3, yA, W, H, "Load module, run()", ["same kernel on every later call", "no compile cost after first use"])
     b += _box(x2, yB, W, H, "Instantiate template", ["fill the CUDA/CUTLASS template", "with this spec's parameters"])
-    b += _box(x3, yB, W, H, "Compile with nvcc", ["build a .so for this GPU (sm_80)", "and save it to the cache dir"], hi=True)
+    b += _box(x3, yB, W, H, "Compile with nvcc", ["build a .so for this GPU's arch", "and save it to the cache dir"], hi=True)
     b += _t(x2 + W + 13, yA + H / 2 - 8, "hit", 11.5, QUIET, anchor="middle")
     b += _t(x2 + W / 2 + 8, yA + H + 38, "miss (first use)", 11.5, QUIET)
     b += _t(x3 + W / 2 + 8, yA + H + 38, "load", 11.5, QUIET)
@@ -713,7 +717,9 @@ def cmd_report(a):
 
     head = ""
     if env:
-        head = (f"{env['gpu']} (sm_{env['sm'].replace('.', '')}) · FlashInfer {env['flashinfer']} · torch {env['torch']} "
+        sms = f", {env['sms']} SMs" if env.get("sms") else ""
+        peak = f", {env['peak_gbs']:,} GB/s peak" if env.get("peak_gbs") else ""
+        head = (f"{env['gpu']} (sm_{env['sm'].replace('.', '')}{sms}{peak}) · FlashInfer {env['flashinfer']} · torch {env['torch']} "
                 f"(CUDA {env['cuda']}) · Qwen3-4B attention shapes: {QH} query heads, {KVH} KV heads, head_dim {HD}")
     page = (f"<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
             f"<title>FlashInfer deep dive</title><style>{CSS}</style></head><body><main>"

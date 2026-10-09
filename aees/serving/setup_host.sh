@@ -112,7 +112,7 @@ fi
 uv pip install "flashinfer-cubin==$FI_VER" --index-url https://flashinfer.ai/whl
 uv pip install "flashinfer-jit-cache==$FI_VER" --index-url https://flashinfer.ai/whl/cu130 \
   || warn "No flashinfer-jit-cache $FI_VER for cu130; kernels will JIT-compile on first use instead."
-uv pip install openai "huggingface_hub[cli]" ninja  # ninja: FlashInfer JIT builds
+uv pip install openai "huggingface_hub[cli]" ninja pandas plotly  # ninja: FlashInfer JIT; pandas/plotly: reports
 uv pip list 2>/dev/null | grep -i '^flashinfer' || true
 
 # 7. Model weights

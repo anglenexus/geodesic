@@ -39,13 +39,16 @@ for f in serve.sh run_bench.py make_dashboard.py fi_bench.py fi_jit_setup.sh fi_
 done
 [[ -x "$PY" ]] || { echo "No serving venv python at $PY (run setup_host.sh first)"; exit 1; }
 
+# Python packages the benchmark scripts need, beyond what SGLang installs (report charts, JIT builds).
+if ! "$PY" -c "import pandas, plotly" 2>/dev/null || ! [[ -x "$VENV_BIN/ninja" ]]; then
+  step "Installing pandas, plotly and ninja into the serving venv"
+  VIRTUAL_ENV="$(dirname "$VENV_BIN")" "$HOME/.local/bin/uv" pip install pandas plotly ninja \
+    || warn "could not install pandas/plotly/ninja"
+fi
+
 kernels() {
   step "Stopping the server so the microbenchmarks get the whole, quiet GPU"
-  ./serve.sh stop
-  if ! command -v ninja >/dev/null; then
-    step "Installing ninja into the serving venv (FlashInfer needs it to JIT-compile kernels not in the prebuilt wheels)"
-    VIRTUAL_ENV="$(dirname "$(dirname "$PY")")" "$HOME/.local/bin/uv" pip install ninja || warn "could not install ninja"
-  fi
+  bash serve.sh stop
   step "2a sparse paged KV: page size x layout x KV dtype"
   "$PY" fi_bench.py sparse || warn "2a sparse benchmark failed (see log)"
   step "2c load balancing: skewed batches, split-KV on/off, plan() cost"
@@ -54,7 +57,7 @@ kernels() {
 
 jit() {
   step "Stopping the server (JIT test needs the GPU)"
-  ./serve.sh stop
+  bash serve.sh stop
   step "2b building the cold venv (same torch + FlashInfer, no prebuilt kernels, empty JIT cache)"
   if bash fi_jit_setup.sh; then
     step "2b timing first-use compilation of 10 attention variants"
@@ -79,13 +82,13 @@ trace() {
   echo "Captured $n index snapshots in $OUT/trace"
   [[ "$n" -gt 0 ]] || warn "no trace snapshots captured; check the server log for [fi_trace] lines"
   step "Restoring the normal server (no capture hook)"
-  SERVER_ENV="" ./serve.sh restart || warn "server restart failed; run ./serve.sh start"
+  SERVER_ENV="" bash serve.sh restart || warn "server restart failed; run ./serve.sh start"
 }
 
 report() {
   step "Building the Phase 4 report"
   "$PY" fi_bench.py report || warn "report build failed (see log)"
-  ./serve.sh dashboard >/dev/null 2>&1 || true
+  bash serve.sh dashboard >/dev/null 2>&1 || true
   echo
   echo "Report: http://127.0.0.1:${DASH_PORT:-8000}/fi/fi_report.html  (through the tunnel from ./serve.sh tunnel)"
 }
