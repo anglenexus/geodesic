@@ -20,6 +20,8 @@ PY="${PY:-$WORK_DIR/.venv/bin/python}"
 COLD_VENV="${COLD_VENV:-$HOME/fi-cold}"
 OUT="${FI_OUT:-$WORK_DIR/results/fi}"
 export WORK_DIR FI_OUT="$OUT"
+# Output goes through tee into the log; without this Python buffers prints and progress appears in bursts.
+export PYTHONUNBUFFERED=1
 # FlashInfer's JIT calls the `ninja` and `nvcc` executables, so the venv's bin and CUDA must be on PATH
 # even though we call the venv python directly instead of activating it.
 export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda-13.0}"
