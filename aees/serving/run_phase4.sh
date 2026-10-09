@@ -20,6 +20,11 @@ PY="${PY:-$WORK_DIR/.venv/bin/python}"
 COLD_VENV="${COLD_VENV:-$HOME/fi-cold}"
 OUT="${FI_OUT:-$WORK_DIR/results/fi}"
 export WORK_DIR FI_OUT="$OUT"
+# FlashInfer's JIT calls the `ninja` and `nvcc` executables, so the venv's bin and CUDA must be on PATH
+# even though we call the venv python directly instead of activating it.
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda-13.0}"
+VENV_BIN="$(dirname "$PY")"
+export PATH="$VENV_BIN:$CUDA_HOME/bin:$PATH"
 mkdir -p "$OUT"
 LOG="$OUT/phase4_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
@@ -37,6 +42,10 @@ done
 kernels() {
   step "Stopping the server so the microbenchmarks get the whole, quiet GPU"
   ./serve.sh stop
+  if ! command -v ninja >/dev/null; then
+    step "Installing ninja into the serving venv (FlashInfer needs it to JIT-compile kernels not in the prebuilt wheels)"
+    VIRTUAL_ENV="$(dirname "$(dirname "$PY")")" "$HOME/.local/bin/uv" pip install ninja || warn "could not install ninja"
+  fi
   step "2a sparse paged KV: page size x layout x KV dtype"
   "$PY" fi_bench.py sparse || warn "2a sparse benchmark failed (see log)"
   step "2c load balancing: skewed batches, split-KV on/off, plan() cost"
@@ -50,7 +59,8 @@ jit() {
   if bash fi_jit_setup.sh; then
     step "2b timing first-use compilation of 10 attention variants"
     # shellcheck disable=SC1091
-    ( source "$COLD_VENV/jit_env.sh" && "$COLD_VENV/bin/python" fi_bench.py jit ) || warn "2b JIT benchmark failed (see log)"
+    ( source "$COLD_VENV/jit_env.sh" && export PATH="$COLD_VENV/bin:$PATH" && "$COLD_VENV/bin/python" fi_bench.py jit ) \
+      || warn "2b JIT benchmark failed (see log)"
   else
     warn "2b cold venv setup failed (see log)"
   fi
