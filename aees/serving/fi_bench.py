@@ -355,6 +355,135 @@ def load_traces(d):
 
 
 # ----------------------------------------------------------------------------- report
+# ----------------------------------------------------------------------------- explanatory diagrams
+INK, QUIET, EDGE, BLUE, RED, TINT = "#1f2328", "#59636e", "#8c959f", "#1f6feb", "#d1495b", "#f6f8fa"
+
+
+def _svg(w, h, body, label):
+    return (f"<svg viewBox='0 0 {w} {h}' role='img' aria-label='{html.escape(label)}' "
+            f"style='width:100%;max-width:{w}px;height:auto;display:block;margin:4px 0 8px' "
+            f"font-family='-apple-system,Segoe UI,Roboto,sans-serif' font-size='13'>"
+            f"<defs><marker id='ar' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='6' markerHeight='6' "
+            f"orient='auto-start-reverse'><path d='M0 0L10 5L0 10z' fill='{EDGE}'/></marker></defs>{body}</svg>")
+
+
+def _t(x, y, txt, size=13, color=INK, weight=400, anchor="start", mono=False):
+    fam = " font-family='ui-monospace,Menlo,Consolas,monospace' xml:space='preserve'" if mono else ""
+    return (f"<text x='{x}' y='{y}' font-size='{size}' fill='{color}' font-weight='{weight}' "
+            f"text-anchor='{anchor}'{fam}>{html.escape(txt)}</text>")
+
+
+def _box(x, y, w, h, title, lines, hi=False):
+    out = (f"<rect x='{x}' y='{y}' width='{w}' height='{h}' rx='8' fill='{'#e7f0fd' if hi else 'white'}' "
+           f"stroke='{BLUE if hi else EDGE}' stroke-width='{2 if hi else 1.25}'/>")
+    out += _t(x + 14, y + 24, title, weight=600)
+    for i, ln in enumerate(lines):
+        out += _t(x + 14, y + 44 + 16 * i, ln, size=11.5, color=QUIET)
+    return out
+
+
+def _arrow(d):
+    return f"<path d='{d}' fill='none' stroke='{EDGE}' stroke-width='1.25' marker-end='url(#ar)'/>"
+
+
+def diagram_sparse():
+    """Paged KV cache seen as a block-sparse matrix: rows = requests, columns = physical pages."""
+    used = {"Req A (agent 1)": [7, 2, 5], "Req B (agent 2)": [7, 2, 9], "Req C (chat)": [4, 1]}
+    shared, x0, cw, ch, y0, gap = {2, 7}, 210, 46, 30, 64, 40
+    b = _t(24, 54, "Physical page in KV pool", 11.5, QUIET)
+    for pg in range(10):
+        b += _t(x0 + pg * cw + cw / 2, 54, str(pg), 11.5, QUIET, anchor="middle")
+    for r, (name, pages) in enumerate(used.items()):
+        y = y0 + r * gap
+        b += _t(24, y + 20, name)
+        for pg in range(10):
+            on, sh = pg in pages, pg in shared and pg in pages
+            fill, stroke = (("#b6cff7", BLUE) if sh else ("#f6d3d7", RED)) if on else ("none", "#d0d7de")
+            b += (f"<rect x='{x0 + pg * cw + 2}' y='{y}' width='{cw - 4}' height='{ch}' rx='4' fill='{fill}' "
+                  f"stroke='{stroke}' stroke-width='{2 if sh else 1}'/>")
+    yy = 210
+    b += _t(24, yy, "kv_indptr        = [0, 3, 6, 8]", 12.5, INK, mono=True)
+    b += _t(24, yy + 22, "kv_page_indices  = [7, 2, 5 | 7, 2, 9 | 4, 1]", 12.5, INK, mono=True)
+    b += _t(24, yy + 44, "kv_last_page_len = [5, 16, 9]   (page_size 16)", 12.5, INK, mono=True)
+    lx = 450
+    for i, (fill, stroke, txt) in enumerate([("#b6cff7", BLUE, "Shared prefix page (prompt + tools)"),
+                                             ("#f6d3d7", RED, "Private page (one request)"),
+                                             ("none", "#d0d7de", "Not used by this request")]):
+        b += (f"<rect x='{lx}' y='{yy - 11 + 22 * i}' width='14' height='14' rx='3' fill='{fill}' stroke='{stroke}'/>"
+              + _t(lx + 22, yy + 22 * i, txt, 11.5))
+    b += _t(24, 292, "How it works: SGLang allocates KV pages anywhere in one pool and builds these three index arrays "
+            "each step;", 12, QUIET)
+    b += _t(24, 310, "FlashInfer reads only them. Requests A and B point at the same pages 7 and 2, so a shared "
+            "prefix is stored once.", 12, QUIET)
+    b += _t(24, 328, "Each page entry is a contiguous ~2 KB read per layer, which is why scattered pages cost little "
+            "(tested below).", 12, QUIET)
+    return _svg(720, 340, b, "Paged KV cache as a block-sparse matrix")
+
+
+def diagram_jit():
+    """JIT path for one attention variant: spec -> cache lookup -> hit: run / miss: instantiate, nvcc, cache."""
+    W, H, yA, yB, x1, x2, x3 = 220, 76, 30, 170, 24, 270, 516
+    b = _arrow(f"M{x1 + W} {yA + H / 2}H{x2}") + _arrow(f"M{x2 + W} {yA + H / 2}H{x3}")
+    b += _arrow(f"M{x2 + W / 2} {yA + H}V{yB}") + _arrow(f"M{x2 + W} {yB + H / 2}H{x3}")
+    b += _arrow(f"M{x3 + W / 2} {yB}V{yA + H}")
+    b += _box(x1, yA, W, H, "Attention spec", ["dtypes, head_dim 128, GQA 32:8", "mask, RoPE, soft-cap, page layout"])
+    b += _box(x2, yA, W, H, "Cache lookup", ["JIT cache dir on local disk", "+ prebuilt cubin / jit-cache wheels"])
+    b += _box(x3, yA, W, H, "Load module, run()", ["same kernel on every later call", "no compile cost after first use"])
+    b += _box(x2, yB, W, H, "Instantiate template", ["fill the CUDA/CUTLASS template", "with this spec's parameters"])
+    b += _box(x3, yB, W, H, "Compile with nvcc", ["build a .so for this GPU (sm_80)", "and save it to the cache dir"], hi=True)
+    b += _t(x2 + W + 13, yA + H / 2 - 8, "hit", 11.5, QUIET, anchor="middle")
+    b += _t(x2 + W / 2 + 8, yA + H + 38, "miss (first use)", 11.5, QUIET)
+    b += _t(x3 + W / 2 + 8, yA + H + 38, "load", 11.5, QUIET)
+    b += _t(24, yB + 22, "Production hosts install the", 11.5, QUIET)
+    b += _t(24, yB + 38, "prebuilt wheels, so every", 11.5, QUIET)
+    b += _t(24, yB + 54, "lookup is a hit.", 11.5, QUIET)
+    b += _t(24, 280, "How it works: FlashInfer keeps one template per kernel family. Each new combination of options is "
+            "a new variant,", 12, QUIET)
+    b += _t(24, 298, "compiled once (the blue step, timed below as 'first call') and reused from disk afterwards "
+            "('second call').", 12, QUIET)
+    return _svg(760, 310, b, "FlashInfer JIT compile path")
+
+
+def diagram_balance():
+    """Naive one-request-per-CTA vs FlashInfer's split-KV plan, plus plan()/run() split."""
+    lh, lg, scale = 22, 6, 0.9
+    naive = [[300], [60], [70], [50]]                       # CTA lanes, widths in px
+    balanced = [[75, 45], [75, 45], [75, 45], [75, 45]]      # long request in 4 chunks; short work packed evenly
+    b = ""
+    for col, (title, lanes, x_off) in enumerate([("Naive: one request per CTA", naive, 24),
+                                                 ("FlashInfer: split long request, pack lanes", balanced, 400)]):
+        b += _t(x_off, 26, title, 13, INK, 600)
+        for i, lane in enumerate(lanes):
+            y = 40 + i * (lh + lg)
+            b += _t(x_off, y + 15, f"CTA {i}", 11.5, QUIET)
+            x = x_off + 50
+            for j, w in enumerate(lane):
+                long = (col == 0 and i == 0) or (col == 1 and j == 0)
+                b += (f"<rect x='{x + 1}' y='{y}' width='{w * scale - 2}' height='{lh}' rx='4' "
+                      f"fill='{'#b6cff7' if long else '#f6d3d7'}' stroke='{BLUE if long else RED}'/>")
+                x += w * scale
+            end = x_off + 50 + max(sum(l) for l in lanes) * scale
+            if x < end - 2:
+                b += (f"<rect x='{x + 1}' y='{y}' width='{end - x - 2}' height='{lh}' rx='4' fill='none' "
+                      f"stroke='#d0d7de' stroke-dasharray='3 3'/>")
+        end = x_off + 50 + max(sum(l) for l in lanes) * scale
+        b += f"<line x1='{end}' x2='{end}' y1='36' y2='{40 + 4 * (lh + lg)}' stroke='{INK}' stroke-dasharray='2 3'/>"
+        b += _t(end, 40 + 4 * (lh + lg) + 14, "step done", 11, QUIET, anchor="middle")
+    b += _t(24, 176, "Idle SMs (dashed) wait for the long request.", 11.5, QUIET)
+    b += _t(400, 176, "Chunks run in parallel; a merge step combines them.", 11.5, QUIET)
+    y = 200
+    b += _box(24, y, 220, 70, "plan() on CPU, once per step", ["input: this step's KV lengths", "output: CTA work queues"])
+    b += _box(290, y, 200, 70, "GPU workspace buffer", ["plan copied asynchronously", "CUDA-graph safe"])
+    b += _box(536, y, 200, 70, "run() + merge", ["persistent kernel reads plan", "reused by all 36 layers"], hi=True)
+    b += _arrow(f"M244 {y + 35}H290") + _arrow(f"M490 {y + 35}H536")
+    b += _t(24, 300, "How it works: lengths change every decode step, so FlashInfer re-plans each step on the CPU, then "
+            "every layer reuses", 12, QUIET)
+    b += _t(24, 318, "that plan. Tested below: kernel time with split-KV on vs off for skewed batches, and plan() "
+            "cost per layer.", 12, QUIET)
+    b += _t(24, 336, "Blue = the long request; red = short requests. Illustrative widths.", 11.5, QUIET)
+    return _svg(760, 346, b, "FlashInfer load-balanced scheduling")
+
+
 CSS = """body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;background:#f6f8fa;color:#1f2328}
 main{max-width:1200px;margin:0 auto;padding:24px}h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 4px}
 .sub{color:#59636e;font-size:14px}section{background:#fff;border:1px solid #d1d9e0;border-radius:8px;padding:12px 16px;margin-top:12px}
@@ -382,6 +511,9 @@ def cmd_report(a):
             first[0] = False
         parts.append(f"<h2>{html.escape(title)}</h2><section><p class='why'>{html.escape(why)}</p>{div}{raw}</section>")
 
+    def explain(title, why, svg):
+        parts.append(f"<h2>{html.escape(title)}</h2><section><p class='why'>{html.escape(why)}</p>{svg}</section>")
+
     def missing(title, how):
         parts.append(f"<h2>{html.escape(title)}</h2><section><p class='why miss'>No data yet: {html.escape(how)}</p></section>")
 
@@ -391,6 +523,9 @@ def cmd_report(a):
 
     env = None
     # ---- 2a sparse
+    explain("2a · How block-sparse KV memory works",
+            "The concept behind the 2a measurements: the KV cache is a pool of pages, and each request is a sparse "
+            "row of page indices into it.", diagram_sparse())
     sp = load("sparse")
     if sp:
         env = sp["env"]
@@ -490,6 +625,9 @@ def cmd_report(a):
         missing("2a · Live KV index map", "run `./run_phase4.sh trace`, which restarts the server with the fi_trace.py hook and sends traffic.")
 
     # ---- 2c balance
+    explain("2c · How FlashInfer balances work across the GPU",
+            "The concept behind the 2c measurements: a scheduler splits long requests so every SM finishes together.",
+            diagram_balance())
     bl = load("balance")
     if bl:
         env = env or bl["env"]
@@ -538,6 +676,9 @@ def cmd_report(a):
         missing("2c · Load balancing", "run `python fi_bench.py balance` on the GPU host.")
 
     # ---- 2b jit
+    explain("2b · How JIT compilation of attention kernels works",
+            "The concept behind the 2b measurements: each attention variant is compiled from a template on first use.",
+            diagram_jit())
     jt = load("jit")
     if jt:
         env = env or jt["env"]
