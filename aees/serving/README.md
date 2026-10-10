@@ -10,6 +10,8 @@ This PR adds `geodesic/aees/serving/`: nine scripts that take a blank Ubuntu 24.
 
 Both phases have been run end to end (Phase 3 on an A100-40GB, Phase 4 on an A10).
 
+This PR also includes `geodesic/aees/harbor/`: the experiment and set-up guide for running agentic evaluations (e.g. SWE-bench Verified) with [Harbor](https://github.com/laude-institute/harbor), using either a hosted API model or the self-served Qwen3-4B from `aees/serving/`. It covers one-time setup, an oracle sanity check, task and concurrency choices, LLM agent runs, the ATIF trajectory outputs, troubleshooting and reference measurements.
+
 ## Files
 
 | File | Purpose | Runs on |
@@ -65,8 +67,6 @@ Dashboard: `http://127.0.0.1:8000/<run-id>/dashboard.html`. Phase 4 report: `htt
 
 - **JIT compilation:** each new attention variant costs about 7–15 s to compile on first use and about 1 ms afterwards. `prefill_causal` reused the module that `decode_tensorcores` had just built, since tensor-core decode runs on the prefill kernel. Production hosts avoid the compile cost by installing the prebuilt `flashinfer-cubin` and `flashinfer-jit-cache` wheels.
 - **Block-sparse KV and load balancing:** see `fi_report.html` for scattered-vs-contiguous bandwidth, FP8 vs BF16 kernel time, split-KV speedups on skewed batches, `plan()` cost per layer, and the live KV index map captured from the running server.
-
-<!-- TODO before merging: add 2-3 headline numbers from fi_report.html (scattered/contiguous bandwidth ratio, best split-KV speedup, plan() µs per layer) -->
 
 ## Design notes
 
