@@ -91,6 +91,10 @@ class Orchestrator:
         global_step = 0
         for epoch in range(self.num_epochs):
             for step in range(self.num_steps_per_epoch):
+                if step % 200 == 0:
+                    elapsed = (time.time() - start_time) / 60
+                    print(f"  ep{epoch+1} step {step}/{self.num_steps_per_epoch} "
+                          f"(global={global_step}, time={elapsed:.1f}min)", flush=True)
                 if global_step < self.warmstart_steps:
                     actions = self.envs.action_space.sample()
                 else:
