@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AEES Run Status</title>
+<style>
+  :root { --bg:#f7f7f5; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e3e3e0; --accent:#2f5bd3;
+          --pass:#1f8a4c; --fail:#c2412d; --none:#7a7a80; --run:#2f5bd3; --queue:#e3e3e0; --warn:#a06a00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#151517; --panel:#1e1e21; --ink:#ececec; --muted:#9a9aa2; --line:#2e2e33; --accent:#7aa2ff;
+            --pass:#4cc283; --fail:#ff7a63; --none:#8d8d95; --run:#7aa2ff; --queue:#2e2e33; --warn:#e0a640; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header { position:sticky; top:0; background:var(--panel); border-bottom:1px solid var(--line); padding:10px 20px;
+           display:flex; gap:16px; align-items:baseline; flex-wrap:wrap; }
+  header a { color:var(--accent); text-decoration:none; }
+  main { max-width:1200px; margin:0 auto; padding:16px 20px 60px; }
+  .muted { color:var(--muted); } h2 { font-size:16px; margin:22px 0 8px; }
+  .stats { display:flex; flex-wrap:wrap; gap:10px; margin:10px 0; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 13px; min-width:118px; }
+  .stat .v { font-size:19px; font-weight:600; font-variant-numeric:tabular-nums; } .stat .k { color:var(--muted); font-size:12px; }
+  .job { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:12px 0; }
+  .job .title { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .pill { font-size:12px; font-weight:600; padding:1px 8px; border-radius:999px; color:#fff; }
+  .live { background:var(--run); } .idle { background:var(--none); }
+  .bar { display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--queue); margin:8px 0; }
+  .bar span { display:block; height:100%; }
+  .grid { display:grid; grid-template-columns: minmax(170px, 230px) 1fr auto; gap:3px 10px; align-items:center; margin-top:8px; }
+  .cells { display:flex; flex-wrap:wrap; gap:2px; }
+  .c { width:11px; height:11px; border-radius:2px; display:inline-block; }
+  .c-pass { background:var(--pass); } .c-fail { background:var(--fail); } .c-none { background:var(--none); }
+  .c-running { background:var(--run); animation: pulse 1.2s infinite; } .c-queued { background:var(--queue); border:1px solid var(--line); }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:8px; }
+  .legend span { display:inline-flex; gap:4px; align-items:center; }
+  .num { font-variant-numeric:tabular-nums; text-align:right; } .warn { color:var(--warn); }
+  .taskname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <b>AEES Run Status</b>
+  <span class="muted" id="updated">loading…</span>
+  <a href="http://127.0.0.1:8765" target="_blank">Trajectory browser ↗</a>
+</header>
+<main id="app"></main>
+<script>
+"use strict";
+const app = document.getElementById("app");
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v; else if (v !== undefined && v !== null) e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false)
+    e.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return e;
+}
+const n = (x, d = 0) => x === null || x === undefined ? "—" : Number(x).toLocaleString(undefined, { maximumFractionDigits: d });
+const dur = m => m === null || m === undefined ? "—" : m >= 60 ? `${Math.floor(m / 60)} h ${Math.round(m % 60)} min` : `${Math.round(m)} min`;
+const stat = (k, v, cls) => el("div", { class: "stat" }, el("div", { class: "v " + (cls || "") }, v), el("div", { class: "k" }, k));
+const clock = iso => iso ? new Date(iso).toLocaleTimeString() : "—";
+
+function jobCard(j, live) {
+  const pct = x => `${(100 * x / Math.max(1, j.total)).toFixed(2)}%`;
+  const graded = j.pass + j.fail;
+  const etaAt = j.eta_min ? new Date(Date.now() + j.eta_min * 60000).toLocaleTimeString() : null;
+  const taskRows = Object.entries(j.cells).flatMap(([task, cells]) => {
+    const queued = Math.max(0, j.attempts - cells.length);
+    const order = { pass: 0, fail: 1, none: 2, running: 3 };
+    const sorted = [...cells].sort((a, b) => order[a.s] - order[b.s]);
+    const p = cells.filter(c => c.s === "pass").length, g = cells.filter(c => c.s === "pass" || c.s === "fail").length;
+    return [el("div", { class: "taskname", title: task }, task),
+      el("div", { class: "cells" }, sorted.map(c => el("span", { class: "c c-" + c.s, title: `${c.trial}: ${c.s}${c.exc ? " (" + c.exc + ")" : ""}` })),
+        Array.from({ length: queued }, () => el("span", { class: "c c-queued", title: "queued" }))),
+      el("div", { class: "num muted" }, g ? `${p}/${g} pass` : "")];
+  });
+  return el("div", { class: "job" },
+    el("div", { class: "title" }, el("b", {}, j.name), el("span", { class: "pill " + (live ? "live" : "idle") }, live ? "running" : "not running"),
+      el("span", { class: "muted" }, `${j.n_tasks} tasks × ${j.attempts} attempts · concurrency ${j.concurrency ?? "?"} · started ${clock(j.started_at)}`)),
+    el("div", { class: "bar" },
+      el("span", { style: `width:${pct(j.pass)};background:var(--pass)` }), el("span", { style: `width:${pct(j.fail)};background:var(--fail)` }),
+      el("span", { style: `width:${pct(j.none)};background:var(--none)` }), el("span", { style: `width:${pct(j.running)};background:var(--run)` })),
+    el("div", { class: "stats" },
+      stat("done / total", `${n(j.done)} / ${n(j.total)}`), stat("running", n(j.running)), stat("queued", n(j.queued)),
+      stat("reward 1 / 0 / none", `${j.pass} / ${j.fail} / ${j.none}`),
+      stat("raw pass rate", graded ? `${(100 * j.pass / graded).toFixed(0)}%` : "—"),
+      stat("agent timeouts", n(j.timeouts), j.timeouts ? "warn" : ""),
+      stat("elapsed", dur(j.elapsed_min)), stat(`throughput (last ${20} min)`, j.throughput_per_hour ? `${n(j.throughput_per_hour)}/h` : "—"),
+      stat("ETA", j.queued + j.running === 0 ? "done" : etaAt ? `${dur(j.eta_min)} (${etaAt})` : "—"),
+      stat("cost so far", "$" + j.cost_usd.toFixed(2)), stat("cost / trial", j.done ? "$" + (j.cost_usd / j.done).toFixed(4) : "—")),
+    el("details", { open: live ? "" : null }, el("summary", { class: "muted" }, "per-task progress"),
+      el("div", { class: "grid" }, taskRows),
+      el("div", { class: "legend" }, ...["pass", "fail", "none", "running", "queued"].map(s =>
+        el("span", {}, el("i", { class: "c c-" + s }), s === "none" ? "no reward" : s)))));
+}
+
+function scheduleSection(sc, jobs, live, stopFile, agg) {
+  if (!sc) return [];
+  const byName = Object.fromEntries(jobs.map(j => [j.name, j]));
+  const rate = sc.est_trials_per_hour || 200, cpt = sc.est_cost_per_trial || 0.02;
+  const deadline = new Date(sc.no_new_batch_after);
+  let cursor = Date.now();  // projected start time of the next batch
+  const rows = sc.batches.map(b => {
+    const j = byName[b.name];
+    const total = j ? j.total : b.est_trials;
+    const done = j ? j.done : 0;
+    let start = b.started_at ? new Date(b.started_at) : null, end = b.finished_at ? new Date(b.finished_at) : null, projected = false;
+    if (!end) {
+      const remainingMin = j && j.eta_min !== null && j.eta_min !== undefined ? j.eta_min : (total - done) / rate * 60;
+      if (!start) { start = new Date(cursor); projected = true; }
+      end = new Date(Math.max(cursor, Date.now()) + remainingMin * 60000);
+      if (["planned", "waiting"].includes(b.status)) end = new Date(start.getTime() + total / rate * 3600000);
+      if (["planned", "waiting"].includes(b.status) && start > deadline) { start = null; end = null; }
+    }
+    if (end && !["done", "stopped", "skipped", "failed", "killed"].includes(b.status)) cursor = end.getTime();
+    const status = b.status === "external" && live.has(b.name) ? "running" : b.status;
+    const cost = j ? j.cost_usd : (b.cost_usd || 0);
+    return { b, j, total, done, start, end, projected, status, cost };
+  });
+  const spent = agg ?? rows.reduce((a, r) => a + (r.cost || 0), 0);
+  const plannedTrials = rows.filter(r => r.end).reduce((a, r) => a + r.total, 0);
+  const doneTrials = rows.reduce((a, r) => a + r.done, 0);
+  const fmtT = d => d ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+  const pillColor = { running: "var(--run)", done: "var(--pass)", waiting: "var(--warn)", external: "var(--run)",
+                      planned: "var(--none)", stopped: "var(--fail)", skipped: "var(--none)", failed: "var(--fail)", killed: "var(--fail)" };
+  return [
+    el("h2", {}, "Overnight schedule"),
+    el("div", { class: "muted" }, sc.name),
+    el("div", { class: "stats" },
+      stat("trials done (scheduled batches)", `${n(doneTrials)} / ${n(plannedTrials)} projected`),
+      stat("aggregate cost / kill-switch cap", `$${spent.toFixed(2)} / $${sc.budget_usd}`, spent > 0.8 * sc.budget_usd ? "warn" : ""),
+      stat("projected cost (all batches)", `$${(plannedTrials * cpt).toFixed(0)}`),
+      stat("no new batch after", fmtT(deadline)),
+      stat("STOP file", stopFile ? "present — stopping" : "absent", stopFile ? "warn" : "")),
+    el("div", { class: "job" }, el("table", { style: "width:100%;border-collapse:collapse" },
+      el("thead", {}, el("tr", {}, ["batch", "status", "trials", "start", "end / ETA", "cost", "note"].map(h =>
+        el("th", { style: "text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:4px 8px" }, h)))),
+      el("tbody", {}, rows.map(r => el("tr", {},
+        el("td", { style: "padding:4px 8px" }, r.b.name),
+        el("td", { style: "padding:4px 8px" }, el("span", { class: "pill", style: `background:${pillColor[r.status] || "var(--none)"}` }, r.status)),
+        el("td", { class: "num", style: "padding:4px 8px" }, `${n(r.done)} / ${n(r.total)}`),
+        el("td", { style: "padding:4px 8px" }, (r.projected ? "~" : "") + fmtT(r.start)),
+        el("td", { style: "padding:4px 8px" }, (["done", "stopped", "skipped", "failed", "killed"].includes(r.status) ? "" : "~") + fmtT(r.end)),
+        el("td", { class: "num", style: "padding:4px 8px" }, "$" + (r.cost || 0).toFixed(2)),
+        el("td", { class: "muted", style: "padding:4px 8px" }, r.b.note || (r.b.ingest ? `ingested ${r.b.ingest.ingested ?? 0}` : ""))))))),
+    el("div", { class: "muted" }, sc.budget_note || ""),
+    el("div", { class: "muted" }, "Times with ~ are projections from measured throughput. To stop after the current batch: ",
+      el("code", {}, "touch ~/code/geodesic/aees/harbor/state/STOP"), "."),
+  ];
+}
+
+async function refresh() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    const h = s.host, o = s.overall;
+    document.getElementById("updated").textContent = `updated ${new Date(s.now).toLocaleTimeString()} · refreshes every 10 s`;
+    const live = new Set(h.running_jobs || []);
+    app.replaceChildren(
+      ...scheduleSection(s.schedule, s.jobs, live, s.stop_file, s.aggregate_cost_usd),
+      el("h2", {}, "Host"),
+      el("div", { class: "stats" },
+        stat("harbor jobs running", live.size ? [...live].join(", ") : "none"),
+        stat("containers", n(h.containers)),
+        stat("docker CPU", h.cpus ? `${n(h.cpu_pct)}% of ${h.cpus * 100}%` : "—", h.cpus && h.cpu_pct > 85 * h.cpus ? "warn" : ""),
+        stat("docker memory", h.mem_total_gb ? `${n(h.mem_gb, 1)} / ${n(h.mem_total_gb, 0)} GB` : "—"),
+        stat("host sampled", clock(h.sampled_at))),
+      el("h2", {}, "Collection target (ledger)"),
+      el("div", { class: "stats" },
+        stat("scenarios", n(o.scenarios)), stat("target runs", n(o.target)),
+        stat("in ledger (held + final)", n(o.held + o.passed + o.failed)),
+        stat("held for review", n(o.held)), stat("reviewed pass / fail", `${o.passed} / ${o.failed}`),
+        stat("progress", o.target ? `${(100 * (o.held + o.passed + o.failed) / o.target).toFixed(2)}%` : "—")),
+      el("div", { class: "muted" }, "Ledger counts only ingested trials — ingest finished jobs in the trajectory browser."),
+      el("h2", {}, `Recent Harbor jobs (${s.jobs.length})`),
+      ...s.jobs.map(j => jobCard(j, live.has(j.name))));
+  } catch (e) {
+    document.getElementById("updated").textContent = "error: " + e;
+  }
+}
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

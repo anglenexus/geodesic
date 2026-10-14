@@ -299,7 +299,25 @@ EOF
 
 ---
 
-## 7. Reference measurements (SWE-bench Verified, Apple Silicon, Docker + Rosetta)
+## 7. Collection tooling (`aees_harbor` package)
+
+Install once from this folder with `uv sync` (Python 3.12). The tools read Harbor job folders and a
+SQLite **ledger** (`state/ledger.sqlite`, not in git). The ledger records every trial and guarantees
+each run index of a scenario (task / model / agent / tool mode / settings) is used once.
+
+| Command | What it does |
+|---|---|
+| `uv run python -m aees_harbor.ingest ~/code/jobs/<job> --ledger state/ledger.sqlite` | Load a finished Harbor job into the ledger (indices by start time, raw facts, held for review). Idempotent |
+| `uv run python -m aees_harbor.browse --ledger state/ledger.sqlite --jobs-root ~/code/jobs` | **Trajectory browser** at http://127.0.0.1:8765: ledger by task → runs → step-by-step trajectory (model text, tool calls, observations, tokens, cost, verifier tests). Includes an ingest button |
+| `uv run python -m aees_harbor.status --jobs-root ~/code/jobs --ledger state/ledger.sqlite --schedule state/<plan>.json` | **Run status** at http://127.0.0.1:8766: live batches, per-task grid, throughput, ETA, cost vs. cap, Docker CPU/memory |
+| `uv run python -m aees_harbor.schedule --plan state/<plan>.json` | **Scheduler**: runs planned batches back to back, ingests each, stops on STOP file / deadline / budget / API or disk problems. Aggregate-cost kill switch cancels a running batch at the cap |
+| `python scripts/tb_task_stats.py ...` | Per-task stability statistics from the public TB 2.0 leaderboard (produced `state/tb21_task_ranking.csv`) |
+| `python scripts/task_images.py <tb21 dir> state/tb21_selected_tasks.txt` | List the selected tasks' Docker images (for pre-pulling) |
+
+Example plans: `ec2/schedule_ec2_10k.json` (EC2, 10,000 trajectories). For EC2 setup, see [ec2/EC2.md](ec2/EC2.md).
+Tests: `uv run --with pytest pytest -q tests/unit`.
+
+## 8. Reference measurements (SWE-bench Verified, Apple Silicon, Docker + Rosetta)
 
 | Run | Env build | Agent | Verifier | Reward | Tokens (in / cached / out) |
 |---|---|---|---|---|---|
