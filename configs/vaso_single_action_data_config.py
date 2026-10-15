@@ -67,7 +67,7 @@ CATEGORICAL_FEATURES = ['ethnicity', 'gender']
 
 # ==================== Data Path ==================== 
 
-DATA_PATH = 'offline_rl_random_sample_data.csv' 
+DATA_PATH = 'data/offline_rl_random_sample_data.csv' 
 COMBINED_OR_TRAIN_DATA_PATH = DATA_PATH 
 EVAL_DATA_PATH = ''
 
