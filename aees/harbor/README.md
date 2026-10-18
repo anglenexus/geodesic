@@ -311,6 +311,8 @@ each run index of a scenario (task / model / agent / tool mode / settings) is us
 | `uv run python -m aees_harbor.browse --ledger state/ledger.sqlite --jobs-root ~/code/jobs` | **Trajectory browser** at http://127.0.0.1:8765: ledger by task → runs → step-by-step trajectory (model text, tool calls, observations, tokens, cost, verifier tests). Includes an ingest button |
 | `uv run python -m aees_harbor.status --jobs-root ~/code/jobs --ledger state/ledger.sqlite --schedule state/<plan>.json` | **Run status** at http://127.0.0.1:8766: live batches, per-task grid, throughput, ETA, cost vs. cap, Docker CPU/memory |
 | `uv run python -m aees_harbor.schedule --plan state/<plan>.json` | **Scheduler**: runs planned batches back to back, ingests each, stops on STOP file / deadline / budget / API or disk problems. Aggregate-cost kill switch cancels a running batch at the cap |
+| `uv run python -m aees_harbor.merge --into state/ledger.sqlite i1.sqlite i2.sqlite --rewrite OLD=NEW` | **Merge ledgers** from several machines (shared seed + disjoint tasks). All-or-nothing; refuses any conflicting row |
+| `python scripts/make_ec2_plan.py --instance K --instances N` | Make instance K's schedule: its round-robin task share, budget share, `iK_` job names |
 | `python scripts/tb_task_stats.py ...` | Per-task stability statistics from the public TB 2.0 leaderboard (produced `state/tb21_task_ranking.csv`) |
 | `python scripts/task_images.py <tb21 dir> state/tb21_selected_tasks.txt` | List the selected tasks' Docker images (for pre-pulling) |
 

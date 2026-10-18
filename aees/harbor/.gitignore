@@ -18,3 +18,6 @@ state/overnight_checks.md
 # real trial dirs used as local fixtures (benchmark content + local paths); rebuild with
 # tests/fixtures/make_fixtures.py
 tests/fixtures/trials/
+state/tasks_i*.txt
+state/ec2_checks.md
+state/ec2_report_i*.md

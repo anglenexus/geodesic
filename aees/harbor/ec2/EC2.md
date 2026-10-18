@@ -1,7 +1,12 @@
 # EC2 runbook: ~100 concurrent Harbor trials
 
-How to run the Terminal-Bench 2.1 trajectory collection on one x86 EC2 instance at ~100 concurrent
-trials, using the same scheduler, ledger, kill switch and web tools that ran overnight on the Mac.
+How to run the Terminal-Bench 2.1 trajectory collection on x86 EC2 instances at ~100 concurrent
+trials each, using the same scheduler, ledger, kill switch and web tools that ran overnight on the Mac.
+
+**Running it with a Claude Code agent on each instance:** start the agent with
+[`AGENT_BRIEF.md`](AGENT_BRIEF.md) and tell it `INSTANCE_ID` (1 or 2) and `INSTANCES`. The brief is
+the exact procedure, including the multi-instance split (disjoint tasks per instance) and how the
+ledgers are merged afterwards (`python -m aees_harbor.merge`).
 
 > **Status:** the scripts in this folder have **not yet been run on EC2**. Everything they call
 > was exercised on the Mac (Harbor 0.23.0, scheduler, kill switch, ingest, browser, status page),

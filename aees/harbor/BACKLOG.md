@@ -21,7 +21,9 @@ Ordered roughly by when they're needed. See [PLAN.md](PLAN.md) for the design.
 ## Deferred / environment
 - [ ] EC2: re-test oracle for qemu-startup, qemu-alpine-ssh, tune-mjcf, bn-fit-modify (Rosetta-related failures on Mac).
 - [x] EC2 setup scripts + runbook (`ec2/`, untested on EC2): Docker address pools for 100 concurrent trials, image pre-pull, oracle check, 10k schedule.
-- [ ] Run EC2 setup; copy the ledger (saved cache).
+- [x] Multi-instance support: `scripts/make_ec2_plan.py` (disjoint task shares) + `aees_harbor.merge` (all-or-nothing ledger merge), agent brief `ec2/AGENT_BRIEF.md`.
+- [ ] Run EC2 (2 instances x 5,000) and merge the ledgers on the Mac.
+- [ ] Swap the 8 tasks outside the 10–90% band after the overnight run (85 attempts each): model-extraction-relu-logits, extract-elf, chess-best-move (too hard); feal-differential-cryptanalysis, fix-code-vulnerability, pytorch-model-cli, custom-memory-heap-crash, kv-store-grpc (too easy).
 - [x] `.gitignore` for local env, ledger and run logs.
 - [ ] Investigate `RuntimeError: Command timed out after 120 seconds` (harness command timeout, 4.5% of trials at 20-way on the Mac; likely CPU contention).
 
