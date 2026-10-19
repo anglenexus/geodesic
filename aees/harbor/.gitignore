@@ -30,3 +30,4 @@ state/browse_server.log
 state/remotes.json
 state/remote/
 state/remote_sync.log
+state/ec2_checks_local.md

@@ -35,6 +35,10 @@
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel); }
   tr.click { cursor: pointer; } tr.click:hover td { background: var(--chip); }
+  /* the tasks selected for collection (state/tb21_selected_tasks.txt) */
+  tr.sel td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+  .selname { color: var(--accent); font-weight: 600; }
+  .b-selected { background: var(--accent); } .b-notselected { background: var(--none); }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; }
   .b-pass { background: var(--pass); } .b-fail { background: var(--fail); } .b-held { background: var(--held); }
@@ -117,6 +121,9 @@ const statusBadge = s => el("span", { class: "badge b-" + s }, s);
 // Which ledger to show: this Mac ("local") or an EC2 remote's mirrored snapshot.
 let SOURCE = sessionStorage.getItem("source") || "local";
 let SOURCES = [];
+let SELECTED = new Set();  // bare task names, e.g. "mailman"
+const isSel = t => SELECTED.has(taskName(t));
+const taskCell = t => el("td", {}, el("span", { class: isSel(t) ? "selname" : "" }, taskName(t)));
 async function api(path) {
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "source=" + encodeURIComponent(SOURCE));
   const j = await r.json();
@@ -145,6 +152,9 @@ async function pageLedger() {
       stat("reviewed pass / fail", `${sum("passed")} / ${sum("failed")}`),
       stat("raw reward 1 / 0 / none", `${sum("raw_reward_1")} / ${sum("raw_reward_0")} / ${sum("raw_no_reward")}`),
       stat("remaining to target", fmtInt(target - sum("passed") - sum("failed")))),
+    el("div", { class: "note", style: "margin:4px 0 8px" },
+      el("span", { class: "selname" }, "Blue"), ` = one of the ${SELECTED.size} tasks selected for collection (state/tb21_selected_tasks.txt). ` +
+      `${rows.filter(r => isSel(r.fields.task)).length} of ${rows.length} tasks in this ledger are selected; they are listed first.`),
     SOURCE === "local" ? await jobsPanel()
       : el("div", { class: "jobs" }, el("b", {}, "Remote source"), el("span", { class: "muted" },
           "  ·  this EC2 runner's scheduler ingests its own batches; this view is a mirror refreshed by `python -m aees_harbor.remote sync --loop 300`. " +
@@ -152,11 +162,12 @@ async function pageLedger() {
     el("div", { class: "tablewrap" }, el("table", {},
       el("thead", {}, el("tr", {}, ["task", "model", "agent · tool mode", "trials", "held", "pass", "fail",
         "raw 1 / 0 / –", "raw pass rate", "progress to target", "next index"].map(h => el("th", {}, h)))),
-      el("tbody", {}, rows.map(r => {
+      el("tbody", {}, [...rows].sort((a, b) => (isSel(b.fields.task) - isSel(a.fields.task))
+          || taskName(a.fields.task).localeCompare(taskName(b.fields.task))).map(r => {
         const f = r.fields, done = r.passed.length + r.failed.length;
         const rate = r.n_trials ? r.raw_reward_1 / r.n_trials : null;
-        return el("tr", { class: "click", onclick: () => location.hash = `#/task/${r.key}` },
-          el("td", {}, taskName(f.task)), el("td", {}, f.model), el("td", { class: "muted" }, `${f.agent} ${f.agent_version} · ${f.tool_mode}`),
+        return el("tr", { class: "click" + (isSel(f.task) ? " sel" : ""), onclick: () => location.hash = `#/task/${r.key}` },
+          taskCell(f.task), el("td", {}, f.model), el("td", { class: "muted" }, `${f.agent} ${f.agent_version} · ${f.tool_mode}`),
           el("td", { class: "num" }, r.n_trials), el("td", { class: "num" }, r.held.length),
           el("td", { class: "num" }, r.passed.length), el("td", { class: "num" }, r.failed.length),
           el("td", { class: "num" }, `${r.raw_reward_1} / ${r.raw_reward_0} / ${r.raw_no_reward}`),
@@ -229,8 +240,8 @@ function trialTable(list, showTask) {
                  "tokens in (cached)", "tokens out", "cost", "wall time", "job"];
   return el("div", { class: "tablewrap" }, el("table", {},
     el("thead", {}, el("tr", {}, heads.map(h => el("th", {}, h)))),
-    el("tbody", {}, list.map(t => el("tr", { class: "click", onclick: () => location.hash = trialHref(t) },
-      showTask ? el("td", {}, taskName(t.task)) : null,
+    el("tbody", {}, list.map(t => el("tr", { class: "click" + (showTask && isSel(t.task) ? " sel" : ""), onclick: () => location.hash = trialHref(t) },
+      showTask ? taskCell(t.task) : null,
       el("td", { class: "num" }, t.run_index), el("td", { class: "num" }, t.attempt),
       el("td", {}, statusBadge(t.status)), el("td", {}, rewardBadge(t.reward)),
       el("td", { class: t.exception_type ? "err" : "muted" }, t.exception_type || "—"),
@@ -248,7 +259,9 @@ async function pageTask(key) {
   const f = s.fields;
   app.replaceChildren(
     el("div", { class: "crumbs" }, el("a", { href: "#/ledger" }, "Ledger"), " / ", taskName(f.task)),
-    el("h1", {}, taskName(f.task)),
+    el("h1", {}, taskName(f.task), " ", isSel(f.task)
+      ? el("span", { class: "badge b-selected" }, "selected")
+      : el("span", { class: "badge b-notselected" }, "not selected")),
     el("div", { class: "kv" }, ...Object.entries({
       scenario: key, dataset: f.dataset, model: f.model, agent: `${f.agent} ${f.agent_version}`, "tool mode": f.tool_mode,
       harbor: f.harbor_version, "agent settings": JSON.stringify(f.agent_kwargs), "task checksum": short(f.task_checksum, 20),
@@ -264,7 +277,9 @@ async function pageTrajectories() {
   setNav("traj");
   const all = await api("/api/trials");
   const tasks = [...new Set(all.map(t => t.task))].sort();
-  const fTask = el("select", {}, el("option", { value: "" }, "all tasks"), tasks.map(t => el("option", { value: t }, taskName(t))));
+  const fTask = el("select", {}, el("option", { value: "" }, "all tasks"),
+    el("option", { value: "__selected__" }, `the ${SELECTED.size} selected tasks`),
+    tasks.map(t => el("option", { value: t }, (isSel(t) ? "● " : "") + taskName(t))));
   const fReward = el("select", {}, ["all rewards", "1", "0", "none"].map(v => el("option", { value: v }, v)));
   const fStatus = el("select", {}, ["all statuses", "held", "pass", "fail"].map(v => el("option", { value: v }, v)));
   const fText = el("input", { placeholder: "search exception / job / trial…", size: 30 });
@@ -274,7 +289,7 @@ async function pageTrajectories() {
   function render() {
     sessionStorage.setItem("trajFilters", JSON.stringify({ task: fTask.value, reward: fReward.value, status: fStatus.value, text: fText.value }));
     const txt = fText.value.toLowerCase();
-    const list = all.filter(t => (!fTask.value || t.task === fTask.value)
+    const list = all.filter(t => (!fTask.value || (fTask.value === "__selected__" ? isSel(t.task) : t.task === fTask.value))
       && (fReward.value === "all rewards" || (fReward.value === "none" ? t.reward === null : String(t.reward) === fReward.value + ".0" || String(t.reward) === fReward.value))
       && (fStatus.value === "all statuses" || t.status === fStatus.value)
       && (!txt || [t.exception_type, t.exception_head, t.job, t.trial_name].join(" ").toLowerCase().includes(txt)))
@@ -414,6 +429,7 @@ async function route() {
   }
 }
 async function initSources() {
+  try { SELECTED = new Set(await (await fetch("/api/selected")).json()); } catch (e) { SELECTED = new Set(); }
   const sel = document.getElementById("source");
   try { SOURCES = await (await fetch("/api/sources")).json(); } catch (e) { SOURCES = [{ name: "local", label: "This Mac", available: true }]; }
   if (!SOURCES.some(x => x.name === SOURCE && x.available)) SOURCE = "local";

@@ -54,3 +54,10 @@ def test_status_reports_remote_api_and_ec2_cost(tmp_path, monkeypatch):
     assert abs(r["aggregate_cost_usd"] - 0.02) < 1e-9  # two mirrored trials at $0.01
     assert r["ledger"] == {"scenarios": 1, "trials": 2}
     assert [j["name"] for j in r["jobs"]] == []  # fake job has no config.json, so no job card
+
+
+def test_selected_tasks_reads_the_list_and_tolerates_a_missing_file(tmp_path):
+    f = tmp_path / "sel.txt"
+    f.write_text("mailman\n\ncrack-7z-hash\n")
+    assert browse.selected_tasks(f) == ["mailman", "crack-7z-hash"]
+    assert browse.selected_tasks(tmp_path / "missing.txt") == []

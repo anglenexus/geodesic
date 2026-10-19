@@ -19,6 +19,15 @@ from aees_harbor.ingest import ingest_job
 from aees_harbor.ledger import Ledger
 
 PAGE = Path(__file__).parent / "browser" / "index.html"
+SELECTED_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_selected_tasks.txt"
+
+
+def selected_tasks(path: Path = SELECTED_TASKS) -> list[str]:
+    """The tasks chosen for collection (bare names, e.g. 'mailman'); [] if the file is missing."""
+    try:
+        return [t.strip() for t in path.read_text().split() if t.strip()]
+    except FileNotFoundError:
+        return []
 TEST_LOG_TAIL = 20_000  # characters of verifier/test-stdout.txt to send
 
 
@@ -176,6 +185,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ("/", "/index.html"):
             return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
         srcs = sources(self.ledger_path, self.remotes_path)
+        if url.path == "/api/selected":
+            return self._json(selected_tasks())
         if url.path == "/api/sources":
             return self._json([{"name": k, "label": v["label"], "remote": v["remote"], "available": v["ledger"].exists()}
                                for k, v in srcs.items()])

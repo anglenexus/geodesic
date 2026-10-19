@@ -17,6 +17,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from aees_harbor.browse import selected_tasks
 from aees_harbor.ledger import Ledger
 from aees_harbor.schedule import aggregate_cost
 
@@ -184,6 +185,7 @@ def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path |
                 dirs.append(d)
     agg = aggregate_cost(schedule) if schedule else None
     return {"now": now.isoformat(), "host": host, "overall": overall, "schedule": schedule, "aggregate_cost_usd": agg,
+            "selected_tasks": selected_tasks(),
             "stop_file": bool(schedule_path and (schedule_path.parent / "STOP").exists()),
             "jobs": [job_status(d, now) for d in dirs], "remotes": remote_status(remotes_path, now)}
 

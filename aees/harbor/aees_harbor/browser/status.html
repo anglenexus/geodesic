@@ -37,6 +37,8 @@
   .legend span { display:inline-flex; gap:4px; align-items:center; }
   .num { font-variant-numeric:tabular-nums; text-align:right; } .warn { color:var(--warn); }
   .taskname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .taskname.sel { color:var(--accent); font-weight:600; box-shadow: inset 3px 0 0 var(--accent); padding-left:6px; }
+  .offlist { color:var(--warn); font-size:13px; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -64,16 +66,20 @@ const dur = m => { if (m === null || m === undefined) return "—"; const t = Ma
 const stat = (k, v, cls) => el("div", { class: "stat" }, el("div", { class: "v " + (cls || "") }, v), el("div", { class: "k" }, k));
 const clock = iso => iso ? new Date(iso).toLocaleTimeString() : "—";
 
+let SELECTED = new Set();  // the tasks chosen for collection, from state/tb21_selected_tasks.txt
+
 function jobCard(j, live) {
   const pct = x => `${(100 * x / Math.max(1, j.total)).toFixed(2)}%`;
   const graded = j.pass + j.fail;
   const etaAt = j.eta_min ? new Date(Date.now() + j.eta_min * 60000).toLocaleTimeString() : null;
-  const taskRows = Object.entries(j.cells).flatMap(([task, cells]) => {
+  const entries = Object.entries(j.cells).sort(([a], [b]) => (SELECTED.has(b) - SELECTED.has(a)) || a.localeCompare(b));
+  const off = entries.filter(([t]) => SELECTED.size && !SELECTED.has(t)).map(([t]) => t);
+  const taskRows = entries.flatMap(([task, cells]) => {
     const queued = Math.max(0, j.attempts - cells.length);
     const order = { pass: 0, fail: 1, none: 2, running: 3 };
     const sorted = [...cells].sort((a, b) => order[a.s] - order[b.s]);
     const p = cells.filter(c => c.s === "pass").length, g = cells.filter(c => c.s === "pass" || c.s === "fail").length;
-    return [el("div", { class: "taskname", title: task }, task),
+    return [el("div", { class: "taskname" + (SELECTED.has(task) ? " sel" : ""), title: task + (SELECTED.has(task) ? " (selected)" : " (not selected)") }, task),
       el("div", { class: "cells" }, sorted.map(c => el("span", { class: "c c-" + c.s, title: `${c.trial}: ${c.s}${c.exc ? " (" + c.exc + ")" : ""}` })),
         Array.from({ length: queued }, () => el("span", { class: "c c-queued", title: "queued" }))),
       el("div", { class: "num muted" }, g ? `${p}/${g} pass` : "")];
@@ -92,7 +98,11 @@ function jobCard(j, live) {
       stat("elapsed", dur(j.elapsed_min)), stat(`throughput (last ${20} min)`, j.throughput_per_hour ? `${n(j.throughput_per_hour)}/h` : "—"),
       stat("ETA", j.queued + j.running === 0 ? "done" : etaAt ? `${dur(j.eta_min)} (${etaAt})` : "—"),
       stat("cost so far", "$" + j.cost_usd.toFixed(2)), stat("cost / trial", j.done ? "$" + (j.cost_usd / j.done).toFixed(4) : "—")),
-    el("details", { open: live ? "" : null }, el("summary", { class: "muted" }, "per-task progress"),
+    off.length ? el("div", { class: "offlist" },
+      `${live ? "⚠ running" : "included"} ${off.length} task${off.length > 1 ? "s" : ""} outside the ${SELECTED.size} selected: ` +
+      off.slice(0, 8).join(", ") + (off.length > 8 ? ", …" : "")) : null,
+    el("details", { open: live ? "" : null }, el("summary", { class: "muted" },
+      `per-task progress` + (SELECTED.size ? ` (blue = selected; ${entries.length - off.length} of ${entries.length} tasks selected)` : "")),
       el("div", { class: "grid" }, taskRows),
       el("div", { class: "legend" }, ...["pass", "fail", "none", "running", "queued"].map(s =>
         el("span", {}, el("i", { class: "c c-" + s }), s === "none" ? "no reward" : s)))));
@@ -205,6 +215,7 @@ function remoteSection(r) {
 async function refresh() {
   try {
     const s = await (await fetch("/api/status")).json();
+    SELECTED = new Set(s.selected_tasks || []);
     const h = s.host, o = s.overall;
     document.getElementById("updated").textContent = `updated ${new Date(s.now).toLocaleTimeString()} · refreshes every 10 s`;
     const live = new Set(h.running_jobs || []);
