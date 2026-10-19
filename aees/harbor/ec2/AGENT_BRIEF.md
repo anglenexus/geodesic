@@ -49,7 +49,7 @@ continue but report it; §6 handles lowering concurrency.
 ## 2. Setup (skip any step that's already done)
 ```bash
 [ -d ~/geodesic/.git ] || git clone https://github.com/anglenexus/geodesic.git ~/geodesic
-cd ~/geodesic && git fetch origin && git checkout aees-harbor-collection   # or main, once the PR is merged
+cd ~/geodesic && git fetch origin && git checkout aees-harbor-collection && git pull --ff-only   # or main, once merged
 bash ~/geodesic/aees/harbor/ec2/setup_ec2.sh
 ```
 `setup_ec2.sh` adds the user to the `docker` group, which only takes effect at the next login. If
