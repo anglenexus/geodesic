@@ -78,9 +78,10 @@ def trials(ledger: Ledger, key: str | None) -> list[dict]:
         s = ledger.summary(k)
         status = {**{i: "held" for i in s["held"]}, **{i: "pass" for i in s["passed"]},
                   **{i: "fail" for i in s["failed"]}}
-        task = ledger.scenario_fields(k)["task"]
+        fields = ledger.scenario_fields(k)
+        task, model = fields["task"], fields.get("model")
         for t in ledger.trial_facts(k):
-            out.append({"key": k, "task": task, "run_index": t["run_index"], "attempt": t["attempt"],
+            out.append({"key": k, "task": task, "model": model, "run_index": t["run_index"], "attempt": t["attempt"],
                         "status": status.get(t["run_index"], "released"), **t["facts"]})
     return out
 
@@ -151,6 +152,12 @@ def job_dir(jobs_root: Path, name: str) -> Path:
     return d
 
 
+def job_model(job: Path) -> str | None:
+    """The model a Harbor job ran (its first agent's model_name in config.json), e.g. 'openai/gpt-5.6-luna'."""
+    agents = (_read_json(job / "config.json") or {}).get("agents") or [{}]
+    return agents[0].get("model_name")
+
+
 def jobs(ledger: Ledger, jobs_root: Path) -> list[dict]:
     """Harbor job dirs under jobs_root with finished / already-ingested trial counts, newest first."""
     out = []
@@ -159,7 +166,7 @@ def jobs(ledger: Ledger, jobs_root: Path) -> list[dict]:
             continue
         trial_dirs = [t for t in d.iterdir() if (t / "result.json").exists()]
         finished = [t for t in trial_dirs if (_read_json(t / "result.json") or {}).get("finished_at")]
-        out.append({"name": d.name, "trials": len(trial_dirs), "finished": len(finished),
+        out.append({"name": d.name, "model": job_model(d), "trials": len(trial_dirs), "finished": len(finished),
                     "in_ledger": sum(1 for t in finished if ledger.find_trial(str(t)))})
     return out
 

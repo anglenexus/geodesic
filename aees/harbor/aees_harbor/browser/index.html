@@ -84,7 +84,9 @@
   <b>AEES Trajectory Browser</b>
   <a href="#/ledger" id="nav-ledger">Ledger</a>
   <a href="#/trajectories" id="nav-traj">Trajectories</a>
-  <span style="margin-left:auto" class="muted">source</span>
+  <span style="margin-left:auto" class="muted">model</span>
+  <select id="model"><option value="">all models</option></select>
+  <span class="muted">source</span>
   <select id="source"></select>
 </header>
 <main id="app">Loading…</main>
@@ -122,6 +124,16 @@ const statusBadge = s => el("span", { class: "badge b-" + s }, s);
 let SOURCE = sessionStorage.getItem("source") || "local";
 let SOURCES = [];
 let SELECTED = new Set();  // bare task names, e.g. "mailman"
+// Which model to show ("" = all). Models never mix in the ledger: the model is part of every scenario key.
+let MODEL = new URLSearchParams(location.search).get("model") ?? sessionStorage.getItem("model") ?? "";
+const byModel = x => !MODEL || x === MODEL;
+function setModels(models) {  // fill the header drop-down with the models present in this source
+  const sel = document.getElementById("model");
+  const list = [...new Set(models.filter(Boolean))].sort();
+  if (MODEL && !list.includes(MODEL)) list.push(MODEL);
+  sel.replaceChildren(el("option", { value: "" }, "all models"), ...list.map(m => el("option", { value: m }, m)));
+  sel.value = MODEL;
+}
 const isSel = t => SELECTED.has(taskName(t));
 const taskCell = t => el("td", {}, el("span", { class: isSel(t) ? "selname" : "" }, taskName(t)));
 async function api(path) {
@@ -140,11 +152,13 @@ const trialHref = t => `#/trial/${t.key}/${t.run_index}/${t.attempt}`;
 // ---------- page: ledger (scenarios) ----------
 async function pageLedger() {
   setNav("ledger");
-  const rows = await api("/api/scenarios");
+  const allRows = await api("/api/scenarios");
+  setModels(allRows.map(r => r.fields.model));
+  const rows = allRows.filter(r => byModel(r.fields.model));
   const sum = k => rows.reduce((a, r) => a + (Array.isArray(r[k]) ? r[k].length : (r[k] || 0)), 0);
   const target = rows.reduce((a, r) => a + r.target, 0);
   app.replaceChildren(
-    el("h1", {}, "Ledger — ", (SOURCES.find(x => x.name === SOURCE) || {}).label || SOURCE),
+    el("h1", {}, "Ledger — ", (SOURCES.find(x => x.name === SOURCE) || {}).label || SOURCE, MODEL ? ` · ${MODEL}` : ""),
     el("div", { class: "note" }, "Every finished trial is logged with raw facts and its run index is held until reviewed. " +
       "“Raw reward” counts what the verifier wrote; “passed / failed” count reviewed (final) outcomes."),
     el("div", { class: "stats" },
@@ -185,7 +199,7 @@ async function postJSON(path, body) {
   return j;
 }
 async function jobsPanel() {
-  const list = await api("/api/jobs");
+  const list = (await api("/api/jobs")).filter(j => byModel(j.model));
   const msg = el("div", { class: "msg" });
   const input = el("input", { placeholder: "job name, e.g. tb21_pilot_b2", size: 28, list: "joblist" });
   const datalist = el("datalist", { id: "joblist" }, list.map(j => el("option", { value: j.name })));
@@ -216,7 +230,7 @@ async function jobsPanel() {
       const isNew = j.finished > j.in_ledger;
       const b = el("button", { class: isNew ? "" : "ghost" }, isNew ? "Ingest" : "Re-check");
       b.addEventListener("click", () => ingest(j.name, b));
-      return el("tr", {}, el("td", {}, j.name), el("td", { class: "num" }, j.trials), el("td", { class: "num" }, j.finished),
+      return el("tr", {}, el("td", {}, j.name), el("td", { class: "muted" }, j.model || "—"), el("td", { class: "num" }, j.trials), el("td", { class: "num" }, j.finished),
         el("td", { class: "num" }, j.in_ledger),
         el("td", {}, isNew ? el("span", { class: "badge b-held" }, `${j.finished - j.in_ledger} new`) : el("span", { class: "muted" }, "up to date")),
         el("td", {}, b));
@@ -229,7 +243,7 @@ async function jobsPanel() {
     el("div", { class: "row" }, el("span", { class: "muted" }, "show jobs containing"), filter),
     el("div", { class: "row" }, input, datalist, go, msg),
     el("div", { class: "tablewrap", style: "margin-top:10px" }, el("table", {},
-      el("thead", {}, el("tr", {}, ["job", "trials", "finished", "in ledger", "", ""].map(h => el("th", {}, h)))),
+      el("thead", {}, el("tr", {}, ["job", "model", "trials", "finished", "in ledger", "", ""].map(h => el("th", {}, h)))),
       tbody)));
 }
 function stat(k, v) { return el("div", { class: "stat" }, el("div", { class: "v" }, v), el("div", { class: "k" }, k)); }
@@ -275,7 +289,9 @@ async function pageTask(key) {
 
 async function pageTrajectories() {
   setNav("traj");
-  const all = await api("/api/trials");
+  const everything = await api("/api/trials");
+  setModels(everything.map(t => t.model));
+  const all = everything.filter(t => byModel(t.model));
   const tasks = [...new Set(all.map(t => t.task))].sort();
   const fTask = el("select", {}, el("option", { value: "" }, "all tasks"),
     el("option", { value: "__selected__" }, `the ${SELECTED.size} selected tasks`),
@@ -298,7 +314,7 @@ async function pageTrajectories() {
   }
   [fTask, fReward, fStatus].forEach(x => x.addEventListener("change", render));
   fText.addEventListener("input", render);
-  app.replaceChildren(el("h1", {}, "Trajectories"), el("div", { class: "filters" }, fTask, fReward, fStatus, fText), holder);
+  app.replaceChildren(el("h1", {}, "Trajectories", MODEL ? ` · ${MODEL}` : ""), el("div", { class: "filters" }, fTask, fReward, fStatus, fText), holder);
   render();
 }
 
@@ -438,6 +454,12 @@ async function initSources() {
   sel.addEventListener("change", () => {
     SOURCE = sel.value; sessionStorage.setItem("source", SOURCE);
     if (location.hash.startsWith("#/ledger") || !location.hash) route(); else location.hash = "#/ledger";
+  });
+  const msel = document.getElementById("model");
+  msel.addEventListener("change", () => {
+    MODEL = msel.value; sessionStorage.setItem("model", MODEL);
+    // the ledger and trajectory lists re-filter in place; a task or trial page belongs to one model, so go to the ledger
+    if (!location.hash || /^#\/(ledger|trajectories)/.test(location.hash)) route(); else location.hash = "#/ledger";
   });
 }
 window.addEventListener("hashchange", route);

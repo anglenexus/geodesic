@@ -18,7 +18,7 @@ from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from aees_harbor.browse import selected_tasks
+from aees_harbor.browse import job_model, selected_tasks
 from aees_harbor.ledger import Ledger
 from aees_harbor.schedule import aggregate_cost
 
@@ -111,7 +111,7 @@ def job_status(job: Path, now: dt.datetime) -> dict:
     remaining = total - done
     count = lambda s: sum(c["s"] == s for v in cells.values() for c in v)
     return {
-        "name": job.name, "total": total, "attempts": attempts, "n_tasks": len(tasks),
+        "name": job.name, "model": job_model(job), "total": total, "attempts": attempts, "n_tasks": len(tasks),
         "concurrency": cfg.get("n_concurrent_trials"), "done": done, "running": started - done,
         "queued": max(0, total - started), "pass": count("pass"), "fail": count("fail"), "none": count("none"),
         "timeouts": sum(c.get("exc") == "AgentTimeoutError" for v in cells.values() for c in v),
@@ -178,11 +178,13 @@ def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path |
         scen = led.scenarios()
     finally:
         led.close()
-    overall = {
-        "scenarios": len(scen), "target": sum(s["target"] for s in scen),
-        "held": sum(len(s["held"]) for s in scen), "passed": sum(len(s["passed"]) for s in scen),
-        "failed": sum(len(s["failed"]) for s in scen),
-    }
+    def totals(group: list[dict]) -> dict:
+        return {"scenarios": len(group), "target": sum(s["target"] for s in group),
+                "held": sum(len(s["held"]) for s in group), "passed": sum(len(s["passed"]) for s in group),
+                "failed": sum(len(s["failed"]) for s in group)}
+    overall = totals(scen)
+    by_model = {m: totals([s for s in scen if s["fields"].get("model") == m])
+                for m in sorted({s["fields"].get("model") for s in scen} - {None})}
     schedule = _json(schedule_path) if schedule_path else None
     if schedule:  # make sure every scheduled batch that has started gets a job card
         for b in schedule.get("batches", []):
@@ -190,7 +192,7 @@ def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path |
             if (d / "config.json").exists() and d not in dirs:
                 dirs.append(d)
     agg = aggregate_cost(schedule) if schedule else None
-    return {"now": now.isoformat(), "host": host, "overall": overall, "schedule": schedule, "aggregate_cost_usd": agg,
+    return {"now": now.isoformat(), "host": host, "overall": overall, "overall_by_model": by_model, "schedule": schedule, "aggregate_cost_usd": agg,
             "selected_tasks": selected_tasks(),
             "stop_file": bool(schedule_path and (schedule_path.parent / "STOP").exists()),
             "jobs": [job_status(d, now) for d in dirs], "remotes": remote_status(remotes_path, now)}
@@ -211,7 +213,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # noqa: N802 (http.server API)
-        if self.path in ("/", "/index.html"):
+        if self.path.split("?", 1)[0] in ("/", "/index.html"):  # the page may carry ?model=...
             return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
         if self.path.startswith("/api/status"):
             body = status(self.jobs_root, self.ledger_path, self.monitor.snapshot, self.schedule_path,

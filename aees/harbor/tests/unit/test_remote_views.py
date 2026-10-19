@@ -78,3 +78,15 @@ def test_job_status_counts_exceptions_by_type_and_message(tmp_path):
     (trial / "result.json").write_text(json.dumps(r))
     s = status.job_status(job, dt.datetime(2026, 10, 13, 12))  # fixture timestamps are naive
     assert ["RuntimeError: Command timed out after 120 seconds", 1] in [list(x) for x in s["exceptions"]]
+
+
+def test_trials_and_jobs_carry_their_model_for_the_model_filter(tmp_path):
+    job = _job(tmp_path)
+    (job / "config.json").write_text(json.dumps({"agents": [{"name": "terminus-2", "model_name": "hosted_vllm/qwen3-4b"}]}))
+    assert browse.job_model(job) == "hosted_vllm/qwen3-4b"
+    assert browse.job_model(tmp_path) is None  # not a job dir: no config.json
+    led = Ledger(tmp_path / "l.sqlite")
+    ingest_job(led, job)
+    models = {t["model"] for t in browse.trials(led, None)}
+    assert models == {led.scenarios()[0]["fields"]["model"]}
+    assert [j["model"] for j in browse.jobs(led, tmp_path)] == ["hosted_vllm/qwen3-4b"]

@@ -46,6 +46,8 @@
   <b>AEES Run Status</b>
   <span class="muted" id="updated">loading…</span>
   <a href="http://127.0.0.1:8765" target="_blank">Trajectory browser ↗</a>
+  <span style="margin-left:auto" class="muted">model</span>
+  <select id="model"><option value="">all models</option></select>
 </header>
 <main id="app"></main>
 <script>
@@ -67,6 +69,18 @@ const stat = (k, v, cls) => el("div", { class: "stat" }, el("div", { class: "v "
 const clock = iso => iso ? new Date(iso).toLocaleTimeString() : "—";
 
 let SELECTED = new Set();  // the tasks chosen for collection, from state/tb21_selected_tasks.txt
+// Which model to show ("" = all); the same choice as the trajectory browser's drop-down (per browser tab).
+let MODEL = new URLSearchParams(location.search).get("model") ?? sessionStorage.getItem("model") ?? "";
+const byModel = m => !MODEL || m === MODEL;
+const modelSel = document.getElementById("model");
+modelSel.addEventListener("change", () => { MODEL = modelSel.value; sessionStorage.setItem("model", MODEL); refresh(); });
+function setModels(models) {
+  const list = [...new Set(models.filter(Boolean))].sort();
+  if (MODEL && !list.includes(MODEL)) list.push(MODEL);
+  if (modelSel.options.length === list.length + 1 && [...modelSel.options].every((o, i) => o.value === ["", ...list][i])) return;
+  modelSel.replaceChildren(el("option", { value: "" }, "all models"), ...list.map(m => el("option", { value: m }, m)));
+  modelSel.value = MODEL;
+}
 
 function jobCard(j, live) {
   const pct = x => `${(100 * x / Math.max(1, j.total)).toFixed(2)}%`;
@@ -86,7 +100,7 @@ function jobCard(j, live) {
   });
   return el("div", { class: "job" },
     el("div", { class: "title" }, el("b", {}, j.name), el("span", { class: "pill " + (live ? "live" : "idle") }, live ? "running" : "not running"),
-      el("span", { class: "muted" }, `${j.n_tasks} tasks × ${j.attempts} attempts · concurrency ${j.concurrency ?? "?"} · started ${clock(j.started_at)}`)),
+      el("span", { class: "muted" }, `${j.model || "model ?"} · ${j.n_tasks} tasks × ${j.attempts} attempts · concurrency ${j.concurrency ?? "?"} · started ${clock(j.started_at)}`)),
     el("div", { class: "bar" },
       el("span", { style: `width:${pct(j.pass)};background:var(--pass)` }), el("span", { style: `width:${pct(j.fail)};background:var(--fail)` }),
       el("span", { style: `width:${pct(j.none)};background:var(--none)` }), el("span", { style: `width:${pct(j.running)};background:var(--run)` })),
@@ -114,8 +128,8 @@ function jobCard(j, live) {
 function scheduleSection(sc, jobs, live, stopFile, agg, title = "Schedule") {
   if (!sc) return [];
   const byName = Object.fromEntries(jobs.map(j => [j.name, j]));
-  const rate = sc.est_trials_per_hour || 200, cpt = sc.est_cost_per_trial || 0.02;
-  const deadline = new Date(sc.no_new_batch_after);
+  const rate = sc.est_trials_per_hour || 200, cpt = sc.est_cost_per_trial ?? 0.02;
+  const deadline = sc.no_new_batch_after ? new Date(sc.no_new_batch_after) : null;  // null: no deadline
   let cursor = Date.now();  // projected start time of the next batch
   const rows = sc.batches.map(b => {
     const j = byName[b.name];
@@ -127,7 +141,7 @@ function scheduleSection(sc, jobs, live, stopFile, agg, title = "Schedule") {
       if (!start) { start = new Date(cursor); projected = true; }
       end = new Date(Math.max(cursor, Date.now()) + remainingMin * 60000);
       if (["planned", "waiting"].includes(b.status)) end = new Date(start.getTime() + total / rate * 3600000);
-      if (["planned", "waiting"].includes(b.status) && start > deadline) { start = null; end = null; }
+      if (deadline && ["planned", "waiting"].includes(b.status) && start > deadline) { start = null; end = null; }
     }
     if (end && !["done", "stopped", "skipped", "failed", "killed"].includes(b.status)) cursor = end.getTime();
     const status = b.status === "external" && live.has(b.name) ? "running" : b.status;
@@ -147,7 +161,7 @@ function scheduleSection(sc, jobs, live, stopFile, agg, title = "Schedule") {
       stat("trials done (scheduled batches)", `${n(doneTrials)} / ${n(plannedTrials)} projected`),
       stat("aggregate cost / kill-switch cap", `$${spent.toFixed(2)} / $${sc.budget_usd}`, spent > 0.8 * sc.budget_usd ? "warn" : ""),
       stat("projected cost (all batches)", `$${(plannedTrials * cpt).toFixed(0)}`),
-      stat("no new batch after", fmtT(deadline)),
+      stat("no new batch after", deadline ? fmtT(deadline) : "no deadline"),
       stat("STOP file", stopFile ? "present — stopping" : "absent", stopFile ? "warn" : "")),
     el("div", { class: "job" }, el("table", { style: "width:100%;border-collapse:collapse" },
       el("thead", {}, el("tr", {}, ["batch", "status", "trials", "start", "end / ETA", "cost", "note"].map(h =>
@@ -170,6 +184,18 @@ const ago = iso => { if (!iso) return "never"; const m = (Date.now() - new Date(
   return m < 1 ? "just now" : m < 60 ? `${Math.round(m)} min ago` : `${(m / 60).toFixed(1)} h ago`; };
 
 function costSummary(s) {
+  if (MODEL) {
+    const jobCost = js => js.reduce((a, j) => a + (j.cost_usd || 0), 0);
+    const loc = jobCost(s.jobs), rem = (s.remotes || []).map(r => ({ name: r.config.name, api: jobCost(r.jobs) }));
+    return [
+      el("h2", {}, `Costs · ${MODEL}`),
+      el("div", { class: "stats" },
+        stat("API, jobs listed below", "$" + (loc + rem.reduce((a, r) => a + r.api, 0)).toFixed(2)),
+        stat("API, this Mac", "$" + loc.toFixed(2)), ...rem.filter(r => r.api).map(r => stat(`API, ${r.name}`, "$" + r.api.toFixed(2)))),
+      el("div", { class: "muted" }, "Sum of cost_usd over this model's jobs shown on this page (recent jobs only). " +
+        "Self-hosted models report $0. Pick “all models” for the full spend including EC2 compute."),
+    ];
+  }
   const local = s.aggregate_cost_usd || 0;
   const rem = (s.remotes || []).map(r => ({ name: r.config.name, api: r.aggregate_cost_usd || 0,
     ec2: (r.sync.ec2 || {}).cost_usd || 0 }));
@@ -233,9 +259,17 @@ function remoteSection(r) {
 
 async function refresh() {
   try {
-    const s = await (await fetch("/api/status")).json();
+    let s = await (await fetch("/api/status")).json();
     SELECTED = new Set(s.selected_tasks || []);
-    const h = s.host, o = s.overall;
+    const h = s.host, byM = s.overall_by_model || {};
+    setModels([...s.jobs.map(j => j.model), ...(s.remotes || []).flatMap(r => r.jobs.map(j => j.model)),
+               s.schedule && s.schedule.model, ...(s.remotes || []).map(r => r.schedule && r.schedule.model), ...Object.keys(byM)]);
+    const o = MODEL ? (byM[MODEL] || { scenarios: 0, target: 0, held: 0, passed: 0, failed: 0 }) : s.overall;
+    // only this model's jobs, schedules and EC2 runners
+    s = { ...s, jobs: s.jobs.filter(j => byModel(j.model)),
+          remotes: (s.remotes || []).map(r => ({ ...r, jobs: r.jobs.filter(j => byModel(j.model)) }))
+            .filter(r => !MODEL || r.jobs.length || (r.schedule && r.schedule.model === MODEL)),
+          schedule: s.schedule && byModel(s.schedule.model) ? s.schedule : null };
     document.getElementById("updated").textContent = `updated ${new Date(s.now).toLocaleTimeString()} · refreshes every 10 s`;
     const live = new Set(h.running_jobs || []);
     app.replaceChildren(
@@ -250,14 +284,14 @@ async function refresh() {
         stat("docker CPU", h.cpus ? `${n(h.cpu_pct)}% of ${h.cpus * 100}%` : "—", h.cpus && h.cpu_pct > 85 * h.cpus ? "warn" : ""),
         stat("docker memory", h.mem_total_gb ? `${n(h.mem_gb, 1)} / ${n(h.mem_total_gb, 0)} GB` : "—"),
         stat("host sampled", clock(h.sampled_at))),
-      el("h2", {}, "Collection target (ledger)"),
+      el("h2", {}, "Collection target (ledger)" + (MODEL ? ` · ${MODEL}` : "")),
       el("div", { class: "stats" },
         stat("scenarios", n(o.scenarios)), stat("target runs", n(o.target)),
         stat("in ledger (held + final)", n(o.held + o.passed + o.failed)),
         stat("held for review", n(o.held)), stat("reviewed pass / fail", `${o.passed} / ${o.failed}`),
         stat("progress", o.target ? `${(100 * (o.held + o.passed + o.failed) / o.target).toFixed(2)}%` : "—")),
       el("div", { class: "muted" }, "Ledger counts only ingested trials — ingest finished jobs in the trajectory browser."),
-      el("h2", {}, `Recent Harbor jobs on this Mac (${s.jobs.length})`),
+      el("h2", {}, `Recent Harbor jobs on this Mac (${s.jobs.length})` + (MODEL ? ` · ${MODEL}` : "")),
       ...s.jobs.map(j => jobCard(j, live.has(j.name))));
   } catch (e) {
     document.getElementById("updated").textContent = "error: " + e;
