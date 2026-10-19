@@ -85,11 +85,15 @@ selected and 4 deferred tasks, and checks the API key.
 ## 4. Make this instance's plan
 ```bash
 cd ~/geodesic/aees/harbor
-python3 scripts/make_ec2_plan.py --instance $INSTANCE_ID --instances $INSTANCES
+CAP=$(( $(nproc) * 3 / 2 )); [ "$CAP" -gt 100 ] && CAP=100     # ~1.5 trials per vCPU, at most 100
+python3 scripts/make_ec2_plan.py --instance $INSTANCE_ID --instances $INSTANCES --max-concurrency $CAP
 ```
+The cap scales concurrency to the machine: 100 on 64+ vCPUs, 48 on a 32-vCPU m7i.8xlarge. On the Mac, 10 emulated
+cores were saturated at 15–20 trials; native x86 needs less per trial, and the ramp-up check (§6) can lower it
+further.
 This writes `state/schedule_ec2.json` and `state/tasks_i$INSTANCE_ID.txt`.
 - With 2 instances: 10 tasks, 5,000 trajectories, $125 aggregate budget. Batches:
-  `i<ID>_ec2_b1_ramp` (250 trials at 60 concurrent), then 4 batches at 100 concurrent.
+  `i<ID>_ec2_b1_ramp` (250 trials at min(60, cap) concurrent), then 4 batches at min(100, cap).
 - With 1 instance: 20 tasks, 10,000 trajectories, $250.
 
 **Dry run on a copy.** A dry run marks batches as done in the file it's given, so never point it

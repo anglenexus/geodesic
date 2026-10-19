@@ -21,6 +21,8 @@ p.add_argument("--instances", type=int, default=1)
 p.add_argument("--template", type=Path, default=HERE / "ec2" / "schedule_ec2_10k.json")
 p.add_argument("--tasks", type=Path, default=HERE / "state" / "tb21_selected_tasks.txt")
 p.add_argument("--budget-total", type=float, default=None, help="default: the template's budget_usd")
+p.add_argument("--max-concurrency", type=int, default=None,
+               help="cap every batch's concurrency (for smaller instances, e.g. 1.5 x vCPUs)")
 p.add_argument("--out", type=Path, default=HERE / "state" / "schedule_ec2.json")
 p.add_argument("--force", action="store_true")
 a = p.parse_args()
@@ -46,10 +48,13 @@ plan["instance"] = {"id": a.instance, "of": a.instances, "tasks": mine}
 for b in plan["batches"]:
     b["name"] = f"i{a.instance}_{b['name']}"
     b["est_trials"] = b["attempts"] * len(mine)
+    if a.max_concurrency:
+        b["concurrency"] = min(b["concurrency"], a.max_concurrency)
     b["status"] = "planned"
 a.out.write_text(json.dumps(plan, indent=2))
 
 total = sum(b["est_trials"] for b in plan["batches"])
 print(f"instance {a.instance}/{a.instances}: {len(mine)} tasks -> {a.out}")
 print(f"  tasks: {', '.join(mine)}")
-print(f"  {total} trajectories in {len(plan['batches'])} batches, aggregate budget ${plan['budget_usd']}")
+print(f"  {total} trajectories in {len(plan['batches'])} batches, aggregate budget ${plan['budget_usd']}, "
+      f"concurrency {sorted({b['concurrency'] for b in plan['batches']})}")
