@@ -21,3 +21,9 @@ tests/fixtures/trials/
 state/tasks_i*.txt
 state/ec2_checks.md
 state/ec2_report_i*.md
+state/schedule_candidates.json
+state/round2_launcher.*
+state/round2_checks.md
+state/scheduler_candidates.stdout
+state/status_server.log
+state/browse_server.log

@@ -17,11 +17,11 @@
   },
   "budget_usd": 250,
   "budget_counts_jobs": [],
-  "budget_note": "AGGREGATE cap over every trial in this plan's batches. Measured ~$0.019/trial on the Mac pilot -> ~$190 expected for 10,000. Checked before each batch and every 60 s during a batch; on breach the running batch is cancelled and nothing further starts.",
+  "budget_note": "AGGREGATE cap over every trial in this plan's batches. Measured ~$0.019/trial on the Mac pilot -> ~$190 expected for 10,000. Checked before each batch and every 60 s during a batch; on breach the running batch's whole process group is cancelled (60 s grace) and nothing further starts.",
   "min_free_disk_gb": 40,
   "no_new_batch_after": null,
   "watchdog_interval_s": 60,
-  "cancel_grace_s": 300,
+  "cancel_grace_s": 60,
   "est_trials_per_hour": 1200,
   "est_cost_per_trial": 0.019,
   "batches": [

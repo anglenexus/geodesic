@@ -11,9 +11,9 @@ planned / waiting / running / done batches live. Before every batch it checks:
   * the OpenAI API           -> a 4-token request; stop on auth/credit errors, retry transient ones
   * Docker and free disk
 Budget kill switch: while a batch runs, a watchdog re-computes the aggregate cost every
-`watchdog_interval_s` (default 60 s). If it reaches budget_usd, the running harbor job is
-cancelled (SIGINT, then SIGTERM after a grace period), no further batch starts, and the
-trials that did finish are ingested. The STOP file is graceful (never interrupts a batch).
+`watchdog_interval_s` (default 60 s). If it reaches budget_usd, the running harbor job's whole
+process group is cancelled (SIGINT, then SIGTERM/SIGKILL after `cancel_grace_s`, default 60 s),
+no further batch starts, and the trials that did finish are ingested. The STOP file is graceful (never interrupts a batch).
 Each finished batch is ingested (all trials held for review).
 """
 from __future__ import annotations
@@ -102,18 +102,38 @@ def aggregate_cost(plan: dict) -> float:
     return sum(job_cost(root / n) for n in names if (root / n).exists())
 
 
+def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except ProcessLookupError:
+        pass
+
+
 def cancel(proc: subprocess.Popen, plan_path: Path, grace_s: int) -> None:
-    """Ask harbor to cancel (SIGINT, so it tears down its containers); escalate if it hangs."""
-    proc.send_signal(signal.SIGINT)
+    """Cancel a running harbor job and everything it started.
+
+    harbor runs in its own process group (see Popen below). SIGINT goes to the whole group so
+    harbor tears down its containers; after `grace_s` the group gets SIGTERM, then SIGKILL.
+    (On 2026-10-18, SIGINT to harbor alone let in-flight trials keep running for the full
+    300 s grace and overshoot the cap by $1.85.)
+    """
+    _signal_group(proc, signal.SIGINT)
     try:
         proc.wait(timeout=grace_s)
+        return
     except subprocess.TimeoutExpired:
-        log(plan_path, "harbor still running after SIGINT grace period; sending SIGTERM")
-        proc.terminate()
-        try:
-            proc.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        log(plan_path, f"harbor still running {grace_s}s after SIGINT; sending SIGTERM to its process group")
+    _signal_group(proc, signal.SIGTERM)
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        log(plan_path, "harbor still running after SIGTERM; sending SIGKILL to its process group")
+        _signal_group(proc, signal.SIGKILL)
+        proc.wait()
+
+
+def docker_ok() -> bool:
+    return subprocess.run(["docker", "info"], capture_output=True).returncode == 0
 
 
 def ingest_into_ledger(plan: dict, job: Path) -> dict:
@@ -174,7 +194,7 @@ def run(plan_path: Path, dry_run: bool) -> None:
             reason = f"budget reached (${spent:.2f} of ${plan['budget_usd']})"
         elif shutil.disk_usage(jobs_root).free < plan["min_free_disk_gb"] * 1024 ** 3:
             reason = "low disk space"
-        elif subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
+        elif not docker_ok():
             reason = "docker not running"
         else:
             ok, detail = (True, "dry run") if dry_run else preflight_api(Path(plan["env_file"]), plan["model"])
@@ -198,7 +218,8 @@ def run(plan_path: Path, dry_run: bool) -> None:
             if dry_run:
                 rc = 0
             else:
-                proc = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT)
+                proc = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT,
+                                        start_new_session=True)  # own process group, see cancel()
                 while proc.poll() is None:  # budget watchdog
                     time.sleep(plan.get("watchdog_interval_s", 60))
                     spent = aggregate_cost(plan)
@@ -207,7 +228,7 @@ def run(plan_path: Path, dry_run: bool) -> None:
                     if spent >= plan["budget_usd"] and proc.poll() is None:
                         killed = f"budget kill switch: aggregate ${spent:.2f} >= ${plan['budget_usd']}"
                         log(plan_path, f"{batch['name']}: {killed}; cancelling harbor")
-                        cancel(proc, plan_path, plan.get("cancel_grace_s", 300))
+                        cancel(proc, plan_path, plan.get("cancel_grace_s", 60))
                 rc = proc.returncode
         job = jobs_root / batch["name"]
         counts = ingest_into_ledger(plan, job) if job.exists() else {}

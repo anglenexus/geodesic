@@ -31,3 +31,13 @@ If Phase 2 pushes tasks out of the 10–90% band, draw from a relaxed filter (to
 
 ## Decisions
 - 2026-10-13: **keep crack-7z-hash**. TB 2.1 raised its memory (2→4 GB) and agent timeout (900→1800 s) vs 2.0, so its 2.0-based pass rate (terminus-2 0.55) likely understates 2.1. The pilot measures it; swap only if it falls outside 10–90%.
+
+## Final 20 (2026-10-19)
+`state/tb21_selected_tasks.txt` now holds the 20 tasks chosen by the rule in
+`state/tb21_candidates_round2_results.md`: Luna pass rate in 10–90%, cost ≤ 80th percentile, length ≤ 90th
+percentile. That's the 12 original in-band tasks plus 8 round-2 replacements: polyglot-c-py, largest-eigenval,
+overfull-hbox, db-wal-recovery, dna-insert, mteb-retrieve, adaptive-rejection-sampler, polyglot-rust-c.
+- Removed (out of band after 85 attempts): model-extraction-relu-logits, extract-elf, chess-best-move (too hard);
+  feal-differential-cryptanalysis, fix-code-vulnerability, pytorch-model-cli, custom-memory-heap-crash, kv-store-grpc (too easy).
+- Kept: write-compressor (12%, $0.066), even though 85% of its trials end in an agent timeout (user decision).
+- Round-2 oracle failures on the Mac: compile-compcert (40-min oracle timeout under Rosetta), mteb-leaderboard.

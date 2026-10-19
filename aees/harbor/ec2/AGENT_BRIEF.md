@@ -18,7 +18,7 @@ then merge without conflicts (§9). With `INSTANCES=1`, this instance runs all 2
 **Before starting you, the human has done:**
 1. `~/.config/harbor/.env` contains `OPENAI_API_KEY=sk-...`
 2. `docker login` (credentials in `~/.docker/config.json`)
-3. Copied the Mac's ledger to `~/geodesic/aees/harbor/state/ledger.sqlite` (the **seed**, 1,700 trajectories)
+3. Copied the Mac's ledger to `~/geodesic/aees/harbor/state/ledger.sqlite` (the **seed**: 36 scenarios, 1,860 trajectories as of 2026-10-18)
 
 If any of these is missing, **stop and ask the human** (see §2). Don't work around them.
 
@@ -67,8 +67,8 @@ from aees_harbor.ledger import Ledger
 l = Ledger('state/ledger.sqlite'); s = l.scenarios()
 print('seed ledger:', len(s), 'scenarios,', sum(len(l.trial_facts(x['key'])) for x in s), 'trials')"
 ```
-Expect `key present`, `docker login present`, and `seed ledger: 20 scenarios, 1700 trials`. If the
-seed is missing, **stop and ask**. Starting without it would restart run indices at 1 for tasks the
+Expect `key present`, `docker login present`, and `seed ledger: 36 scenarios, 1860 trials` (or more,
+if the human ran more batches on the Mac since). If the seed is missing, **stop and ask**. Starting without it would restart run indices at 1 for tasks the
 Mac already ran, and the ledgers could then never be merged.
 
 ## 3. Prepare tasks (~15–40 min)
@@ -161,7 +161,8 @@ Use `/loop` or a cron-style recurring prompt. Each check:
 ```bash
 pkill -f aees_harbor.schedule; pkill -INT -f "harbor run"; sleep 60; docker ps -q | xargs -r docker kill
 ```
-The budget kill switch already cancels a batch automatically at `budget_usd`.
+The budget kill switch already cancels a batch automatically at `budget_usd`: it signals harbor's whole
+process group, with a 60 s grace period before SIGTERM/SIGKILL.
 
 ## 8. When everything is done: package the results
 The scheduler log ends with `all batches processed`, or `stopping before …` if the STOP file,
