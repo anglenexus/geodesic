@@ -80,6 +80,8 @@
   <b>AEES Trajectory Browser</b>
   <a href="#/ledger" id="nav-ledger">Ledger</a>
   <a href="#/trajectories" id="nav-traj">Trajectories</a>
+  <span style="margin-left:auto" class="muted">source</span>
+  <select id="source"></select>
 </header>
 <main id="app">Loading…</main>
 <script>
@@ -112,8 +114,11 @@ function rewardBadge(r) {
   return el("span", { class: "badge b-none" }, "no reward");
 }
 const statusBadge = s => el("span", { class: "badge b-" + s }, s);
+// Which ledger to show: this Mac ("local") or an EC2 remote's mirrored snapshot.
+let SOURCE = sessionStorage.getItem("source") || "local";
+let SOURCES = [];
 async function api(path) {
-  const r = await fetch(path);
+  const r = await fetch(path + (path.includes("?") ? "&" : "?") + "source=" + encodeURIComponent(SOURCE));
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
@@ -132,7 +137,7 @@ async function pageLedger() {
   const sum = k => rows.reduce((a, r) => a + (Array.isArray(r[k]) ? r[k].length : (r[k] || 0)), 0);
   const target = rows.reduce((a, r) => a + r.target, 0);
   app.replaceChildren(
-    el("h1", {}, "Ledger"),
+    el("h1", {}, "Ledger — ", (SOURCES.find(x => x.name === SOURCE) || {}).label || SOURCE),
     el("div", { class: "note" }, "Every finished trial is logged with raw facts and its run index is held until reviewed. " +
       "“Raw reward” counts what the verifier wrote; “passed / failed” count reviewed (final) outcomes."),
     el("div", { class: "stats" },
@@ -140,7 +145,10 @@ async function pageLedger() {
       stat("reviewed pass / fail", `${sum("passed")} / ${sum("failed")}`),
       stat("raw reward 1 / 0 / none", `${sum("raw_reward_1")} / ${sum("raw_reward_0")} / ${sum("raw_no_reward")}`),
       stat("remaining to target", fmtInt(target - sum("passed") - sum("failed")))),
-    await jobsPanel(),
+    SOURCE === "local" ? await jobsPanel()
+      : el("div", { class: "jobs" }, el("b", {}, "Remote source"), el("span", { class: "muted" },
+          "  ·  this EC2 runner's scheduler ingests its own batches; this view is a mirror refreshed by `python -m aees_harbor.remote sync --loop 300`. " +
+          "Run-index statuses come from the remote ledger snapshot.")),
     el("div", { class: "tablewrap" }, el("table", {},
       el("thead", {}, el("tr", {}, ["task", "model", "agent · tool mode", "trials", "held", "pass", "fail",
         "raw 1 / 0 / –", "raw pass rate", "progress to target", "next index"].map(h => el("th", {}, h)))),
@@ -405,8 +413,19 @@ async function route() {
     app.replaceChildren(el("h1", { class: "err" }, "Error"), pre(String(e)));
   }
 }
+async function initSources() {
+  const sel = document.getElementById("source");
+  try { SOURCES = await (await fetch("/api/sources")).json(); } catch (e) { SOURCES = [{ name: "local", label: "This Mac", available: true }]; }
+  if (!SOURCES.some(x => x.name === SOURCE && x.available)) SOURCE = "local";
+  sel.replaceChildren(...SOURCES.map(x => el("option", { value: x.name }, x.label + (x.available ? "" : " (not synced yet)"))));
+  sel.value = SOURCE;
+  sel.addEventListener("change", () => {
+    SOURCE = sel.value; sessionStorage.setItem("source", SOURCE);
+    if (location.hash.startsWith("#/ledger") || !location.hash) route(); else location.hash = "#/ledger";
+  });
+}
 window.addEventListener("hashchange", route);
-route();
+initSources().then(route);
 </script>
 </body>
 </html>

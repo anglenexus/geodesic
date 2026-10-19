@@ -76,11 +76,35 @@ def trials(ledger: Ledger, key: str | None) -> list[dict]:
     return out
 
 
-def trial_detail(ledger: Ledger, key: str, run_index: int, attempt: int) -> dict | None:
+def sources(ledger_path: Path, remotes_path: Path | None) -> dict[str, dict]:
+    """Ledgers the browser can show: this machine, plus each EC2 remote's mirrored snapshot.
+
+    Remote trial dirs (/home/ubuntu/jobs/...) are rewritten to the local mirror (aees_harbor.remote).
+    """
+    out = {"local": {"label": "This Mac", "ledger": ledger_path, "rewrite": [], "remote": False}}
+    if remotes_path and remotes_path.exists():
+        from aees_harbor.remote import load_config, mirror_dirs
+        cfg = load_config(remotes_path)
+        for r in cfg["remotes"]:
+            jobs_mirror, state = mirror_dirs(cfg, r)
+            out[r["name"]] = {"label": f"EC2 {r['name']} ({r.get('instance_type', '')})",
+                              "ledger": state / "ledger.sqlite", "remote": True,
+                              "rewrite": [(r["remote_jobs"].rstrip("/"), str(jobs_mirror))]}
+    return out
+
+
+def _rewrite(path: str, rules) -> str:
+    for old, new in rules:
+        if path.startswith(old):
+            return new + path[len(old):]
+    return path
+
+
+def trial_detail(ledger: Ledger, key: str, run_index: int, attempt: int, rewrite=()) -> dict | None:
     match = [t for t in ledger.trial_facts(key, run_index) if t["attempt"] == attempt]
     if not match:
         return None
-    d = Path(match[0]["trial_dir"])
+    d = Path(_rewrite(match[0]["trial_dir"], rewrite))
     segments = []  # trajectory.json plus any continuation files written after summarization
     for p in sorted((d / "agent").glob("trajectory*.json")):
         traj = _read_json(p)
@@ -134,6 +158,7 @@ def jobs(ledger: Ledger, jobs_root: Path) -> list[dict]:
 class Handler(BaseHTTPRequestHandler):
     ledger_path: Path
     jobs_root: Path
+    remotes_path: Path | None = None
 
     def _send(self, code: int, body: bytes, ctype: str) -> None:
         self.send_response(code)
@@ -150,16 +175,23 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         if url.path in ("/", "/index.html"):
             return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
-        ledger = Ledger(self.ledger_path)
+        srcs = sources(self.ledger_path, self.remotes_path)
+        if url.path == "/api/sources":
+            return self._json([{"name": k, "label": v["label"], "remote": v["remote"], "available": v["ledger"].exists()}
+                               for k, v in srcs.items()])
+        src = srcs.get(q.get("source", "local"))
+        if src is None or not src["ledger"].exists():
+            return self._json({"error": f"unknown or not-yet-synced source {q.get('source')!r}"}, 404)
+        ledger = Ledger(src["ledger"])
         try:
             if url.path == "/api/scenarios":
                 return self._json(scenarios(ledger))
             if url.path == "/api/trials":
                 return self._json(trials(ledger, q.get("key")))
             if url.path == "/api/jobs":
-                return self._json(jobs(ledger, self.jobs_root))
+                return self._json([] if src["remote"] else jobs(ledger, self.jobs_root))
             if url.path == "/api/trial":
-                detail = trial_detail(ledger, q["key"], int(q["index"]), int(q.get("attempt", 1)))
+                detail = trial_detail(ledger, q["key"], int(q["index"]), int(q.get("attempt", 1)), src["rewrite"])
                 return self._json(detail) if detail else self._json({"error": "not found"}, 404)
             return self._json({"error": "unknown endpoint"}, 404)
         except (KeyError, ValueError) as e:
@@ -187,11 +219,14 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     p = argparse.ArgumentParser(description="Browse the trajectory ledger in a web browser")
     p.add_argument("--ledger", type=Path, default=Path("state/ledger.sqlite"))
+    p.add_argument("--remotes", type=Path, default=Path("state/remotes.json"),
+                   help="EC2 remotes config; their mirrored ledgers become extra sources")
     p.add_argument("--jobs-root", type=Path, default=Path("~/code/jobs"))
     p.add_argument("--port", type=int, default=8765)
     args = p.parse_args()
     Handler.ledger_path = args.ledger.resolve()
     Handler.jobs_root = args.jobs_root.expanduser().resolve()
+    Handler.remotes_path = args.remotes.resolve() if args.remotes.exists() else None
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Trajectory browser: http://127.0.0.1:{args.port}  (ledger: {Handler.ledger_path}, "
           f"jobs: {Handler.jobs_root})")

@@ -59,7 +59,8 @@ function el(tag, attrs, ...kids) {
   return e;
 }
 const n = (x, d = 0) => x === null || x === undefined ? "—" : Number(x).toLocaleString(undefined, { maximumFractionDigits: d });
-const dur = m => m === null || m === undefined ? "—" : m >= 60 ? `${Math.floor(m / 60)} h ${Math.round(m % 60)} min` : `${Math.round(m)} min`;
+const dur = m => { if (m === null || m === undefined) return "—"; const t = Math.round(m);
+  return t >= 60 ? `${Math.floor(t / 60)} h ${t % 60} min` : `${t} min`; };
 const stat = (k, v, cls) => el("div", { class: "stat" }, el("div", { class: "v " + (cls || "") }, v), el("div", { class: "k" }, k));
 const clock = iso => iso ? new Date(iso).toLocaleTimeString() : "—";
 
@@ -97,7 +98,7 @@ function jobCard(j, live) {
         el("span", {}, el("i", { class: "c c-" + s }), s === "none" ? "no reward" : s)))));
 }
 
-function scheduleSection(sc, jobs, live, stopFile, agg) {
+function scheduleSection(sc, jobs, live, stopFile, agg, title = "Schedule") {
   if (!sc) return [];
   const byName = Object.fromEntries(jobs.map(j => [j.name, j]));
   const rate = sc.est_trials_per_hour || 200, cpt = sc.est_cost_per_trial || 0.02;
@@ -127,7 +128,7 @@ function scheduleSection(sc, jobs, live, stopFile, agg) {
   const pillColor = { running: "var(--run)", done: "var(--pass)", waiting: "var(--warn)", external: "var(--run)",
                       planned: "var(--none)", stopped: "var(--fail)", skipped: "var(--none)", failed: "var(--fail)", killed: "var(--fail)" };
   return [
-    el("h2", {}, "Overnight schedule"),
+    el("h2", {}, title),
     el("div", { class: "muted" }, sc.name),
     el("div", { class: "stats" },
       stat("trials done (scheduled batches)", `${n(doneTrials)} / ${n(plannedTrials)} projected`),
@@ -152,6 +153,55 @@ function scheduleSection(sc, jobs, live, stopFile, agg) {
   ];
 }
 
+const ago = iso => { if (!iso) return "never"; const m = (Date.now() - new Date(iso)) / 60000;
+  return m < 1 ? "just now" : m < 60 ? `${Math.round(m)} min ago` : `${(m / 60).toFixed(1)} h ago`; };
+
+function costSummary(s) {
+  const local = s.aggregate_cost_usd || 0;
+  const rem = (s.remotes || []).map(r => ({ name: r.config.name, api: r.aggregate_cost_usd || 0,
+    ec2: (r.sync.ec2 || {}).cost_usd || 0 }));
+  const api = local + rem.reduce((a, r) => a + r.api, 0), ec2 = rem.reduce((a, r) => a + r.ec2, 0);
+  return [
+    el("h2", {}, "Costs (this schedule + EC2 runners)"),
+    el("div", { class: "stats" },
+      stat("total so far", "$" + (api + ec2).toFixed(2)),
+      stat("API, Mac schedule", "$" + local.toFixed(2)),
+      ...rem.map(r => stat(`API, ${r.name}`, "$" + r.api.toFixed(2))),
+      ...rem.map(r => stat(`EC2 compute, ${r.name}`, "$" + r.ec2.toFixed(2)))),
+    el("div", { class: "muted" }, "API cost = sum of each trial's cost_usd (Harbor/LiteLLM pricing). EC2 compute = uptime × on-demand $/h " +
+      "(AWS public price list); EBS storage not included. Remote numbers are as of the last sync."),
+  ];
+}
+
+function remoteSection(r) {
+  const c = r.config, sy = r.sync || {}, e = sy.ec2 || {}, h = r.host || {};
+  const live = new Set(h.running_jobs || []);
+  const cap = r.schedule ? r.schedule.budget_usd : null;
+  const syncAge = sy.synced_at ? (Date.now() - new Date(sy.synced_at)) / 60000 : 1e9;
+  return [
+    el("h2", {}, `EC2 runner · ${c.name}`),
+    el("div", { class: "muted" }, `${c.instance_type} · ${c.region} · ${c.instance_id} · ${c.host}` +
+      (c.instance ? ` · instance ${c.instance.id} of ${c.instance.of}` : "")),
+    el("div", { class: "stats" },
+      stat("last sync", ago(sy.synced_at), syncAge > 15 ? "warn" : ""),
+      stat("EC2 state", e.state || "—", e.state && e.state !== "running" ? "warn" : ""),
+      stat("uptime", e.hours !== undefined ? `${e.hours.toFixed(1)} h` : "—"),
+      stat("EC2 compute cost", e.cost_usd !== undefined && e.cost_usd !== null ? `$${e.cost_usd.toFixed(2)} @ $${c.hourly_usd}/h` : "—"),
+      stat("API cost / cap", r.aggregate_cost_usd !== null && r.aggregate_cost_usd !== undefined ? `$${r.aggregate_cost_usd.toFixed(2)}${cap ? " / $" + cap : ""}` : "—",
+        cap && r.aggregate_cost_usd > 0.8 * cap ? "warn" : ""),
+      stat("scheduler", h.scheduler_alive ? "running" : "not running"),
+      stat("containers", n(h.containers)),
+      stat("docker CPU", h.cpus ? `${n(h.cpu_pct)}% of ${h.cpus * 100}%` : "—", h.cpus && h.cpu_pct > 85 * h.cpus ? "warn" : ""),
+      stat("memory", h.mem_total_gb ? `${n(h.mem_gb, 1)} / ${n(h.mem_total_gb, 0)} GB` : "—"),
+      stat("disk free", h.disk_free_gb ? `${n(h.disk_free_gb)} GB` : "—", h.disk_free_gb && h.disk_free_gb < 40 ? "warn" : ""),
+      stat("ledger on host", r.ledger ? `${n(r.ledger.trials)} trials` : "—")),
+    ...((sy.errors || []).length ? [el("div", { class: "warn" }, "sync errors: " + sy.errors.join("; "))] : []),
+    ...((sy.notes || []).length ? [el("div", { class: "muted" }, "notes: " + sy.notes.join("; "))] : []),
+    ...(r.schedule ? scheduleSection(r.schedule, r.jobs, live, false, r.aggregate_cost_usd, `${c.name} schedule`) : []),
+    ...r.jobs.map(j => jobCard(j, live.has(j.name))),
+  ];
+}
+
 async function refresh() {
   try {
     const s = await (await fetch("/api/status")).json();
@@ -159,7 +209,9 @@ async function refresh() {
     document.getElementById("updated").textContent = `updated ${new Date(s.now).toLocaleTimeString()} · refreshes every 10 s`;
     const live = new Set(h.running_jobs || []);
     app.replaceChildren(
-      ...scheduleSection(s.schedule, s.jobs, live, s.stop_file, s.aggregate_cost_usd),
+      ...costSummary(s),
+      ...(s.remotes || []).flatMap(remoteSection),
+      ...scheduleSection(s.schedule, s.jobs, live, s.stop_file, s.aggregate_cost_usd, "Mac schedule"),
       el("h2", {}, "Host"),
       el("div", { class: "stats" },
         stat("harbor jobs running", live.size ? [...live].join(", ") : "none"),
@@ -174,7 +226,7 @@ async function refresh() {
         stat("held for review", n(o.held)), stat("reviewed pass / fail", `${o.passed} / ${o.failed}`),
         stat("progress", o.target ? `${(100 * (o.held + o.passed + o.failed) / o.target).toFixed(2)}%` : "—")),
       el("div", { class: "muted" }, "Ledger counts only ingested trials — ingest finished jobs in the trajectory browser."),
-      el("h2", {}, `Recent Harbor jobs (${s.jobs.length})`),
+      el("h2", {}, `Recent Harbor jobs on this Mac (${s.jobs.length})`),
       ...s.jobs.map(j => jobCard(j, live.has(j.name))));
   } catch (e) {
     document.getElementById("updated").textContent = "error: " + e;

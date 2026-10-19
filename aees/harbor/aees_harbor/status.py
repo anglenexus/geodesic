@@ -113,14 +113,56 @@ def job_status(job: Path, now: dt.datetime) -> dict:
         "timeouts": sum(c.get("exc") == "AgentTimeoutError" for v in cells.values() for c in v),
         "cost_usd": cost, "started_at": t0.isoformat() if t0 else None,
         "last_finished_at": max(finished_at).isoformat() if finished_at else None,
-        "elapsed_min": (now - t0).total_seconds() / 60 if t0 else None,
+        # finished jobs stop the clock at their last finished trial
+        "elapsed_min": (((max(finished_at) if finished_at and started == done and not (total - started) else now)
+                         - t0).total_seconds() / 60) if t0 else None,
         "throughput_per_hour": per_hour,
         "eta_min": remaining / per_hour * 60 if per_hour and remaining else (0 if not remaining else None),
         "cells": {t.split("/")[-1]: v for t, v in sorted(cells.items())},
     }
 
 
-def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path | None = None) -> dict:
+def _ledger_summary(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    led = Ledger(path)
+    try:
+        scen = led.scenarios()
+    finally:
+        led.close()
+    return {"scenarios": len(scen), "trials": sum(len(s["held"]) + len(s["passed"]) + len(s["failed"]) for s in scen)}
+
+
+def remote_status(remotes_path: Path | None, now: dt.datetime) -> list[dict]:
+    """Status of each EC2 remote, read from its local mirror (see aees_harbor.remote)."""
+    if not remotes_path or not remotes_path.exists():
+        return []
+    from aees_harbor.remote import load_config, mirror_dirs
+    cfg = load_config(remotes_path)
+    out = []
+    for r in cfg["remotes"]:
+        jobs, state = mirror_dirs(cfg, r)
+        plan = _json(state / Path(r.get("plan", "state/schedule_ec2.json")).name)
+        dirs = sorted((d for d in jobs.iterdir() if (d / "config.json").exists()),
+                      key=lambda p: p.stat().st_mtime, reverse=True)[:RECENT_JOBS] if jobs.exists() else []
+        if plan:
+            for b in plan.get("batches", []):
+                d = jobs / b["name"]
+                if (d / "config.json").exists() and d not in dirs:
+                    dirs.append(d)
+        out.append({
+            "config": {k: r.get(k) for k in ("name", "host", "region", "instance_id", "instance_type",
+                                              "hourly_usd", "price_source", "instance")},
+            "sync": _json(state / "sync.json") or {}, "host": _json(state / "host.json") or {},
+            "schedule": plan, "aggregate_cost_usd": aggregate_cost({**plan, "jobs_root": str(jobs)}) if plan else None,
+            "ledger": _ledger_summary(state / "ledger.sqlite"),
+            "jobs": [job_status(d, now) for d in dirs],
+        })
+    return out
+
+
+def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path | None = None,
+           remotes_path: Path | None = None) -> dict:
     now = dt.datetime.now(dt.timezone.utc)
     dirs = sorted((d for d in jobs_root.iterdir() if (d / "config.json").exists()),
                   key=lambda p: p.stat().st_mtime, reverse=True)[:RECENT_JOBS]
@@ -143,13 +185,14 @@ def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path |
     agg = aggregate_cost(schedule) if schedule else None
     return {"now": now.isoformat(), "host": host, "overall": overall, "schedule": schedule, "aggregate_cost_usd": agg,
             "stop_file": bool(schedule_path and (schedule_path.parent / "STOP").exists()),
-            "jobs": [job_status(d, now) for d in dirs]}
+            "jobs": [job_status(d, now) for d in dirs], "remotes": remote_status(remotes_path, now)}
 
 
 class Handler(BaseHTTPRequestHandler):
     jobs_root: Path
     ledger_path: Path
     schedule_path: Path
+    remotes_path: Path | None
     monitor: HostMonitor
 
     def _send(self, code: int, body: bytes, ctype: str) -> None:
@@ -163,7 +206,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
         if self.path.startswith("/api/status"):
-            body = status(self.jobs_root, self.ledger_path, self.monitor.snapshot, self.schedule_path)
+            body = status(self.jobs_root, self.ledger_path, self.monitor.snapshot, self.schedule_path,
+                          self.remotes_path)
             return self._send(200, json.dumps(body).encode(), "application/json")
         return self._send(404, b'{"error": "unknown endpoint"}', "application/json")
 
@@ -176,9 +220,12 @@ def main() -> None:
     p.add_argument("--jobs-root", type=Path, default=Path("~/code/jobs"))
     p.add_argument("--ledger", type=Path, default=Path("state/ledger.sqlite"))
     p.add_argument("--schedule", type=Path, default=Path("state/schedule_overnight.json"))
+    p.add_argument("--remotes", type=Path, default=Path("state/remotes.json"),
+                   help="EC2 remotes config; their mirrors are shown too (see aees_harbor.remote)")
     p.add_argument("--port", type=int, default=8766)
     args = p.parse_args()
     Handler.schedule_path = args.schedule.resolve()
+    Handler.remotes_path = args.remotes.resolve() if args.remotes.exists() else None
     Handler.jobs_root = args.jobs_root.expanduser().resolve()
     Handler.ledger_path = args.ledger.resolve()
     Handler.monitor = HostMonitor()
