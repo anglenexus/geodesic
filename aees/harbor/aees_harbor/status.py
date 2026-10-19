@@ -14,6 +14,7 @@ import json
 import subprocess
 import threading
 import time
+from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -92,10 +93,12 @@ def job_status(job: Path, now: dt.datetime) -> dict:
         if r.get("finished_at"):
             rew = ((r.get("verifier_result") or {}).get("rewards") or {}).get("reward")
             exc = (r.get("exception_info") or {}).get("exception_type")
+            msg = ((r.get("exception_info") or {}).get("exception_message") or "").splitlines()[:1]
             state = "pass" if rew == 1.0 else "fail" if rew == 0.0 else "none"
             finished_at.append(_ts(r["finished_at"]))
             cost += (r.get("agent_result") or {}).get("cost_usd") or 0
-            cells.setdefault(task, []).append({"s": state, "exc": exc, "trial": trial.name})
+            cells.setdefault(task, []).append({"s": state, "exc": exc, "msg": msg[0][:100] if msg else None,
+                                               "trial": trial.name})
         else:
             cells.setdefault(task, []).append({"s": "running", "trial": trial.name})
     total = len(tasks) * attempts or sum(len(v) for v in cells.values())
@@ -112,6 +115,9 @@ def job_status(job: Path, now: dt.datetime) -> dict:
         "concurrency": cfg.get("n_concurrent_trials"), "done": done, "running": started - done,
         "queued": max(0, total - started), "pass": count("pass"), "fail": count("fail"), "none": count("none"),
         "timeouts": sum(c.get("exc") == "AgentTimeoutError" for v in cells.values() for c in v),
+        # exception type + first line of the message, most common first (raw facts, no classification)
+        "exceptions": Counter(f"{c['exc']}: {c.get('msg') or ''}".rstrip(": ") for v in cells.values()
+                              for c in v if c.get("exc")).most_common(),
         "cost_usd": cost, "started_at": t0.isoformat() if t0 else None,
         "last_finished_at": max(finished_at).isoformat() if finished_at else None,
         # finished jobs stop the clock at their last finished trial

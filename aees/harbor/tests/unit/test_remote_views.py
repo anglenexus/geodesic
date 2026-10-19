@@ -61,3 +61,20 @@ def test_selected_tasks_reads_the_list_and_tolerates_a_missing_file(tmp_path):
     f.write_text("mailman\n\ncrack-7z-hash\n")
     assert browse.selected_tasks(f) == ["mailman", "crack-7z-hash"]
     assert browse.selected_tasks(tmp_path / "missing.txt") == []
+
+
+def test_stopped_instance_cost_freezes_at_the_stop_time():
+    from aees_harbor.remote import stopped_time
+    t = stopped_time("User initiated (2026-10-19 19:42:00 GMT)")
+    assert t == dt.datetime(2026, 10, 19, 19, 42, tzinfo=dt.timezone.utc)
+    assert stopped_time("") is None and stopped_time(None) is None
+
+
+def test_job_status_counts_exceptions_by_type_and_message(tmp_path):
+    job = _job(tmp_path)
+    trial = next(p for p in job.iterdir() if (p / "result.json").exists())
+    r = json.loads((trial / "result.json").read_text())
+    r["exception_info"] = {"exception_type": "RuntimeError", "exception_message": "Command timed out after 120 seconds\nmore"}
+    (trial / "result.json").write_text(json.dumps(r))
+    s = status.job_status(job, dt.datetime(2026, 10, 13, 12))  # fixture timestamps are naive
+    assert ["RuntimeError: Command timed out after 120 seconds", 1] in [list(x) for x in s["exceptions"]]

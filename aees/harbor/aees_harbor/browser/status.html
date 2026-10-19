@@ -98,6 +98,9 @@ function jobCard(j, live) {
       stat("elapsed", dur(j.elapsed_min)), stat(`throughput (last ${20} min)`, j.throughput_per_hour ? `${n(j.throughput_per_hour)}/h` : "—"),
       stat("ETA", j.queued + j.running === 0 ? "done" : etaAt ? `${dur(j.eta_min)} (${etaAt})` : "—"),
       stat("cost so far", "$" + j.cost_usd.toFixed(2)), stat("cost / trial", j.done ? "$" + (j.cost_usd / j.done).toFixed(4) : "—")),
+    (j.exceptions || []).length ? el("div", { class: j.none > 0.03 * Math.max(1, j.done) ? "offlist" : "muted" },
+      `exceptions (${j.none} of ${j.done} finished trials have no reward): ` +
+      j.exceptions.map(([what, k]) => `${what} ×${k}`).join(" · ")) : null,
     off.length ? el("div", { class: "offlist" },
       `${live ? "⚠ running" : "included"} ${off.length} task${off.length > 1 ? "s" : ""} outside the ${SELECTED.size} selected: ` +
       off.slice(0, 8).join(", ") + (off.length > 8 ? ", …" : "")) : null,
@@ -185,13 +188,29 @@ function costSummary(s) {
 
 function remoteSection(r) {
   const c = r.config, sy = r.sync || {}, e = sy.ec2 || {}, h = r.host || {};
-  const live = new Set(h.running_jobs || []);
   const cap = r.schedule ? r.schedule.budget_usd : null;
   const syncAge = sy.synced_at ? (Date.now() - new Date(sy.synced_at)) / 60000 : 1e9;
-  return [
-    el("h2", {}, `EC2 runner · ${c.name}`),
+  const head = [
+    el("h2", {}, `EC2 runner · ${c.name}` + (e.state && e.state !== "running" ? ` (${e.state})` : "")),
     el("div", { class: "muted" }, `${c.instance_type} · ${c.region} · ${c.instance_id} · ${c.host}` +
       (c.instance ? ` · instance ${c.instance.id} of ${c.instance.of}` : "")),
+  ];
+  if (e.state && e.state !== "running") {  // host unreachable: no live stats, last synced trials folded away
+    return [...head,
+      el("div", { class: "stats" },
+        stat("EC2 state", e.state + (e.stopped_at ? ` at ${clock(e.stopped_at)}` : ""), "warn"),
+        stat("uptime (billed)", e.hours !== undefined ? `${e.hours.toFixed(1)} h` : "—"),
+        stat("EC2 compute cost", e.cost_usd != null ? `$${e.cost_usd.toFixed(2)} @ $${c.hourly_usd}/h` : "—"),
+        stat("API cost", r.aggregate_cost_usd != null ? `$${r.aggregate_cost_usd.toFixed(2)}` : "—"),
+        stat("last synced trials", n(r.jobs.reduce((a, j) => a + j.done, 0)))),
+      el("div", { class: "muted" }, "Not running: compute is no longer billed (its EBS volume still is until terminated). " +
+        "Jobs below are the last synced copy."),
+      el("details", {}, el("summary", { class: "muted" }, `${r.jobs.length} synced jobs`),
+        ...(r.schedule ? scheduleSection(r.schedule, r.jobs, new Set(), false, r.aggregate_cost_usd, `${c.name} schedule (frozen)`) : []),
+        ...r.jobs.map(j => jobCard(j, false)))];
+  }
+  const live = new Set(h.running_jobs || []);
+  return [...head,
     el("div", { class: "stats" },
       stat("last sync", ago(sy.synced_at), syncAge > 15 ? "warn" : ""),
       stat("EC2 state", e.state || "—", e.state && e.state !== "running" ? "warn" : ""),
@@ -221,7 +240,8 @@ async function refresh() {
     const live = new Set(h.running_jobs || []);
     app.replaceChildren(
       ...costSummary(s),
-      ...(s.remotes || []).flatMap(remoteSection),
+      ...[...(s.remotes || [])].sort((a, b) => ((b.sync.ec2 || {}).state === "running") - ((a.sync.ec2 || {}).state === "running"))
+        .flatMap(remoteSection),
       ...scheduleSection(s.schedule, s.jobs, live, s.stop_file, s.aggregate_cost_usd, "Mac schedule"),
       el("h2", {}, "Host"),
       el("div", { class: "stats" },

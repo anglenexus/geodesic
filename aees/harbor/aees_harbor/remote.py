@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -56,6 +57,13 @@ def mirror_dirs(cfg: dict, r: dict) -> tuple[Path, Path]:
     return jobs, state
 
 
+def stopped_time(reason: str | None) -> dt.datetime | None:
+    """Stop time from EC2's StateTransitionReason, e.g. 'User initiated (2026-10-19 19:42:00 GMT)'.
+    Only covers the last launch -> stop; an instance stopped and restarted is billed from the restart."""
+    m = re.search(r"\((\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) GMT\)", reason or "")
+    return dt.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc) if m else None
+
+
 def _ssh(r: dict) -> list[str]:
     return ["-i", str(Path(r["key"]).expanduser()), "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=15", "-o", "BatchMode=yes"]
@@ -63,6 +71,28 @@ def _ssh(r: dict) -> list[str]:
 
 def _run(cmd: list[str], timeout: int = 600, **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+
+
+def ec2_status(r: dict) -> tuple[dict, str | None]:
+    """EC2 state, uptime and compute cost from describe-instances: (ec2 dict, error or None)."""
+    ec2 = {"hourly_usd": r.get("hourly_usd"), "price_source": r.get("price_source"), "instance_type": r.get("instance_type")}
+    aws = _run(["aws", "ec2", "describe-instances", "--region", r["region"], "--instance-ids", r["instance_id"],
+                "--query", "Reservations[0].Instances[0].[State.Name,LaunchTime,StateTransitionReason]",
+                "--output", "json"], timeout=60)
+    if aws.returncode == 0:
+        st, launched, reason = json.loads(aws.stdout)
+        end = dt.datetime.now(dt.timezone.utc)
+        stopped_at = stopped_time(reason) if st in ("stopped", "stopping") else None
+        if stopped_at:  # a stopped instance stops billing compute: freeze uptime at the stop time
+            end = stopped_at
+        hours = max(0.0, (end - dt.datetime.fromisoformat(launched)).total_seconds() / 3600)
+        known = st == "running" or stopped_at is not None
+        ec2.update(state=st, launch_time=launched, hours=round(hours, 3),
+                   stopped_at=stopped_at.isoformat() if stopped_at else None,
+                   cost_usd=round(hours * r["hourly_usd"], 2) if known and r.get("hourly_usd") else None)
+    else:
+        return ec2, f"aws: {aws.stderr.strip()[:200]}"
+    return ec2, None
 
 
 def sync_one(cfg: dict, r: dict) -> dict:
@@ -74,48 +104,43 @@ def sync_one(cfg: dict, r: dict) -> dict:
     errors: list[str] = []
     notes: list[str] = []
 
-    rs = _run(["rsync", "-az", "--exclude", "recording.cast", "--exclude", "terminus_2.pane",
-               "-e", "ssh " + " ".join(_ssh(r)), f"{target}:{r['remote_jobs']}/", f"{jobs}/"], timeout=1800)
-    if rs.returncode not in (0, 24):  # 24 = files vanished during transfer (normal while running)
-        errors.append(f"rsync jobs: {rs.stderr.strip()[:300]}")
+    ec2, err = ec2_status(r)
+    if err:
+        errors.append(err)
+    if ec2.get("state") not in (None, "running"):  # stopped/terminated: the host is unreachable
+        notes.append(f"instance {ec2['state']}: host not reachable, showing the last synced data")
+    else:
+        rs = _run(["rsync", "-az", "--exclude", "recording.cast", "--exclude", "terminus_2.pane",
+                   "-e", "ssh " + " ".join(_ssh(r)), f"{target}:{r['remote_jobs']}/", f"{jobs}/"], timeout=1800)
+        if rs.returncode not in (0, 24):  # 24 = files vanished during transfer (normal while running)
+            errors.append(f"rsync jobs: {rs.stderr.strip()[:300]}")
 
-    snap = (f"cd {r['remote_harbor']} && [ -f state/ledger.sqlite ] && .venv/bin/python -c "
-            "\"import sqlite3; s=sqlite3.connect('state/ledger.sqlite'); d=sqlite3.connect('/tmp/aees_ledger_snapshot.sqlite'); "
-            "s.backup(d); d.close()\"")
-    if _run(ssh + [snap], timeout=120).returncode == 0:
-        tmp = state / "ledger.sqlite.part"
-        cp = _run(["scp", "-q", *_ssh(r), f"{target}:/tmp/aees_ledger_snapshot.sqlite", str(tmp)], timeout=600)
-        if cp.returncode == 0:
-            tmp.replace(state / "ledger.sqlite")
+        snap = (f"cd {r['remote_harbor']} && [ -f state/ledger.sqlite ] && .venv/bin/python -c "
+                "\"import sqlite3; s=sqlite3.connect('state/ledger.sqlite'); d=sqlite3.connect('/tmp/aees_ledger_snapshot.sqlite'); "
+                "s.backup(d); d.close()\"")
+        if _run(ssh + [snap], timeout=120).returncode == 0:
+            tmp = state / "ledger.sqlite.part"
+            cp = _run(["scp", "-q", *_ssh(r), f"{target}:/tmp/aees_ledger_snapshot.sqlite", str(tmp)], timeout=600)
+            if cp.returncode == 0:
+                tmp.replace(state / "ledger.sqlite")
+            else:
+                errors.append(f"ledger copy: {cp.stderr.strip()[:200]}")
         else:
-            errors.append(f"ledger copy: {cp.stderr.strip()[:200]}")
-    else:
-        notes.append("no ledger on host yet")
+            notes.append("no ledger on host yet")
 
-    plan = r.get("plan", "state/schedule_ec2.json")
-    for f in (plan, plan.replace(".json", ".log")):
-        cp = _run(["scp", "-q", *_ssh(r), f"{target}:{r['remote_harbor']}/{f}", str(state / Path(f).name)], timeout=120)
-        if cp.returncode != 0 and f == plan:
-            notes.append("no schedule on host yet")
+        plan = r.get("plan", "state/schedule_ec2.json")
+        for f in (plan, plan.replace(".json", ".log")):
+            cp = _run(["scp", "-q", *_ssh(r), f"{target}:{r['remote_harbor']}/{f}", str(state / Path(f).name)], timeout=120)
+            if cp.returncode != 0 and f == plan:
+                notes.append("no schedule on host yet")
 
-    probe = _run(ssh + ["python3", "-"], input=HOST_PROBE, timeout=120)
-    if probe.returncode == 0:
-        host = json.loads(probe.stdout)
-        host["sampled_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-        (state / "host.json").write_text(json.dumps(host))
-    else:
-        errors.append(f"host probe: {probe.stderr.strip()[:200]}")
-
-    ec2 = {"hourly_usd": r.get("hourly_usd"), "price_source": r.get("price_source"), "instance_type": r.get("instance_type")}
-    aws = _run(["aws", "ec2", "describe-instances", "--region", r["region"], "--instance-ids", r["instance_id"],
-                "--query", "Reservations[0].Instances[0].[State.Name,LaunchTime]", "--output", "json"], timeout=60)
-    if aws.returncode == 0:
-        st, launched = json.loads(aws.stdout)
-        hours = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(launched)).total_seconds() / 3600
-        ec2.update(state=st, launch_time=launched, hours=round(hours, 3),
-                   cost_usd=round(hours * r["hourly_usd"], 2) if st == "running" and r.get("hourly_usd") else None)
-    else:
-        errors.append(f"aws: {aws.stderr.strip()[:200]}")
+        probe = _run(ssh + ["python3", "-"], input=HOST_PROBE, timeout=120)
+        if probe.returncode == 0:
+            host = json.loads(probe.stdout)
+            host["sampled_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+            (state / "host.json").write_text(json.dumps(host))
+        else:
+            errors.append(f"host probe: {probe.stderr.strip()[:200]}")
 
     result = {"name": r["name"], "synced_at": dt.datetime.now(dt.timezone.utc).isoformat(), "ok": not errors,
               "errors": errors, "notes": notes, "ec2": ec2}
