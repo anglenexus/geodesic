@@ -82,7 +82,7 @@ def ec2_status(r: dict) -> tuple[dict, str | None]:
     if aws.returncode == 0:
         st, launched, reason = json.loads(aws.stdout)
         end = dt.datetime.now(dt.timezone.utc)
-        stopped_at = stopped_time(reason) if st in ("stopped", "stopping") else None
+        stopped_at = stopped_time(reason) if st in ("stopped", "stopping", "shutting-down", "terminated") else None
         if stopped_at:  # a stopped instance stops billing compute: freeze uptime at the stop time
             end = stopped_at
         hours = max(0.0, (end - dt.datetime.fromisoformat(launched)).total_seconds() / 3600)
