@@ -2,7 +2,7 @@
 
 ## Summary
 
-This PR adds `geodesic/aees/serving/`: nine scripts that take a blank Ubuntu 24.04 GPU host to a running Qwen3-4B server, benchmark it, and investigate FlashInfer's key mechanisms. Everything runs from this one flat folder; the venv, logs and results live in `~/qwen-serve` outside the repo.
+This PR adds `geodesic/aees/serving/`: nine scripts that take a blank Ubuntu 22.04 GPU host (the one OS for every host) to a running Qwen3-4B server, benchmark it, and investigate FlashInfer's key mechanisms. Everything runs from this one flat folder; the venv, logs and results live in `~/qwen-serve` outside the repo.
 
 - **Phases 1–2, serving:** one script installs the driver, CUDA 13, SGLang and version-matched FlashInfer wheels; another runs the server with FlashInfer attention, the prefix cache and Prometheus metrics.
 - **Phase 3, benchmarks:** an unattended matrix covering latency, throughput, QPS, p99.9 tails, burst and cold start, across five server settings, plus a tool-call quality check. The output is one interactive HTML dashboard.
