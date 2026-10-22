@@ -4,12 +4,16 @@ fi_bench.py - Phase 4 FlashInfer deep dive: microbenchmarks plus one HTML report
 
     python fi_bench.py sparse     # 2a: page size x memory layout x KV dtype       (~5 min)
     python fi_bench.py balance    # 2c: skewed batches, split-KV on vs off, plan() cost (~5 min)
+    python fi_bench.py precision  # 2d: linear-layer GEMMs in BF16 vs FP8 vs AWQ 4-bit, SGLang's kernels (~2 min)
     python fi_bench.py jit        # 2b: run in the COLD venv from fi_jit_setup.sh   (~10-20 min)
     python fi_bench.py report     # results/fi/fi_report.html (also reads live traces) (needs pandas, plotly)
 
-Attention shapes default to Qwen3-4B: 32 query heads, 8 KV heads, head_dim 128.
-Results land in ~/qwen-serve/results/fi/*.json (override with FI_OUT=...), inside the folder that
-`./serve.sh dashboard` serves on port 8000. Every step is safe to rerun.
+Attention shapes come from --model (or FI_MODEL): qwen3-4b (default; 32 query heads, 8 KV heads,
+head_dim 128, 36 layers) or qwen3.5-27b (24 query heads, 4 KV heads, head_dim 256, and only its 16
+full-attention layers, since its 48 Gated DeltaNet layers don't use FlashInfer attention).
+Results land in ~/qwen-serve/results/fi/*.json for qwen3-4b and results/fi_<model>/ otherwise
+(override with FI_OUT=...), inside the folder that `./serve.sh dashboard` serves on port 8000.
+Every step is safe to rerun.
 Live KV-index traces from the running server are captured by fi_trace.py
 (see the plan doc, Phase 4 step 4) and land in results/fi/trace/.
 """
@@ -25,9 +29,28 @@ import statistics
 import sys
 import time
 
-OUT = pathlib.Path(os.environ.get("FI_OUT") or pathlib.Path(os.environ.get(
-    "RESULTS_DIR", pathlib.Path(os.environ.get("WORK_DIR", "~/qwen-serve")).expanduser() / "results")) / "fi")
-QH, KVH, HD, LAYERS = 32, 8, 128, 36  # Qwen3-4B attention
+SHAPES = {  # attention shapes FlashInfer sees; layers = layers that run FlashInfer attention
+    "qwen3-4b": dict(label="Qwen3-4B", qh=32, kvh=8, hd=128, layers=36, note=""),
+    "qwen3.5-27b": dict(label="Qwen3.5-27B", qh=24, kvh=4, hd=256, layers=16,
+                        note="16 of 64 layers use full attention (FlashInfer); the other 48 are Gated DeltaNet "
+                             "linear-attention layers with their own kernels and a fixed-size state per request."),
+}
+MODEL = os.environ.get("FI_MODEL", "qwen3-4b")
+OUT = QH = KVH = HD = LAYERS = None
+
+
+def configure(model):
+    """Set the module-wide attention shapes and output folder for one model."""
+    global MODEL, OUT, QH, KVH, HD, LAYERS
+    MODEL = model
+    sh = SHAPES[model]
+    QH, KVH, HD, LAYERS = sh["qh"], sh["kvh"], sh["hd"], sh["layers"]
+    results = pathlib.Path(os.environ.get(
+        "RESULTS_DIR", pathlib.Path(os.environ.get("WORK_DIR", "~/qwen-serve")).expanduser() / "results"))
+    OUT = pathlib.Path(os.environ.get("FI_OUT") or results / ("fi" if model == "qwen3-4b" else f"fi_{model}"))
+
+
+configure(MODEL)
 # Peak HBM/GDDR bandwidth (GB/s), only for the reference line on the 2a chart. First substring match wins,
 # so longer / more specific names come before shorter ones ("A100" before "A10", "L40S" before "L4").
 PEAK_GBS = {"A100-SXM4-80GB": 2039, "A100 80GB PCIe": 1935, "A100": 1555, "H100 PCIe": 2000, "H100": 3350,
@@ -53,7 +76,8 @@ def env_info():
     return dict(gpu=name, peak_gbs=peak, sm=".".join(map(str, torch.cuda.get_device_capability())),
                 sms=torch.cuda.get_device_properties(0).multi_processor_count,
                 torch=torch.__version__, cuda=torch.version.cuda, flashinfer=flashinfer.__version__,
-                time=time.strftime("%Y-%m-%d %H:%M:%S"))
+                time=time.strftime("%Y-%m-%d %H:%M:%S"), model=MODEL,
+                shape=dict(qh=QH, kvh=KVH, hd=HD, layers=LAYERS))
 
 
 def bench(fn, iters=30, reps=5):
@@ -74,9 +98,10 @@ def bench(fn, iters=30, reps=5):
     return statistics.median(out)
 
 
-def build_batch(lens, page_size, layout, kv_dtype, head_dim=HD, seed=0):
+def build_batch(lens, page_size, layout, kv_dtype, head_dim=None, seed=0):
     """Paged KV cache in FlashInfer's NHD layout: (num_pages, 2, page_size, kv_heads, head_dim)."""
     import torch
+    head_dim = head_dim or HD
     g = torch.Generator().manual_seed(seed)
     pages = [max(1, -(-int(n) // page_size)) for n in lens]
     total = sum(pages)
@@ -124,7 +149,8 @@ def cmd_sparse(a):
     for B, L in [(64, 4096), (16, 16384), (256, 1024)]:  # same total KV tokens, different shapes
         for ps in [1, 4, 16, 64]:
             for layout in ["contiguous", "scattered"]:
-                for dt_name, dt in [("bf16", torch.bfloat16), ("fp8_e5m2", torch.float8_e5m2)]:
+                for dt_name, dt in [("bf16", torch.bfloat16), ("fp8_e5m2", torch.float8_e5m2),
+                                    ("fp8_e4m3", torch.float8_e4m3fn)]:
                     if dt_name != "bf16" and ps not in (1, 16):
                         continue
                     rec = dict(batch=B, kv_len=L, page_size=ps, layout=layout, kv_dtype=dt_name)
@@ -209,6 +235,109 @@ def cmd_balance(a):
     save("balance", dict(env=env_info(), cases=cases, plan=plan_rows, examples_b64=examples))
 
 
+# ----------------------------------------------------------------------------- 2d precision
+# Linear layers per model: (name, out features N, in features K, layers using it). These GEMMs read all
+# the weights every forward pass, so their time is what weight precision changes.
+GEMMS = {
+    "qwen3-4b": [("mlp_gate_up", 2 * 9728, 2560, 36), ("mlp_down", 2560, 9728, 36),
+                 ("attn_qkv", (32 + 8 + 8) * 128, 2560, 36), ("attn_o", 2560, 4096, 36)],
+    "qwen3.5-27b": [("mlp_gate_up", 2 * 17408, 5120, 64), ("mlp_down", 5120, 17408, 64),
+                    ("attn_qkv", 2 * 24 * 256 + 2 * 4 * 256, 5120, 16),  # q and its output gate, k, v
+                    ("attn_o", 5120, 24 * 256, 16),
+                    ("deltanet_in", 2 * 16 * 128 + 2 * 48 * 128, 5120, 48),  # q, k, v, z projections
+                    ("deltanet_out", 5120, 48 * 128, 48)],
+}
+GEMM_TOKENS = [1, 16, 64, 256, 1024, 4096]  # decode batch sizes, then prefill chunk sizes
+PREC_TEXT = {"bf16": "BF16 (W16A16)", "fp8": "FP8 W8A8, 128x128 blocks", "awq": "AWQ 4-bit W4A16 (Marlin)"}
+
+
+def precision_kernels(N, K):
+    """{precision: (make(x) -> callable, kernel name, weight bytes)} for one linear layer, built with SGLang's
+    own kernels where it has them. Weight values are random: only shapes and formats matter for timing."""
+    import torch
+    import torch.nn.functional as F
+    dev = torch.device("cuda")
+    out = {}
+    w = torch.randn(N, K, dtype=torch.bfloat16, device=dev) * 0.02
+    out["bf16"] = (lambda x: (lambda: F.linear(x, w)), "torch F.linear (cuBLAS)", 2 * N * K)
+    if torch.cuda.get_device_capability()[0] >= 9:  # FP8 tensor cores (Hopper and later)
+        w8 = w.to(torch.float8_e4m3fn)
+        ws = torch.full((-(-N // 128), -(-K // 128)), 0.01, dtype=torch.float32, device=dev)
+        fp8_bytes = N * K + ws.numel() * 4
+        cands = []
+        try:
+            from sglang.srt.layers.quantization import fp8_utils as fu
+            cands.append(fu.dispatch_w8a8_block_fp8_linear())
+            cands.append(fu.triton_w8a8_block_fp8_linear)
+        except Exception as e:
+            log(f"  sglang FP8 block kernels unavailable ({type(e).__name__}: {e}); using torch._scaled_mm")
+        for fn in cands:
+            try:
+                fn(torch.randn(16, K, dtype=torch.bfloat16, device=dev), w8, [128, 128], ws)
+                out["fp8"] = ((lambda f: lambda x: (lambda: f(x, w8, [128, 128], ws)))(fn),
+                              f"sglang {fn.__name__}", fp8_bytes)
+                break
+            except Exception as e:
+                log(f"  {getattr(fn, '__name__', fn)} failed for {N}x{K}: {type(e).__name__}: {str(e)[:120]}")
+        if "fp8" not in out:  # per-tensor FP8 on cuBLASLt; M padded to 16 as the kernel requires
+            one = torch.ones((), dtype=torch.float32, device=dev)
+
+            def make_scaled(x):
+                xp = F.pad(x, (0, 0, 0, (-x.shape[0]) % 16))
+                return lambda: torch._scaled_mm(xp.to(torch.float8_e4m3fn), w8.t(), scale_a=one, scale_b=one,
+                                                out_dtype=torch.bfloat16)
+            out["fp8"] = (make_scaled, "torch._scaled_mm (per-tensor FP8, fallback)", N * K)
+    try:
+        from sglang.srt.layers.quantization.marlin_utils import (apply_gptq_marlin_linear, marlin_make_empty_g_idx,
+                                                                 marlin_make_workspace, marlin_permute_scales)
+        from sglang.srt.layers.quantization.utils import get_scalar_types
+        try:
+            from sglang.jit_kernel.gptq_marlin_repack import gptq_marlin_repack
+        except ImportError:
+            from sgl_kernel import gptq_marlin_repack
+        _, st = get_scalar_types()
+        packed = torch.randint(-2**31, 2**31 - 1, (K // 8, N), dtype=torch.int32, device=dev)  # 8 x 4-bit per int32
+        empty = torch.empty(0, dtype=torch.int32, device=dev)
+        wq = gptq_marlin_repack(packed, perm=empty, size_k=K, size_n=N, num_bits=4)
+        sc = marlin_permute_scales(torch.rand(K // 128, N, dtype=torch.bfloat16, device=dev) * 0.01,
+                                   size_k=K, size_n=N, group_size=128)
+        work, g = marlin_make_workspace(dev), marlin_make_empty_g_idx(dev)
+        out["awq"] = (lambda x: (lambda: apply_gptq_marlin_linear(x, wq, sc, empty, g, g, work, st.uint4b8, N, K,
+                                                                  is_k_full=True)),
+                      "sglang apply_gptq_marlin_linear (Marlin W4A16)", N * K // 2 + sc.numel() * 2)
+    except Exception as e:
+        log(f"  Marlin W4A16 unavailable for {N}x{K}: {type(e).__name__}: {str(e)[:160]}")
+    return out
+
+
+def cmd_precision(a):
+    import torch
+    rows, kernels = [], {}
+    for name, N, K, count in GEMMS[MODEL]:
+        ks = precision_kernels(N, K)
+        for prec, (make, kname, wbytes) in ks.items():
+            kernels[prec] = kname
+            for M in GEMM_TOKENS:
+                rec = dict(layer=name, N=N, K=K, layers=count, precision=prec, tokens=M, weight_mb=wbytes / 1e6)
+                try:
+                    x = torch.randn(M, K, dtype=torch.bfloat16, device="cuda")
+                    ms = bench(make(x), iters=20 if M >= 1024 else 50)
+                    rec.update(ms=ms, tflops=2 * M * N * K / ms / 1e9, weight_gbs=wbytes / ms / 1e6)
+                    log(f"{name:14s} {N:>6}x{K:<6} {prec:5s} M={M:<5} {ms * 1000:8.1f} us  "
+                        f"{rec['tflops']:7.1f} TFLOPS  {rec['weight_gbs']:7.0f} GB/s weights")
+                except Exception as e:
+                    rec["error"] = f"{type(e).__name__}: {e}"[:300]
+                    log(f"{name} {prec} M={M}: {rec['error']}")
+                rows.append(rec)
+        del ks
+        free_gpu()
+        # Saved after every layer, so a run cut short by run_phase4.sh's time limit keeps what finished.
+        save("precision", dict(env=env_info(), kernels=kernels, precisions=PREC_TEXT, cases=rows,
+                               note="Time of the model's linear layers (the GEMMs that read every weight) per "
+                                    "forward pass; excludes attention, DeltaNet recurrence, norms, embeddings and "
+                                    "lm_head. FP8 may JIT-compile (DeepGEMM) on first use; timing excludes that."))
+
+
 # ----------------------------------------------------------------------------- 2b jit
 def jit_roots():
     from flashinfer.jit import env as je
@@ -241,7 +370,9 @@ def jit_variants():
     import flashinfer
     bf = torch.bfloat16
 
-    def dec(page=16, kv=bf, hd=HD, tc=False, **pk):
+    def dec(page=16, kv=bf, hd=None, tc=False, **pk):
+        hd = hd or HD
+
         def f(ws):
             b = build_batch([512] * 4, page, "contiguous", kv, head_dim=hd)
             w = flashinfer.BatchDecodeWithPagedKVCacheWrapper(ws, "NHD", use_tensor_cores=tc)
@@ -265,13 +396,14 @@ def jit_variants():
         flashinfer.single_prefill_with_kv_cache(torch.randn(512, QH, HD, dtype=bf, device="cuda"), k,
                                                 torch.randn_like(k), causal=True)
 
+    alt = 64 if HD != 64 else 128  # one other head_dim, to show a new shape is a new compile
     return [
-        ("decode_base", "Batch decode, BF16, head_dim 128 (Qwen3-4B)", dec()),
+        ("decode_base", f"Batch decode, BF16, head_dim {HD} ({SHAPES[MODEL]['label']})", dec()),
         ("decode_softcap", "+ logits soft-cap", dec(logits_soft_cap=30.0)),
         ("decode_rope", "+ fused RoPE (ROPE_LLAMA)", dec(pos_encoding_mode="ROPE_LLAMA")),
         ("decode_window", "+ sliding window (256)", dec(window_left=256)),
         ("decode_fp8kv", "FP8 e5m2 KV cache", dec(kv=torch.float8_e5m2)),
-        ("decode_hd64", "head_dim 64", dec(hd=64)),
+        (f"decode_hd{alt}", f"head_dim {alt}", dec(hd=alt)),
         ("decode_tensorcores", "Decode on tensor cores (prefill kernel)", dec(tc=True)),
         ("prefill_causal", "Batch prefill, causal, paged KV", prefill),
         ("single_decode", "Single-request decode", single_decode),
@@ -430,7 +562,7 @@ def diagram_jit():
     b = _arrow(f"M{x1 + W} {yA + H / 2}H{x2}") + _arrow(f"M{x2 + W} {yA + H / 2}H{x3}")
     b += _arrow(f"M{x2 + W / 2} {yA + H}V{yB}") + _arrow(f"M{x2 + W} {yB + H / 2}H{x3}")
     b += _arrow(f"M{x3 + W / 2} {yB}V{yA + H}")
-    b += _box(x1, yA, W, H, "Attention spec", ["dtypes, head_dim 128, GQA 32:8", "mask, RoPE, soft-cap, page layout"])
+    b += _box(x1, yA, W, H, "Attention spec", [f"dtypes, head_dim {HD}, GQA {QH}:{KVH}", "mask, RoPE, soft-cap, page layout"])
     b += _box(x2, yA, W, H, "Cache lookup", ["JIT cache dir on local disk", "+ prebuilt cubin / jit-cache wheels"])
     b += _box(x3, yA, W, H, "Load module, run()", ["same kernel on every later call", "no compile cost after first use"])
     b += _box(x2, yB, W, H, "Instantiate template", ["fill the CUDA/CUTLASS template", "with this spec's parameters"])
@@ -478,7 +610,7 @@ def diagram_balance():
     y = 200
     b += _box(24, y, 220, 70, "plan() on CPU, once per step", ["input: this step's KV lengths", "output: CTA work queues"])
     b += _box(290, y, 200, 70, "GPU workspace buffer", ["plan copied asynchronously", "CUDA-graph safe"])
-    b += _box(536, y, 200, 70, "run() + merge", ["persistent kernel reads plan", "reused by all 36 layers"], hi=True)
+    b += _box(536, y, 200, 70, "run() + merge", ["persistent kernel reads plan", f"reused by all {LAYERS} attention layers"], hi=True)
     b += _arrow(f"M244 {y + 35}H290") + _arrow(f"M490 {y + 35}H536")
     b += _t(24, 300, "How it works: lengths change every decode step, so FlashInfer re-plans each step on the CPU, then "
             "every layer reuses", 12, QUIET)
@@ -494,7 +626,8 @@ main{max-width:1200px;margin:0 auto;padding:24px}h1{font-size:24px;margin:0 0 4p
 .why{color:#59636e;font-size:14px;margin:4px 0 8px}.tbl{border-collapse:collapse;font-size:12px}
 .tbl th,.tbl td{border-bottom:1px solid #eaeef2;padding:4px 8px;text-align:right}.tbl th{background:#f6f8fa}
 pre{background:#f6f8fa;padding:8px;font-size:11px;overflow:auto;max-height:420px}.miss{color:#9a6700}"""
-C = {"contiguous": "#1f6feb", "scattered": "#d1495b", "bf16": "#1f6feb", "fp8_e5m2": "#2a9d8f",
+C = {"contiguous": "#1f6feb", "scattered": "#d1495b", "bf16": "#1f6feb", "fp8_e5m2": "#2a9d8f", "fp8_e4m3": "#e9a23b",
+     "fp8": "#2a9d8f", "awq": "#bf3989",
      "balanced (split-KV on)": "#1f6feb", "no split-KV": "#d1495b"}
 
 
@@ -551,7 +684,7 @@ def cmd_report(a):
         fig.update_yaxes(title_text="Achieved KV bandwidth (GB/s)", rangemode="tozero", col=1)
         fig.update_layout(height=420)
         add("2a · Sparse paged KV: does scattering pages cost bandwidth?",
-            "Batch decode reading the whole KV cache, at Qwen3-4B shapes. Contiguous = pages laid out in order; "
+            f"Batch decode reading the whole KV cache, at {SHAPES[MODEL]['label']} shapes. Contiguous = pages laid out in order; "
             "scattered = pages placed at random across the pool, like a long-running allocator. Close lines mean "
             "FlashInfer's block-sparse indexing costs little.", fig)
         piv = bf.pivot_table(index=["batch", "kv_len", "page_size"], columns="layout", values="gbs").reset_index()
@@ -561,15 +694,15 @@ def cmd_report(a):
             parts.append("<section><p class='why'>Bandwidth (GB/s) by layout</p>"
                          + piv.to_html(index=False, classes="tbl", border=0) + "</section>")
         f8 = df[df.page_size.isin([1, 16])]
-        if (f8.kv_dtype == "fp8_e5m2").any():
+        if (f8.kv_dtype != "bf16").any():
             f8 = f8.assign(case=f8.apply(lambda r: f"{r.batch}×{r.kv_len} p{r.page_size} {r.layout[:4]}", axis=1))
             fig = go.Figure()
-            for dt in ["bf16", "fp8_e5m2"]:
+            for dt in [d for d in ["bf16", "fp8_e5m2", "fp8_e4m3"] if (f8.kv_dtype == d).any()]:
                 d = f8[f8.kv_dtype == dt]
                 fig.add_trace(go.Bar(x=d.case, y=d.ms * 1000, name=dt, marker_color=C[dt]))
             fig.update_layout(barmode="group", height=400, yaxis_title="Kernel time (µs)")
             add("2a · FP8 vs BF16 KV: kernel time",
-                "FP8 halves the bytes read; on the A100 each value is converted back to 16-bit in the kernel. "
+                "FP8 halves the bytes read; on GPUs without FP8 math (A100) each value is converted back to 16-bit in the kernel. "
                 "If FP8 bars are not clearly shorter, conversion cost eats the bandwidth saving, matching Phase 3.", fig)
         ent = bf[bf.layout == "contiguous"].groupby("page_size").index_entries.max().reset_index()
         fig = go.Figure(go.Bar(x=ent.page_size.astype(str), y=ent.index_entries, marker_color="#1f6feb"))
@@ -679,6 +812,38 @@ def cmd_report(a):
     else:
         missing("2c · Load balancing", "run `python fi_bench.py balance` on the GPU host.")
 
+    # ---- 2d precision
+    pr = load("precision")
+    if pr:
+        env = env or pr["env"]
+        df = pd.DataFrame(pr["cases"])
+        df = df[df.get("error").isna()] if "error" in df else df
+        tot = (df.assign(t=df.ms * df.layers).groupby(["precision", "tokens"]).t.sum().reset_index())
+        fig = go.Figure()
+        for prec in [p for p in ("bf16", "fp8", "awq") if (tot.precision == p).any()]:
+            d = tot[tot.precision == prec]
+            fig.add_trace(go.Scatter(x=d.tokens, y=d.t, mode="lines+markers", name=pr["precisions"].get(prec, prec),
+                                     line=dict(color=C.get(prec))))
+        fig.update_xaxes(type="log", title_text="Tokens per forward pass (decode batch size, or prefill chunk)")
+        fig.update_yaxes(type="log", title_text="Linear layers, ms per forward pass")
+        fig.update_layout(height=420)
+        add("2d · Weight precision: time in the linear layers per forward pass",
+            "Every forward pass multiplies the activations by every weight matrix. With few tokens (decode) the GPU "
+            "mostly waits on reading weights, so fewer bytes per weight wins; with many tokens (prefill) it is limited "
+            "by math, where FP8 tensor cores double BF16's rate and 4-bit weights must be unpacked first. Kernels: "
+            + "; ".join(f"{k}: {v}" for k, v in pr["kernels"].items()) + ". " + pr["note"], fig)
+        piv = tot.pivot_table(index="tokens", columns="precision", values="t")
+        if "bf16" in piv:
+            tab = pd.DataFrame({"tokens": piv.index})
+            for prec in piv.columns:
+                tab[f"{prec} ms"] = piv[prec].round(2).values
+                if prec != "bf16":
+                    tab[f"{prec} vs bf16"] = (piv["bf16"] / piv[prec]).map("{:.2f}x".format).values
+            parts.append("<section><p class='why'>Linear layers per forward pass, ms (speedup over BF16)</p>"
+                         + tab.to_html(index=False, classes="tbl", border=0) + "</section>")
+    else:
+        missing("2d · Weight precision", "run `python fi_bench.py precision` on the GPU host (server stopped).")
+
     # ---- 2b jit
     explain("2b · How JIT compilation of attention kernels works",
             "The concept behind the 2b measurements: each attention variant is compiled from a template on first use.",
@@ -720,10 +885,12 @@ def cmd_report(a):
         sms = f", {env['sms']} SMs" if env.get("sms") else ""
         peak = f", {env['peak_gbs']:,} GB/s peak" if env.get("peak_gbs") else ""
         head = (f"{env['gpu']} (sm_{env['sm'].replace('.', '')}{sms}{peak}) · FlashInfer {env['flashinfer']} · torch {env['torch']} "
-                f"(CUDA {env['cuda']}) · Qwen3-4B attention shapes: {QH} query heads, {KVH} KV heads, head_dim {HD}")
+                f"(CUDA {env['cuda']}) · {SHAPES[MODEL]['label']} attention shapes: {QH} query heads, {KVH} KV heads, "
+                f"head_dim {HD}, {LAYERS} attention layers. {SHAPES[MODEL]['note']}")
     page = (f"<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
             f"<title>FlashInfer deep dive</title><style>{CSS}</style></head><body><main>"
-            f"<h1>FlashInfer deep dive: sparse KV, JIT, load balancing</h1><p class='sub'>{html.escape(head)}</p>"
+            f"<h1>FlashInfer deep dive ({SHAPES[MODEL]['label']}): sparse KV, JIT, load balancing</h1>"
+            f"<p class='sub'>{html.escape(head)}</p>"
             + "".join(parts) + "</main></body></html>")
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "fi_report.html").write_text(page)
@@ -733,9 +900,13 @@ def cmd_report(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["sparse", "balance", "jit", "report"])
+    ap.add_argument("cmd", choices=["sparse", "balance", "precision", "jit", "report"])
+    ap.add_argument("--model", choices=list(SHAPES), default=MODEL, help="attention shapes (default: FI_MODEL or qwen3-4b)")
     a = ap.parse_args()
-    {"sparse": cmd_sparse, "balance": cmd_balance, "jit": cmd_jit, "report": cmd_report}[a.cmd](a)
+    configure(a.model)
+    log(f"{SHAPES[a.model]['label']}: {QH} query heads, {KVH} KV heads, head_dim {HD}, {LAYERS} layers -> {OUT}")
+    {"sparse": cmd_sparse, "balance": cmd_balance, "precision": cmd_precision, "jit": cmd_jit,
+     "report": cmd_report}[a.cmd](a)
 
 
 if __name__ == "__main__":
