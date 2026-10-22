@@ -81,16 +81,16 @@ p99.9 from fewer than 1,000 requests is indicative only.
 
 ## Phase 4: weight precision in the linear layers
 
-Time the model's weight matrices take per forward pass (all layers), measured with the kernels SGLang uses: BF16 (W16A16) = torch F.linear (cuBLAS); FP8 W8A8, 128x128 blocks = sglang deepgemm_w8a8_block_fp8_linear_with_fallback. 1-64 tokens is decoding (reading weights dominates), 1024+ is prefill (math dominates).
+Time the model's weight matrices take per forward pass (all layers), measured with the kernels SGLang uses: BF16 (W16A16) = torch F.linear (cuBLAS); FP8 W8A8, 128x128 blocks = sglang triton_w8a8_block_fp8_linear; AWQ 4-bit W4A16 (Marlin) = sglang apply_gptq_marlin_linear (Marlin W4A16). 1-64 tokens is decoding (reading weights dominates), 1024+ is prefill (math dominates).
 
-| tokens per forward pass | bf16 ms | fp8 ms | fp8 speedup |
-|---|---|---|---|
-| 1 | 12.9 | 20.3 | 0.64x |
-| 16 | 13.1 | 20.1 | 0.65x |
-| 64 | 13.6 | 19.4 | 0.70x |
-| 256 | 18.1 | 20.5 | 0.88x |
-| 1024 | 69.8 | 41.5 | 1.68x |
-| 4096 | 288 | 164 | 1.76x |
+| tokens per forward pass | bf16 ms | fp8 ms | fp8 speedup | awq ms | awq speedup |
+|---|---|---|---|---|---|
+| 1 | 12.9 | 24.2 | 0.53x | 7.2 | 1.78x |
+| 16 | 13.1 | 19.4 | 0.68x | 7.6 | 1.73x |
+| 64 | 13.6 | 19.4 | 0.70x | 12.7 | 1.07x |
+| 256 | 18.0 | 26.2 | 0.69x | 35.6 | 0.50x |
+| 1024 | 72.6 | 77.2 | 0.94x | 144 | 0.50x |
+| 4096 | 283 | 291 | 0.97x | 577 | 0.49x |
 
 ## Phase 4: attention decode kernel time by KV-cache format (µs)
 
