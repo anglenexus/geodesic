@@ -7,13 +7,13 @@
 <style>
   :root {
     --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0;
-    --accent: #2f5bd3; --pass: #1f8a4c; --fail: #c2412d; --held: #a06a00; --none: #7a7a80;
+    --accent: #2f5bd3; --test: #d9730d; --pass: #1f8a4c; --fail: #c2412d; --held: #a06a00; --none: #7a7a80;
     --code: #f2f2ef; --chip: #eef1fb;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #151517; --panel: #1e1e21; --ink: #ececec; --muted: #9a9aa2; --line: #2e2e33;
-            --accent: #7aa2ff; --pass: #4cc283; --fail: #ff7a63; --held: #e0a640; --none: #8d8d95;
+            --accent: #7aa2ff; --test: #f0a050; --pass: #4cc283; --fail: #ff7a63; --held: #e0a640; --none: #8d8d95;
             --code: #121214; --chip: #262a3a; }
   }
   * { box-sizing: border-box; }
@@ -39,6 +39,8 @@
   tr.sel td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
   .selname { color: var(--accent); font-weight: 600; }
   .b-selected { background: var(--accent); } .b-notselected { background: var(--none); }
+  tr.test td:first-child { box-shadow: inset 4px 0 0 var(--test); }
+  .testname { color: var(--test); font-weight: 600; } .b-test { background: var(--test); }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; }
   .b-pass { background: var(--pass); } .b-fail { background: var(--fail); } .b-held { background: var(--held); }
@@ -135,7 +137,11 @@ function setModels(models) {  // fill the header drop-down with the models prese
   sel.value = MODEL;
 }
 const isSel = t => SELECTED.has(taskName(t));
-const taskCell = t => el("td", {}, el("span", { class: isSel(t) ? "selname" : "" }, taskName(t)));
+let TEST = new Set();  // post-training test-set candidates (orange), from state/tb21_test31_tasks.txt
+const isTest = t => TEST.has(taskName(t));
+const rank = t => isSel(t) ? 0 : isTest(t) ? 1 : 2;  // blue first, then orange, then the rest
+const rowClass = t => isSel(t) ? " sel" : isTest(t) ? " test" : "";
+const taskCell = t => el("td", {}, el("span", { class: isSel(t) ? "selname" : isTest(t) ? "testname" : "" }, taskName(t)));
 async function api(path) {
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "source=" + encodeURIComponent(SOURCE));
   const j = await r.json();
@@ -167,8 +173,9 @@ async function pageLedger() {
       stat("raw reward 1 / 0 / none", `${sum("raw_reward_1")} / ${sum("raw_reward_0")} / ${sum("raw_no_reward")}`),
       stat("remaining to target", fmtInt(target - sum("passed") - sum("failed")))),
     el("div", { class: "note", style: "margin:4px 0 8px" },
-      el("span", { class: "selname" }, "Blue"), ` = one of the ${SELECTED.size} tasks selected for collection (state/tb21_selected_tasks.txt). ` +
-      `${rows.filter(r => isSel(r.fields.task)).length} of ${rows.length} tasks in this ledger are selected; they are listed first.`),
+      el("span", { class: "selname" }, "Blue"), ` = one of the ${SELECTED.size} tasks selected for collection (state/tb21_selected_tasks.txt); `,
+      el("span", { class: "testname" }, "orange"), ` = one of the ${TEST.size} post-training test-set candidates (state/tb21_test31_tasks.txt). ` +
+      `${rows.filter(r => isSel(r.fields.task)).length} blue and ${rows.filter(r => isTest(r.fields.task)).length} orange of ${rows.length} rows; listed in that order.`),
     SOURCE === "local" ? await jobsPanel()
       : el("div", { class: "jobs" }, el("b", {}, "Remote source"), el("span", { class: "muted" },
           "  ·  this EC2 runner's scheduler ingests its own batches; this view is a mirror refreshed by `python -m aees_harbor.remote sync --loop 300`. " +
@@ -176,11 +183,11 @@ async function pageLedger() {
     el("div", { class: "tablewrap" }, el("table", {},
       el("thead", {}, el("tr", {}, ["task", "model", "agent · tool mode", "trials", "held", "pass", "fail",
         "raw 1 / 0 / –", "raw pass rate", "progress to target", "next index"].map(h => el("th", {}, h)))),
-      el("tbody", {}, [...rows].sort((a, b) => (isSel(b.fields.task) - isSel(a.fields.task))
+      el("tbody", {}, [...rows].sort((a, b) => (rank(a.fields.task) - rank(b.fields.task))
           || taskName(a.fields.task).localeCompare(taskName(b.fields.task))).map(r => {
         const f = r.fields, done = r.passed.length + r.failed.length;
         const rate = r.n_trials ? r.raw_reward_1 / r.n_trials : null;
-        return el("tr", { class: "click" + (isSel(f.task) ? " sel" : ""), onclick: () => location.hash = `#/task/${r.key}` },
+        return el("tr", { class: "click" + rowClass(f.task), onclick: () => location.hash = `#/task/${r.key}` },
           taskCell(f.task), el("td", {}, f.model), el("td", { class: "muted" }, `${f.agent} ${f.agent_version} · ${f.tool_mode}`),
           el("td", { class: "num" }, r.n_trials), el("td", { class: "num" }, r.held.length),
           el("td", { class: "num" }, r.passed.length), el("td", { class: "num" }, r.failed.length),
@@ -254,7 +261,7 @@ function trialTable(list, showTask) {
                  "tokens in (cached)", "tokens out", "cost", "wall time", "job"];
   return el("div", { class: "tablewrap" }, el("table", {},
     el("thead", {}, el("tr", {}, heads.map(h => el("th", {}, h)))),
-    el("tbody", {}, list.map(t => el("tr", { class: "click" + (showTask && isSel(t.task) ? " sel" : ""), onclick: () => location.hash = trialHref(t) },
+    el("tbody", {}, list.map(t => el("tr", { class: "click" + (showTask ? rowClass(t.task) : ""), onclick: () => location.hash = trialHref(t) },
       showTask ? taskCell(t.task) : null,
       el("td", { class: "num" }, t.run_index), el("td", { class: "num" }, t.attempt),
       el("td", {}, statusBadge(t.status)), el("td", {}, rewardBadge(t.reward)),
@@ -275,6 +282,7 @@ async function pageTask(key) {
     el("div", { class: "crumbs" }, el("a", { href: "#/ledger" }, "Ledger"), " / ", taskName(f.task)),
     el("h1", {}, taskName(f.task), " ", isSel(f.task)
       ? el("span", { class: "badge b-selected" }, "selected")
+      : isTest(f.task) ? el("span", { class: "badge b-test" }, "test-set candidate")
       : el("span", { class: "badge b-notselected" }, "not selected")),
     el("div", { class: "kv" }, ...Object.entries({
       scenario: key, dataset: f.dataset, model: f.model, agent: `${f.agent} ${f.agent_version}`, "tool mode": f.tool_mode,
@@ -295,7 +303,8 @@ async function pageTrajectories() {
   const tasks = [...new Set(all.map(t => t.task))].sort();
   const fTask = el("select", {}, el("option", { value: "" }, "all tasks"),
     el("option", { value: "__selected__" }, `the ${SELECTED.size} selected tasks`),
-    tasks.map(t => el("option", { value: t }, (isSel(t) ? "● " : "") + taskName(t))));
+    el("option", { value: "__test__" }, `the ${TEST.size} test-set candidates`),
+    tasks.map(t => el("option", { value: t }, (isSel(t) ? "● " : isTest(t) ? "◆ " : "") + taskName(t))));
   const fReward = el("select", {}, ["all rewards", "1", "0", "none"].map(v => el("option", { value: v }, v)));
   const fStatus = el("select", {}, ["all statuses", "held", "pass", "fail"].map(v => el("option", { value: v }, v)));
   const fText = el("input", { placeholder: "search exception / job / trial…", size: 30 });
@@ -305,7 +314,7 @@ async function pageTrajectories() {
   function render() {
     sessionStorage.setItem("trajFilters", JSON.stringify({ task: fTask.value, reward: fReward.value, status: fStatus.value, text: fText.value }));
     const txt = fText.value.toLowerCase();
-    const list = all.filter(t => (!fTask.value || (fTask.value === "__selected__" ? isSel(t.task) : t.task === fTask.value))
+    const list = all.filter(t => (!fTask.value || (fTask.value === "__selected__" ? isSel(t.task) : fTask.value === "__test__" ? isTest(t.task) : t.task === fTask.value))
       && (fReward.value === "all rewards" || (fReward.value === "none" ? t.reward === null : String(t.reward) === fReward.value + ".0" || String(t.reward) === fReward.value))
       && (fStatus.value === "all statuses" || t.status === fStatus.value)
       && (!txt || [t.exception_type, t.exception_head, t.job, t.trial_name].join(" ").toLowerCase().includes(txt)))
@@ -446,6 +455,7 @@ async function route() {
 }
 async function initSources() {
   try { SELECTED = new Set(await (await fetch("/api/selected")).json()); } catch (e) { SELECTED = new Set(); }
+  try { TEST = new Set(await (await fetch("/api/test_candidates")).json()); } catch (e) { TEST = new Set(); }
   const sel = document.getElementById("source");
   try { SOURCES = await (await fetch("/api/sources")).json(); } catch (e) { SOURCES = [{ name: "local", label: "This Mac", available: true }]; }
   if (!SOURCES.some(x => x.name === SOURCE && x.available)) SOURCE = "local";

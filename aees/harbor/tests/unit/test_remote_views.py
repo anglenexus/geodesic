@@ -90,3 +90,10 @@ def test_trials_and_jobs_carry_their_model_for_the_model_filter(tmp_path):
     models = {t["model"] for t in browse.trials(led, None)}
     assert models == {led.scenarios()[0]["fields"]["model"]}
     assert [j["model"] for j in browse.jobs(led, tmp_path)] == ["hosted_vllm/qwen3-4b"]
+
+
+def test_test_candidates_reads_its_own_list(tmp_path):
+    f = tmp_path / "test.txt"
+    f.write_text("fix-git\nregex-log\n")
+    assert browse.test_candidates(f) == ["fix-git", "regex-log"]
+    assert browse.test_candidates(tmp_path / "missing.txt") == []

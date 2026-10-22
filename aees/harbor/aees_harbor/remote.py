@@ -80,7 +80,10 @@ def ec2_status(r: dict) -> tuple[dict, str | None]:
                 "--query", "Reservations[0].Instances[0].[State.Name,LaunchTime,StateTransitionReason]",
                 "--output", "json"], timeout=60)
     if aws.returncode == 0:
-        st, launched, reason = json.loads(aws.stdout)
+        found = json.loads(aws.stdout)
+        if not found or found[0] is None:  # terminated instances drop out of describe-instances after ~1 h
+            return {**ec2, "state": "terminated", "gone": True}, None
+        st, launched, reason = found
         end = dt.datetime.now(dt.timezone.utc)
         stopped_at = stopped_time(reason) if st in ("stopped", "stopping", "shutting-down", "terminated") else None
         if stopped_at:  # a stopped instance stops billing compute: freeze uptime at the stop time
@@ -107,6 +110,11 @@ def sync_one(cfg: dict, r: dict) -> dict:
     ec2, err = ec2_status(r)
     if err:
         errors.append(err)
+    if err or ec2.get("gone"):
+        # AWS unreachable, or the instance is gone: keep the last known final state and its uptime/cost
+        prev = ((json.loads((state / "sync.json").read_text()) if (state / "sync.json").exists() else {}).get("ec2") or {})
+        if prev.get("state") in ("stopped", "shutting-down", "terminated"):
+            ec2 = {**prev, "state": "terminated" if ec2.get("gone") else prev["state"]}
     if ec2.get("state") not in (None, "running"):  # stopped/terminated: the host is unreachable
         notes.append(f"instance {ec2['state']}: host not reachable, showing the last synced data")
     else:

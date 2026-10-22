@@ -20,6 +20,8 @@ from aees_harbor.ledger import Ledger
 
 PAGE = Path(__file__).parent / "browser" / "index.html"
 SELECTED_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_selected_tasks.txt"
+# candidates for the post-training test set (../post_training/plan.md §2a minus the ⚠ tasks), shown in orange
+TEST_CANDIDATES = Path(__file__).resolve().parent.parent / "state" / "tb21_test31_tasks.txt"
 
 
 def selected_tasks(path: Path = SELECTED_TASKS) -> list[str]:
@@ -28,6 +30,11 @@ def selected_tasks(path: Path = SELECTED_TASKS) -> list[str]:
         return [t.strip() for t in path.read_text().split() if t.strip()]
     except FileNotFoundError:
         return []
+
+
+def test_candidates(path: Path = TEST_CANDIDATES) -> list[str]:
+    """Candidate test-set tasks for post-training (bare names); [] if the file is missing."""
+    return selected_tasks(path)
 TEST_LOG_TAIL = 20_000  # characters of verifier/test-stdout.txt to send
 
 
@@ -194,6 +201,8 @@ class Handler(BaseHTTPRequestHandler):
         srcs = sources(self.ledger_path, self.remotes_path)
         if url.path == "/api/selected":
             return self._json(selected_tasks())
+        if url.path == "/api/test_candidates":
+            return self._json(test_candidates())
         if url.path == "/api/sources":
             return self._json([{"name": k, "label": v["label"], "remote": v["remote"], "available": v["ledger"].exists()}
                                for k, v in srcs.items()])
