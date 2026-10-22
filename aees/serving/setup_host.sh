@@ -104,14 +104,18 @@ install_driver() {
     sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y || true
   fi
   local pkgs=("nvidia-headless-580-open=$v" "nvidia-utils-580=$v" "nvidia-modprobe=$v")
-  if systemctl list-unit-files 2>/dev/null | grep -q nvidia-fabricmanager || ls /dev/nvidia-nvswitch* >/dev/null 2>&1; then
+  # Only when an NVSwitch is visible (bare-metal HGX); a VM with passed-through GPUs has none and its
+  # fabric manager would just fail to start.
+  if lspci -nn -d 10de: 2>/dev/null | grep -q '\[0680\]'; then
     pkgs+=("nvidia-fabricmanager=$v")
   fi
   echo "Installing ${pkgs[*]}"
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades "${pkgs[@]}"
   [[ " ${pkgs[*]} " == *fabricmanager* ]] && sudo systemctl enable nvidia-fabricmanager
   echo
-  echo "Driver $v installed. Reboot now (sudo reboot), then run this script again (no UPGRADE_DRIVER needed)."
+  echo "Driver $v installed. Reboot now, then run this script again (no UPGRADE_DRIVER needed)."
+  echo "On a cloud VM, stop and start it from the provider console instead of 'sudo reboot': replacing a"
+  echo "driver needs a full GPU reset, otherwise the new driver fails with 'WPR2 already up' / No devices found."
   exit 0
 }
 
