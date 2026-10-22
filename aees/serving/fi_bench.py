@@ -251,6 +251,29 @@ GEMM_TOKENS = [1, 16, 64, 256, 1024, 4096]  # decode batch sizes, then prefill c
 PREC_TEXT = {"bf16": "BF16 (W16A16)", "fp8": "FP8 W8A8, 128x128 blocks", "awq": "AWQ 4-bit W4A16 (Marlin)"}
 
 
+def find_marlin_repack():
+    """SGLang moves this between releases; take it from the module its AWQ/GPTQ (compressed-tensors W4A16)
+    loader imports it into, then from the older locations."""
+    import importlib
+    for mod, attr in (("sglang.srt.layers.quantization.compressed_tensors.schemes.compressed_tensors_wNa16",
+                       "gptq_marlin_repack"),
+                      ("sglang.srt.layers.quantization.gptq", "gptq_marlin_repack"),
+                      ("sglang.jit_kernel.gptq_marlin_repack", "gptq_marlin_repack"),
+                      ("sgl_kernel", "gptq_marlin_repack")):
+        try:
+            fn = getattr(importlib.import_module(mod), attr, None)
+            if callable(fn):
+                return fn
+        except Exception:
+            continue
+    import torch
+    for ns in ("sgl_kernel", "sglang"):
+        op = getattr(getattr(torch.ops, ns, None), "gptq_marlin_repack", None)
+        if op is not None:
+            return op
+    raise ImportError("gptq_marlin_repack not found in this SGLang")
+
+
 def precision_kernels(N, K):
     """{precision: (make(x) -> callable, kernel name, weight bytes)} for one linear layer, built with SGLang's
     own kernels where it has them. Weight values are random: only shapes and formats matter for timing."""
@@ -291,10 +314,7 @@ def precision_kernels(N, K):
         from sglang.srt.layers.quantization.marlin_utils import (apply_gptq_marlin_linear, marlin_make_empty_g_idx,
                                                                  marlin_make_workspace, marlin_permute_scales)
         from sglang.srt.layers.quantization.utils import get_scalar_types
-        try:
-            from sglang.jit_kernel.gptq_marlin_repack import gptq_marlin_repack
-        except ImportError:
-            from sgl_kernel import gptq_marlin_repack
+        gptq_marlin_repack = find_marlin_repack()
         _, st = get_scalar_types()
         packed = torch.randint(-2**31, 2**31 - 1, (K // 8, N), dtype=torch.int32, device=dev)  # 8 x 4-bit per int32
         empty = torch.empty(0, dtype=torch.int32, device=dev)
