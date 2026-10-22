@@ -39,6 +39,16 @@ if [[ "$(uname -m)" == "aarch64" ]]; then REPO_ARCH=sbsa; fi
 # 1. Base packages (Python 3.12 comes from uv, headers included, so no python3.12-dev here)
 log "Base packages"
 sudo apt-get update -y
+# A driver install that failed halfway (e.g. desktop GL packages clashing with the provider's) leaves apt
+# with unmet dependencies; drop the desktop-only NVIDIA parts and let apt repair itself.
+if ! sudo apt-get check >/dev/null 2>&1; then
+  warn "apt has broken dependencies; removing half-installed NVIDIA desktop packages and repairing."
+  broken=$(dpkg-query -W -f='${Package}\n' 'nvidia-driver-*' 'xserver-xorg-video-nvidia-*' 'libnvidia-gl-*' \
+           'nvidia-settings' 2>/dev/null | grep -v '^$' || true)
+  # shellcheck disable=SC2086
+  [[ -z "$broken" ]] || sudo dpkg --remove --force-depends --force-remove-reinstreq $broken || true
+  sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y
+fi
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl wget \
   htop tmux jq ca-certificates
 # Kernel headers are only needed to build a new GPU driver; some cloud kernels have none in the archive.
