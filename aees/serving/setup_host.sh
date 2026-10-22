@@ -58,25 +58,42 @@ if ! dpkg -s cuda-keyring >/dev/null 2>&1; then
 fi
 
 install_driver() {
-  # Driver and fabric manager must be the exact same R580 version; HGX (NVSwitch) boxes need the latter.
+  # Headless compute driver (no OpenGL/X packages) at one exact R580 version; NVSwitch (HGX) boxes also
+  # need the fabric manager at that same version.
   if [[ ! -d "/lib/modules/$(uname -r)/build" ]]; then
     die "Can't build an R580 driver: no kernel headers for $(uname -r). Either pick a provider image that
        already has driver >= 580 (e.g. a CUDA 13 / R580 image), or move to Ubuntu's generic kernel:
        sudo apt-get install -y linux-generic && sudo reboot   # then re-run with UPGRADE_DRIVER=1"
   fi
   local v
-  v=$(apt-cache madison nvidia-driver-580-open | awk '{print $3}' | head -1)
-  [[ -n "$v" ]] || die "nvidia-driver-580-open not found in NVIDIA's ubuntu2204 repository."
-  # Provider images often hold or pin their own driver packages (e.g. nvidia-modprobe 550); release the
-  # holds and name the companion packages at the same version so apt replaces the old driver.
+  v=$(apt-cache madison nvidia-headless-580-open | awk '{print $3}' | head -1)
+  [[ -n "$v" ]] || die "nvidia-headless-580-open not found in NVIDIA's ubuntu2204 repository."
+  # Provider images hold/pin their own driver packages; release the holds.
   local held
-  held=$(apt-mark showhold | grep -Ei '^(nvidia|libnvidia|cuda-drivers|xserver-xorg-video-nvidia)' || true)
+  held=$(apt-mark showhold | grep -Ei '^(nvidia|libnvidia|cuda-drivers|xserver-xorg-video-nvidia)' | grep -viE 'container|docker' || true)
   if [[ -n "$held" ]]; then
     echo "Releasing held packages: $(echo "$held" | tr '\n' ' ')"
     # shellcheck disable=SC2086
     sudo apt-mark unhold $held
   fi
-  local pkgs=("nvidia-driver-580-open=$v" "nvidia-modprobe=$v")
+  # Remove every other driver package (old versions, desktop-only 580 parts, half-installed leftovers) so
+  # their files can't clash; the container toolkit (Docker GPU support) stays.
+  sudo dpkg --configure -a || true
+  local old
+  old=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version}\n' 2>/dev/null \
+        | awk '$1 !~ /^(un|rc|pn)/ {print $2, $3}' \
+        | grep -E '^(nvidia|libnvidia|xserver-xorg-video-nvidia|cuda-drivers|nvidia-settings)' \
+        | grep -viE 'container|docker' \
+        | awk -v v="$v" '$2 != v || $1 ~ /^(nvidia-driver-580|libnvidia-gl|libnvidia-extra|libnvidia-egl|xserver-xorg|nvidia-settings)/ {print $1}' || true)
+  if [[ -n "$old" ]]; then
+    echo "Removing old driver packages: $(echo "$old" | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    sudo dpkg --remove --force-remove-reinstreq $old >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
+    sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y $old || true
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y || true
+  fi
+  local pkgs=("nvidia-headless-580-open=$v" "nvidia-utils-580=$v" "nvidia-modprobe=$v")
   if systemctl list-unit-files 2>/dev/null | grep -q nvidia-fabricmanager || ls /dev/nvidia-nvswitch* >/dev/null 2>&1; then
     pkgs+=("nvidia-fabricmanager=$v")
   fi
@@ -84,7 +101,7 @@ install_driver() {
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades "${pkgs[@]}"
   [[ " ${pkgs[*]} " == *fabricmanager* ]] && sudo systemctl enable nvidia-fabricmanager
   echo
-  echo "Driver $v installed. Reboot now (sudo reboot), then run this script again."
+  echo "Driver $v installed. Reboot now (sudo reboot), then run this script again (no UPGRADE_DRIVER needed)."
   exit 0
 }
 
