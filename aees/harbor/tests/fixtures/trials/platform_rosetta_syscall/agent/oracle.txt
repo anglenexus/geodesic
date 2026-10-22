@@ -1,0 +1,5 @@
+rosetta error: Unimplemented syscall number 282
+ spawn telnet 127.0.0.1 6665
+Trying 127.0.0.1...
+telnet: Unable to connect to remote host: Connection refused
+

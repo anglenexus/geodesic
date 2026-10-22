@@ -20,8 +20,9 @@ from aees_harbor.ledger import Ledger
 
 PAGE = Path(__file__).parent / "browser" / "index.html"
 SELECTED_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_selected_tasks.txt"
-# candidates for the post-training test set (../post_training/plan.md §2a minus the ⚠ tasks), shown in orange
-TEST_CANDIDATES = Path(__file__).resolve().parent.parent / "state" / "tb21_test31_tasks.txt"
+# post-training test set (orange) and validation set (green), ../post_training/plan.md §2a
+TEST_CANDIDATES = Path(__file__).resolve().parent.parent / "state" / "tb21_test20_tasks.txt"
+VALIDATION_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_val8_tasks.txt"
 
 
 def selected_tasks(path: Path = SELECTED_TASKS) -> list[str]:
@@ -33,7 +34,12 @@ def selected_tasks(path: Path = SELECTED_TASKS) -> list[str]:
 
 
 def test_candidates(path: Path = TEST_CANDIDATES) -> list[str]:
-    """Candidate test-set tasks for post-training (bare names); [] if the file is missing."""
+    """The post-training test-set tasks (bare names); [] if the file is missing."""
+    return selected_tasks(path)
+
+
+def validation_tasks(path: Path = VALIDATION_TASKS) -> list[str]:
+    """The post-training validation-set tasks (bare names); [] if the file is missing."""
     return selected_tasks(path)
 TEST_LOG_TAIL = 20_000  # characters of verifier/test-stdout.txt to send
 
@@ -203,6 +209,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(selected_tasks())
         if url.path == "/api/test_candidates":
             return self._json(test_candidates())
+        if url.path == "/api/validation_tasks":
+            return self._json(validation_tasks())
         if url.path == "/api/sources":
             return self._json([{"name": k, "label": v["label"], "remote": v["remote"], "available": v["ledger"].exists()}
                                for k, v in srcs.items()])

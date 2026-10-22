@@ -97,3 +97,10 @@ def test_test_candidates_reads_its_own_list(tmp_path):
     f.write_text("fix-git\nregex-log\n")
     assert browse.test_candidates(f) == ["fix-git", "regex-log"]
     assert browse.test_candidates(tmp_path / "missing.txt") == []
+
+
+def test_validation_tasks_reads_its_own_list(tmp_path):
+    f = tmp_path / "val.txt"
+    f.write_text("kv-store-grpc\npath-tracing\n")
+    assert browse.validation_tasks(f) == ["kv-store-grpc", "path-tracing"]
+    assert browse.validation_tasks(tmp_path / "missing.txt") == []

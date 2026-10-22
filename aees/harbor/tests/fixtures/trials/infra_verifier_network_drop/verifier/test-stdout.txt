@@ -1,0 +1,300 @@
+        None. By passing None as the value of host and port, you can pass NULL to
+        the underlying C API.
+    
+        The family, type and proto arguments can be optionally specified in order to
+        narrow the list of addresses returned. Passing zero as a value for each of
+        these arguments selects the full range of results.
+        """
+        # We override this function since we want to translate the numeric family
+        # and socket type values to enum constants.
+        addrlist = []
+>       for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+E       requests.packages.urllib3.exceptions.ProtocolError: ('Connection aborted.', gaierror(-2, 'Name or service not known'))
+
+/opt/miniconda3/envs/testbed/lib/python3.9/socket.py:966: ProtocolError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_requests.TestTimeout object at 0x7ffffe0604f0>
+
+    def test_encoded_methods(self):
+        """See: https://github.com/kennethreitz/requests/issues/2316"""
+>       r = requests.request(b'GET', httpbin('get'))
+
+test_requests.py:1394: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+requests/api.py:49: in request
+    return session.request(method=method, url=url, **kwargs)
+requests/sessions.py:457: in request
+    resp = self.send(prep, **send_kwargs)
+requests/sessions.py:569: in send
+    r = adapter.send(request, **kwargs)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <requests.adapters.HTTPAdapter object at 0x7ffffd7828e0>
+request = <PreparedRequest [GET]>, stream = False
+timeout = <requests.packages.urllib3.util.timeout.Timeout object at 0x7ffffd782d90>
+verify = True, cert = None
+proxies = {'no': '192.168.0.0/24,127.0.0.1,localhost.localdomain,172.16.1.1'}
+
+    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):
+        """Sends PreparedRequest object. Returns Response object.
+    
+        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.
+        :param stream: (optional) Whether to stream the request content.
+        :param timeout: (optional) How long to wait for the server to send
+            data before giving up, as a float, or a (`connect timeout, read
+            timeout <user/advanced.html#timeouts>`_) tuple.
+        :type timeout: float or tuple
+        :param verify: (optional) Whether to verify SSL certificates.
+        :param cert: (optional) Any user-provided SSL certificate to be trusted.
+        :param proxies: (optional) The proxies dictionary to apply to the request.
+        """
+    
+        conn = self.get_connection(request.url, proxies)
+    
+        self.cert_verify(conn, request.url, verify, cert)
+        url = self.request_url(request, proxies)
+        self.add_headers(request)
+    
+        chunked = not (request.body is None or 'Content-Length' in request.headers)
+    
+        if isinstance(timeout, tuple):
+            try:
+                connect, read = timeout
+                timeout = TimeoutSauce(connect=connect, read=read)
+            except ValueError as e:
+                # this may raise a string formatting error.
+                err = ("Invalid timeout {0}. Pass a (connect, read) "
+                       "timeout tuple, or a single float to set "
+                       "both timeouts to the same value".format(timeout))
+                raise ValueError(err)
+        else:
+            timeout = TimeoutSauce(connect=timeout, read=timeout)
+    
+        try:
+            if not chunked:
+                resp = conn.urlopen(
+                    method=request.method,
+                    url=url,
+                    body=request.body,
+                    headers=request.headers,
+                    redirect=False,
+                    assert_same_host=False,
+                    preload_content=False,
+                    decode_content=False,
+                    retries=Retry(self.max_retries, read=False),
+                    timeout=timeout
+                )
+    
+            # Send the request.
+            else:
+                if hasattr(conn, 'proxy_pool'):
+                    conn = conn.proxy_pool
+    
+                low_conn = conn._get_conn(timeout=timeout)
+    
+                try:
+                    low_conn.putrequest(request.method,
+                                        url,
+                                        skip_accept_encoding=True)
+    
+                    for header, value in request.headers.items():
+                        low_conn.putheader(header, value)
+    
+                    low_conn.endheaders()
+    
+                    for i in request.body:
+                        low_conn.send(hex(len(i))[2:].encode('utf-8'))
+                        low_conn.send(b'\r\n')
+                        low_conn.send(i)
+                        low_conn.send(b'\r\n')
+                    low_conn.send(b'0\r\n\r\n')
+    
+                    r = low_conn.getresponse()
+                    resp = HTTPResponse.from_httplib(
+                        r,
+                        pool=conn,
+                        connection=low_conn,
+                        preload_content=False,
+                        decode_content=False
+                    )
+                except:
+                    # If we hit any problems here, clean up the connection.
+                    # Then, reraise so that we can handle the actual exception.
+                    low_conn.close()
+                    raise
+                else:
+                    # All is well, return the connection to the pool.
+                    conn._put_conn(low_conn)
+    
+        except (ProtocolError, socket.error) as err:
+>           raise ConnectionError(err, request=request)
+E           requests.exceptions.ConnectionError: ('Connection aborted.', gaierror(-2, 'Name or service not known'))
+
+requests/adapters.py:407: ConnectionError
+=============================== warnings summary ===============================
+requests/packages/urllib3/_collections.py:1
+requests/packages/urllib3/_collections.py:1
+  /testbed/requests/packages/urllib3/_collections.py:1: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    from collections import Mapping, MutableMapping
+
+test_requests.py::RequestsTestCase::test_BASICAUTH_TUPLE_HTTP_200_OK_GET
+  /testbed/requests/models.py:169: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    if isinstance(hook, collections.Callable):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED test_requests.py::RequestsTestCase::test_BASICAUTH_TUPLE_HTTP_200_OK_GET
+PASSED test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE
+PASSED test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET
+PASSED test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE
+PASSED test_requests.py::RequestsTestCase::test_DIGEST_AUTH_SETS_SESSION_COOKIES
+PASSED test_requests.py::RequestsTestCase::test_DIGEST_HTTP_200_OK_GET
+PASSED test_requests.py::RequestsTestCase::test_DIGEST_STREAM
+PASSED test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_ALTERNATIVE
+PASSED test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS
+PASSED test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS
+PASSED test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD
+PASSED test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT
+PASSED test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET
+PASSED test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES
+PASSED test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA
+PASSED test_requests.py::RequestsTestCase::test_auth_is_retained_for_redirect_on_host
+PASSED test_requests.py::RequestsTestCase::test_auth_is_stripped_on_redirect_off_host
+PASSED test_requests.py::RequestsTestCase::test_autoset_header_values_are_native
+PASSED test_requests.py::RequestsTestCase::test_basic_auth_str_is_always_native
+PASSED test_requests.py::RequestsTestCase::test_basic_building
+PASSED test_requests.py::RequestsTestCase::test_basicauth_with_netrc
+PASSED test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files
+PASSED test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests
+PASSED test_requests.py::RequestsTestCase::test_connection_error
+PASSED test_requests.py::RequestsTestCase::test_cookie_as_dict_items
+PASSED test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items
+PASSED test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len
+PASSED test_requests.py::RequestsTestCase::test_cookie_as_dict_keys
+PASSED test_requests.py::RequestsTestCase::test_cookie_as_dict_values
+PASSED test_requests.py::RequestsTestCase::test_cookie_parameters
+PASSED test_requests.py::RequestsTestCase::test_entry_points
+PASSED test_requests.py::RequestsTestCase::test_get_auth_from_url
+PASSED test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes
+PASSED test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces
+PASSED test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces
+PASSED test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars
+PASSED test_requests.py::RequestsTestCase::test_header_keys_are_native
+PASSED test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent
+PASSED test_requests.py::RequestsTestCase::test_hook_receives_request_arguments
+PASSED test_requests.py::RequestsTestCase::test_http_error
+PASSED test_requests.py::RequestsTestCase::test_invalid_url
+PASSED test_requests.py::RequestsTestCase::test_links
+PASSED test_requests.py::RequestsTestCase::test_long_authinfo_in_url
+PASSED test_requests.py::RequestsTestCase::test_no_content_length
+PASSED test_requests.py::RequestsTestCase::test_nonhttp_schemes_dont_check_URLs
+PASSED test_requests.py::RequestsTestCase::test_params_are_added_before_fragment
+PASSED test_requests.py::RequestsTestCase::test_path_is_not_double_encoded
+PASSED test_requests.py::RequestsTestCase::test_prepare_request_with_bytestring_url
+PASSED test_requests.py::RequestsTestCase::test_response_decode_unicode
+PASSED test_requests.py::RequestsTestCase::test_response_is_iterable
+PASSED test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks
+PASSED test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks
+PASSED test_requests.py::RequestsTestCase::test_transport_adapter_ordering
+PASSED test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames
+PASSED test_requests.py::TestContentEncodingDetection::test_html4_pragma
+PASSED test_requests.py::TestContentEncodingDetection::test_html_charset
+PASSED test_requests.py::TestContentEncodingDetection::test_none
+PASSED test_requests.py::TestContentEncodingDetection::test_precedence
+PASSED test_requests.py::TestContentEncodingDetection::test_xhtml_pragma
+PASSED test_requests.py::TestContentEncodingDetection::test_xml
+PASSED test_requests.py::TestCaseInsensitiveDict::test_contains
+PASSED test_requests.py::TestCaseInsensitiveDict::test_delitem
+PASSED test_requests.py::TestCaseInsensitiveDict::test_docstring_example
+PASSED test_requests.py::TestCaseInsensitiveDict::test_equality
+PASSED test_requests.py::TestCaseInsensitiveDict::test_fixes_649
+PASSED test_requests.py::TestCaseInsensitiveDict::test_get
+PASSED test_requests.py::TestCaseInsensitiveDict::test_getitem
+PASSED test_requests.py::TestCaseInsensitiveDict::test_iter
+PASSED test_requests.py::TestCaseInsensitiveDict::test_iterable_init
+PASSED test_requests.py::TestCaseInsensitiveDict::test_kwargs_init
+PASSED test_requests.py::TestCaseInsensitiveDict::test_len
+PASSED test_requests.py::TestCaseInsensitiveDict::test_lower_items
+PASSED test_requests.py::TestCaseInsensitiveDict::test_mapping_init
+PASSED test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case
+PASSED test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case
+PASSED test_requests.py::TestCaseInsensitiveDict::test_setdefault
+PASSED test_requests.py::TestCaseInsensitiveDict::test_update
+PASSED test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged
+PASSED test_requests.py::UtilsTestCase::test_address_in_network
+PASSED test_requests.py::UtilsTestCase::test_dotted_netmask
+PASSED test_requests.py::UtilsTestCase::test_get_auth_from_url
+PASSED test_requests.py::UtilsTestCase::test_get_environ_proxies
+PASSED test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges
+PASSED test_requests.py::UtilsTestCase::test_is_ipv4_address
+PASSED test_requests.py::UtilsTestCase::test_is_valid_cidr
+PASSED test_requests.py::UtilsTestCase::test_super_len_io_streams
+PASSED test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int
+PASSED test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str
+PASSED test_requests.py::TestMorselToCookieExpires::test_expires_none
+PASSED test_requests.py::TestMorselToCookieExpires::test_expires_valid_str
+PASSED test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str
+PASSED test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int
+PASSED test_requests.py::TestTimeout::test_invalid_timeout
+PASSED test_requests.py::TestRedirects::test_requests_are_updated_each_time
+PASSED test_requests.py::test_data_argument_accepts_tuples
+PASSED test_requests.py::test_prepared_request_empty_copy
+PASSED test_requests.py::test_prepared_request_no_cookies_copy
+PASSED test_requests.py::test_prepared_request_complete_copy
+PASSED test_requests.py::test_prepare_unicode_url
+FAILED test_requests.py::RequestsTestCase::test_conflicting_post_params - Typ...
+FAILED test_requests.py::RequestsTestCase::test_cookie_persists_via_api - req...
+FAILED test_requests.py::RequestsTestCase::test_cookie_quote_wrapped - reques...
+FAILED test_requests.py::RequestsTestCase::test_cookie_removed_on_expire - re...
+FAILED test_requests.py::RequestsTestCase::test_cookie_sent_on_redirect - req...
+FAILED test_requests.py::RequestsTestCase::test_custom_content_type - request...
+FAILED test_requests.py::RequestsTestCase::test_decompress_gzip - requests.ex...
+FAILED test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post
+FAILED test_requests.py::RequestsTestCase::test_fixes_1329 - requests.excepti...
+FAILED test_requests.py::RequestsTestCase::test_generic_cookiejar_works - req...
+FAILED test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive
+FAILED test_requests.py::RequestsTestCase::test_history_is_always_a_list - re...
+FAILED test_requests.py::RequestsTestCase::test_json_param_post_content_type_works
+FAILED test_requests.py::RequestsTestCase::test_manual_redirect_with_partial_body_read
+FAILED test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable
+FAILED test_requests.py::RequestsTestCase::test_param_cookiejar_works - reque...
+FAILED test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive
+FAILED test_requests.py::RequestsTestCase::test_prepared_from_session - reque...
+FAILED test_requests.py::RequestsTestCase::test_prepared_request_hook - reque...
+FAILED test_requests.py::RequestsTestCase::test_pyopenssl_redirect - requests...
+FAILED test_requests.py::RequestsTestCase::test_redirect_with_wrong_gzipped_header
+FAILED test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable
+FAILED test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie
+FAILED test_requests.py::RequestsTestCase::test_request_cookies_not_persisted
+FAILED test_requests.py::RequestsTestCase::test_request_ok_set - requests.exc...
+FAILED test_requests.py::RequestsTestCase::test_requests_history_is_saved - r...
+FAILED test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden
+FAILED test_requests.py::RequestsTestCase::test_session_pickling - requests.e...
+FAILED test_requests.py::RequestsTestCase::test_set_cookie_on_301 - requests....
+FAILED test_requests.py::RequestsTestCase::test_status_raising - requests.exc...
+FAILED test_requests.py::RequestsTestCase::test_time_elapsed_blank - requests...
+FAILED test_requests.py::RequestsTestCase::test_unicode_get - requests.except...
+FAILED test_requests.py::RequestsTestCase::test_unicode_header_name - request...
+FAILED test_requests.py::RequestsTestCase::test_unicode_method_name - request...
+FAILED test_requests.py::RequestsTestCase::test_unicode_multipart_post - requ...
+FAILED test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect - r...
+FAILED test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param
+FAILED test_requests.py::RequestsTestCase::test_user_agent_transfers - reques...
+FAILED test_requests.py::TestTimeout::test_stream_timeout - requests.exceptio...
+FAILED test_requests.py::TestTimeout::test_none_timeout - requests.exceptions...
+FAILED test_requests.py::TestTimeout::test_read_timeout - requests.exceptions...
+FAILED test_requests.py::TestTimeout::test_connect_timeout - requests.excepti...
+FAILED test_requests.py::TestTimeout::test_total_timeout_connect - requests.e...
+FAILED test_requests.py::TestTimeout::test_encoded_methods - requests.excepti...
+============ 44 failed, 99 passed, 3 warnings in 1418.62s (0:23:38) ============
+Updated 1 path from 980e006
+error: Failed to fetch: `https://pypi.org/simple/datasets/`
+  Caused by: Could not connect, are you offline?
+  Caused by: Request failed after 3 retries
+  Caused by: error sending request for url (https://pypi.org/simple/datasets/)
+  Caused by: client error (Connect)
+  Caused by: dns error: failed to lookup address information: Name or service not known
+  Caused by: failed to lookup address information: Name or service not known

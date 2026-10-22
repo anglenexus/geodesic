@@ -1,0 +1,7 @@
+Skipping image OS validation for hb__cbfef8b9ca3b488a7867a18f8213d331: docker inspect returned 1
+Unknown Error in LLM interaction: litellm.RateLimitError: RateLimitError: OpenAIException - You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.
+Unknown Error in LLM interaction: litellm.RateLimitError: RateLimitError: OpenAIException - You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.
+Unknown Error in LLM interaction: litellm.RateLimitError: RateLimitError: OpenAIException - You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.
+Trajectory dumped to /Users/willzou/code/jobs/luna_smoke/psf__requests-1142__WsMsT4f/agent/trajectory.json
+Trial psf__requests-1142__WsMsT4f failed: litellm.RateLimitError: RateLimitError: OpenAIException - You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.
+Collecting main service artifacts

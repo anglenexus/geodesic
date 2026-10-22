@@ -1,0 +1,300 @@
+[?2004h> def send(self, request, **kwargs):
+[?2004l
+[?2004h>     print(repr(request.method))
+[?2004l
+[?2004h>     return Response()
+[?2004l
+[?2004h> 
+[?2004l
+[?2004h> s = Session()
+[?2004l
+[?2004h> s.send = send.__get__(s, Session)
+[?2004l
+[?2004h> s.request(b'GET', 'http://example.com', allow_redirects=False)
+[?2004l
+[?2004h> PY
+[?2004l
+'GET'
+[?2004h(testbed) root@fae66457acc3:/testbed# python - <<'PY'
+[?2004l
+[?2004h> from pathlib import Path
+[?2004l
+[?2004h> p = Path('test_requests.py')
+[?2004l
+[?2004h> s = p.read_text()
+[?2004l
+[?2004h> needle = "    def test_custom_content_type(self):\n"
+[?2004l
+[?2004h> test = "    def test_bytes_method(self):\n        sent = []\n\n        def send(request, **kwargs):\n            sent.append(request)\n\n        session = requests.Session()\n        session.send = send\n        session.request(method=b'GET', url='http://example.com',\n                        allow_redirects=False)\n\n        assert sent[0].method == 'GET'\n\n"
+[?2004l
+[?2004h> assert s.count(needle) == 1
+[?2004l
+[?2004h> p.write_text(s.replace(needle, test + needle))
+[?2004l
+[?2004h> PY
+[?2004l
+[?2004h(testbed) root@fae66457acc3:/testbed# 
+[?2004l
+[?2004h(testbed) root@fae66457acc3:/testbed# git diff --check; git diff -- requests/sessions.py test_requests.py
+[?2004l
+[?1h=
+
+[K[?1l>[?1h=
+[1mdiff --git a/requests/sessions.py b/requests/sessions.py[m[m
+[1mindex d701ff2..adcfbac 100755[m[m
+[1m--- a/requests/sessions.py[m[m
+[1m+++ b/requests/sessions.py[m[m
+[36m@@ -425,7 +425,7 @@[m [mclass Session(SessionRedirectMixin):[m[m
+             If Tuple, ('cert', 'key') pair.[m[m
+         """[m[m
+ [m[m
+[31m-        method = builtin_str(method)[m[m
+[32m+[m[32m        method = to_native_string(method)[m[m
+ [m[m
+         # Create the Request.[m[m
+         req = Request([m[m
+[1mdiff --git a/test_requests.py b/test_requests.py[m[m
+[1mindex 467c5bc..76e456a 100755[m[m
+[1m--- a/test_requests.py[m[m
+[1m+++ b/test_requests.py[m[m
+[36m@@ -523,6 +523,19 @@[m [mclass RequestsTestCase(unittest.TestCase):[m[m
+             method=u('POST'), url=httpbin('post'), files=files)[m[m
+         assert r.status_code == 200[m[m
+ [m[m
+[32m+[m[32m    def test_bytes_method(self):[m[m
+[32m+[m[32m        sent = [][m[m
+[32m+[m[m
+[32m+[m[32m        def send(request, **kwargs):[m[m
+[32m+[m[32m            sent.append(request)[m[m
+[32m+[m[m
+[32m+[m[32m        session = requests.Session()[m[m
+[32m+[m[32m        session.send = send[m[m
+[32m+[m[32m        session.request(method=b'GET', url='http://example.com',[m[m
+[32m+[m[32m                        allow_redirects=False)[m[m
+[32m+[m[m
+[32m+[m[32m        assert sent[0].method == 'GET'[m[m
+[32m+[m[m
+     def test_custom_content_type(self):[m[m
+         r = requests.post([m[m
+             httpbin('post'),[m[m
+
+[K[?1l>[?2004h(testbed) root@fae66457acc3:/testbed# pytest -q test_requests.py -k 'bytes_method or unicode_method_name'
+[?2004l
+[32m.[0m[32m.[0m[33m                                                                                                                                                       [100%][0m
+[33m======================================================================= warnings summary =======================================================================[0m
+requests/packages/urllib3/_collections.py:1
+requests/packages/urllib3/_collections.py:1
+  /testbed/requests/packages/urllib3/_collections.py:1: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    from collections import Mapping, MutableMapping
+
+test_requests.py::RequestsTestCase::test_bytes_method
+  /testbed/requests/models.py:169: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    if isinstance(hook, collections.Callable):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[33m[32m2 passed[0m, [33m[1m141 deselected[0m, [33m[1m3 warnings[0m[33m in 0.73s[0m[0m
+[?2004h(testbed) root@fae66457acc3:/testbed# pytest -q test_requests.py
+[?2004l
+[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m^C
+=========================================================================== FAILURES ===========================================================================
+[31m[1m________________________________________________________ RequestsTestCase.test_conflicting_post_params _________________________________________________________[0m
+
+self = <test_requests.RequestsTestCase testMethod=test_conflicting_post_params>
+
+    def test_conflicting_post_params(self):
+        url = httpbin('post')
+        with open('requirements.txt') as f:
+>           pytest.raises(ValueError, "requests.post(url, data='[{\"some\": \"data\"}]', files={'some': f})")
+[1m[31mE           TypeError: 'requests.post(url, data=\'[{"some": "data"}]\', files={\'some\': f})' object (type: <class 'str'>) must be callable[0m
+
+[1m[31mtest_requests.py[0m:439: TypeError
+[33m======================================================================= warnings summary =======================================================================[0m
+requests/packages/urllib3/_collections.py:1
+requests/packages/urllib3/_collections.py:1
+  /testbed/requests/packages/urllib3/_collections.py:1: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    from collections import Mapping, MutableMapping
+
+test_requests.py::RequestsTestCase::test_BASICAUTH_TUPLE_HTTP_200_OK_GET
+  /testbed/requests/models.py:169: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    if isinstance(hook, collections.Callable):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mFAILED[0m test_requests.py::[1mRequestsTestCase::test_conflicting_post_params[0m - TypeError: 'requests.post(url, data=\'[{"some": "data"}]\', files={\'some\': f})' object (type: <class 'str'>) must be callable
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+[1m[31m/testbed/requests/packages/urllib3/util/connection.py[0m:78: KeyboardInterrupt
+[33m(to show a full traceback on KeyboardInterrupt use --full-trace)[0m
+[31m[31m[1m1 failed[0m, [32m24 passed[0m, [33m3 warnings[0m[31m in 39.33s[0m[0m
+[?2004h(testbed) root@fae66457acc3:/testbed# grep -n "builtin_str" requests/sessions.py; pytest -q test_requests.py::RequestsTestCase::test_bytes_method; python -m py_compile requests/sessions.py test_requests.py; git diff --check; git status --short; git diff --stat
+[?2004l
+16:from .compat import cookielib, OrderedDict, urljoin, urlparse, builtin_str
+[32m.[0m[33m                                                                                                                                                        [100%][0m
+[33m======================================================================= warnings summary =======================================================================[0m
+requests/packages/urllib3/_collections.py:1
+requests/packages/urllib3/_collections.py:1
+  /testbed/requests/packages/urllib3/_collections.py:1: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    from collections import Mapping, MutableMapping
+
+test_requests.py::RequestsTestCase::test_bytes_method
+  /testbed/requests/models.py:169: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    if isinstance(hook, collections.Callable):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[33m[32m1 passed[0m, [33m[1m3 warnings[0m[33m in 0.06s[0m[0m
+[?1h=
+
+[K[?1l> [31mM[m requests/sessions.py
+ [31mM[m test_requests.py
+[?1h=
+ requests/sessions.py |  2 [32m+[m[31m-[m[m
+ test_requests.py     | 13 [32m+++++++++++++[m[m
+ 2 files changed, 14 insertions(+), 1 deletion(-)[m
+
+[K[?1l>[?2004h(testbed) root@fae66457acc3:/testbed# git diff -- requests/sessions.py test_requests.py
+[?2004l
+[?1h=
+[1mdiff --git a/requests/sessions.py b/requests/sessions.py[m[m
+[1mindex d701ff2..adcfbac 100755[m[m
+[1m--- a/requests/sessions.py[m[m
+[1m+++ b/requests/sessions.py[m[m
+[36m@@ -425,7 +425,7 @@[m [mclass Session(SessionRedirectMixin):[m[m
+             If Tuple, ('cert', 'key') pair.[m[m
+         """[m[m
+ [m[m
+[31m-        method = builtin_str(method)[m[m
+[32m+[m[32m        method = to_native_string(method)[m[m
+ [m[m
+         # Create the Request.[m[m
+         req = Request([m[m
+[1mdiff --git a/test_requests.py b/test_requests.py[m[m
+[1mindex 467c5bc..76e456a 100755[m[m
+[1m--- a/test_requests.py[m[m
+[1m+++ b/test_requests.py[m[m
+[36m@@ -523,6 +523,19 @@[m [mclass RequestsTestCase(unittest.TestCase):[m[m
+             method=u('POST'), url=httpbin('post'), files=files)[m[m
+         assert r.status_code == 200[m[m
+ [m[m
+[32m+[m[32m    def test_bytes_method(self):[m[m
+[32m+[m[32m        sent = [][m[m
+[32m+[m[m
+[32m+[m[32m        def send(request, **kwargs):[m[m
+[32m+[m[32m            sent.append(request)[m[m
+[32m+[m[m
+[32m+[m[32m        session = requests.Session()[m[m
+[32m+[m[32m        session.send = send[m[m
+[32m+[m[32m        session.request(method=b'GET', url='http://example.com',[m[m
+[32m+[m[32m                        allow_redirects=False)[m[m
+[32m+[m[m
+[32m+[m[32m        assert sent[0].method == 'GET'[m[m
+[32m+[m[m
+     def test_custom_content_type(self):[m[m
+         r = requests.post([m[m
+             httpbin('post'),[m[m
+
+[K[?1l>[?2004h(testbed) root@fae66457acc3:/testbed# python - <<'PY'
+[?2004l
+[?2004h> from pathlib import Path
+[?2004l
+[?2004h> p = Path('requests/sessions.py')
+[?2004l
+[?2004h> s = p.read_text()
+[?2004l
+[?2004h> s = s.replace('from .compat import cookielib, OrderedDict, urljoin, urlparse, builtin_str\n', 'from .compat import cookielib, OrderedDict, urljoin, urlparse\n')
+[?2004l
+[?2004h> p.write_text(s)
+[?2004l
+[?2004h> PY
+[?2004l
+[?2004h(testbed) root@fae66457acc3:/testbed# pytest -q test_requests.py::RequestsTestCase::test_bytes_method; python -m py_compile requests/sessions.py test_requests.py; git diff --check; git status --short; git diff --stat; git diff -- requests/sessions.py test_requests.py
+[?2004l
+[32m.[0m[33m                                                                                                                                                        [100%][0m
+[33m======================================================================= warnings summary =======================================================================[0m
+requests/packages/urllib3/_collections.py:1
+requests/packages/urllib3/_collections.py:1
+  /testbed/requests/packages/urllib3/_collections.py:1: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    from collections import Mapping, MutableMapping
+
+requests/sessions.py:462
+  /testbed/requests/sessions.py:462: DeprecationWarning: invalid escape sequence \*
+    """Sends a GET request. Returns :class:`Response` object.
+
+requests/sessions.py:472
+  /testbed/requests/sessions.py:472: DeprecationWarning: invalid escape sequence \*
+    """Sends a OPTIONS request. Returns :class:`Response` object.
+
+requests/sessions.py:482
+  /testbed/requests/sessions.py:482: DeprecationWarning: invalid escape sequence \*
+    """Sends a HEAD request. Returns :class:`Response` object.
+
+requests/sessions.py:492
+  /testbed/requests/sessions.py:492: DeprecationWarning: invalid escape sequence \*
+    """Sends a POST request. Returns :class:`Response` object.
+
+requests/sessions.py:503
+  /testbed/requests/sessions.py:503: DeprecationWarning: invalid escape sequence \*
+    """Sends a PUT request. Returns :class:`Response` object.
+
+requests/sessions.py:513
+  /testbed/requests/sessions.py:513: DeprecationWarning: invalid escape sequence \*
+    """Sends a PATCH request. Returns :class:`Response` object.
+
+requests/sessions.py:523
+  /testbed/requests/sessions.py:523: DeprecationWarning: invalid escape sequence \*
+    """Sends a DELETE request. Returns :class:`Response` object.
+
+test_requests.py::RequestsTestCase::test_bytes_method
+  /testbed/requests/models.py:169: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    if isinstance(hook, collections.Callable):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[33m[32m1 passed[0m, [33m[1m10 warnings[0m[33m in 0.07s[0m[0m
+[?1h=
+
+[K[?1l> [31mM[m requests/sessions.py
+ [31mM[m test_requests.py
+[?1h=
+ requests/sessions.py |  4 [32m++[m[31m--[m[m
+ test_requests.py     | 13 [32m+++++++++++++[m[m
+ 2 files changed, 15 insertions(+), 2 deletions(-)[m
+
+[K[?1l>[?1h=
+[1mdiff --git a/requests/sessions.py b/requests/sessions.py[m[m
+[1mindex d701ff2..dfce7cf 100755[m[m
+[1m--- a/requests/sessions.py[m[m
+[1m+++ b/requests/sessions.py[m[m
+[36m@@ -13,7 +13,7 @@[m [mfrom collections import Mapping[m[m
+ from datetime import datetime[m[m
+ [m[m
+ from .auth import _basic_auth_str[m[m
+[31m-from .compat import cookielib, OrderedDict, urljoin, urlparse, builtin_str[m[m
+[32m+[m[32mfrom .compat import cookielib, OrderedDict, urljoin, urlparse[m[m
+ from .cookies import ([m[m
+     cookiejar_from_dict, extract_cookies_to_jar, RequestsCookieJar, merge_cookies)[m[m
+ from .models import Request, PreparedRequest, DEFAULT_REDIRECT_LIMIT[m[m
+[36m@@ -425,7 +425,7 @@[m [mclass Session(SessionRedirectMixin):[m[m
+             If Tuple, ('cert', 'key') pair.[m[m
+         """[m[m
+ [m[m
+[31m-        method = builtin_str(method)[m[m
+[32m+[m[32m        method = to_native_string(method)[m[m
+ [m[m
+         # Create the Request.[m[m
+         req = Request([m[m
+[1mdiff --git a/test_requests.py b/test_requests.py[m[m
+[1mindex 467c5bc..76e456a 100755[m[m
+[1m--- a/test_requests.py[m[m
+[1m+++ b/test_requests.py[m[m
+[36m@@ -523,6 +523,19 @@[m [mclass RequestsTestCase(unittest.TestCase):[m[m
+             method=u('POST'), url=httpbin('post'), files=files)[m[m
+         assert r.status_code == 200[m[m
+ [m[m
+[32m+[m[32m    def test_bytes_method(self):[m[m
+[32m+[m[32m        sent = [][m[m
+[32m+[m[m
+[32m+[m[32m        def send(request, **kwargs):[m[m
+[32m+[m[32m            sent.append(request)[m[m
+[32m+[m[m
+[32m+[m[32m        session = requests.Session()[m[m
+[32m+[m[32m        session.send = send[m[m
+[32m+[m[32m        session.request(method=b'GET', url='http://example.com',[m[m
+:[K

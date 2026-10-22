@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AEES Run Status</title>
 <style>
-  :root { --bg:#f7f7f5; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e3e3e0; --accent:#2f5bd3; --test:#d9730d;
+  :root { --bg:#f7f7f5; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e3e3e0; --accent:#2f5bd3; --test:#d9730d; --val:#0f9d58;
           --pass:#1f8a4c; --fail:#c2412d; --none:#7a7a80; --run:#2f5bd3; --queue:#e3e3e0; --warn:#a06a00; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#151517; --panel:#1e1e21; --ink:#ececec; --muted:#9a9aa2; --line:#2e2e33; --accent:#7aa2ff; --test:#f0a050;
+    :root { --bg:#151517; --panel:#1e1e21; --ink:#ececec; --muted:#9a9aa2; --line:#2e2e33; --accent:#7aa2ff; --test:#f0a050; --val:#4cd08a;
             --pass:#4cc283; --fail:#ff7a63; --none:#8d8d95; --run:#7aa2ff; --queue:#2e2e33; --warn:#e0a640; }
   }
   * { box-sizing: border-box; }
@@ -39,6 +39,7 @@
   .taskname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .taskname.sel { color:var(--accent); font-weight:600; box-shadow: inset 3px 0 0 var(--accent); padding-left:6px; }
   .taskname.test { color:var(--test); font-weight:600; box-shadow: inset 3px 0 0 var(--test); padding-left:6px; }
+  .taskname.val { color:var(--val); font-weight:600; box-shadow: inset 3px 0 0 var(--val); padding-left:6px; }
   .offlist { color:var(--warn); font-size:13px; margin-top:4px; }
 </style>
 </head>
@@ -70,8 +71,9 @@ const stat = (k, v, cls) => el("div", { class: "stat" }, el("div", { class: "v "
 const clock = iso => iso ? new Date(iso).toLocaleTimeString() : "—";
 
 let SELECTED = new Set();  // the tasks chosen for collection, from state/tb21_selected_tasks.txt
-let TEST = new Set();      // post-training test-set candidates (orange), from state/tb21_test31_tasks.txt
-const rankT = t => SELECTED.has(t) ? 0 : TEST.has(t) ? 1 : 2;
+let TEST = new Set();      // post-training test set (orange), from state/tb21_test20_tasks.txt
+let VAL = new Set();       // post-training validation set (green), from state/tb21_val8_tasks.txt
+const rankT = t => SELECTED.has(t) ? 0 : TEST.has(t) ? 1 : VAL.has(t) ? 2 : 3;
 // Which model to show ("" = all); the same choice as the trajectory browser's drop-down (per browser tab).
 let MODEL = new URLSearchParams(location.search).get("model") ?? sessionStorage.getItem("model") ?? "";
 const byModel = m => !MODEL || m === MODEL;
@@ -90,15 +92,15 @@ function jobCard(j, live) {
   const graded = j.pass + j.fail;
   const etaAt = j.eta_min ? new Date(Date.now() + j.eta_min * 60000).toLocaleTimeString() : null;
   const entries = Object.entries(j.cells).sort(([a], [b]) => (rankT(a) - rankT(b)) || a.localeCompare(b));
-  const off = entries.filter(([t]) => SELECTED.size && !SELECTED.has(t) && !TEST.has(t)).map(([t]) => t);
-  const nTest = entries.filter(([t]) => TEST.has(t)).length;
+  const off = entries.filter(([t]) => SELECTED.size && !SELECTED.has(t) && !TEST.has(t) && !VAL.has(t)).map(([t]) => t);
+  const nTest = entries.filter(([t]) => TEST.has(t)).length, nVal = entries.filter(([t]) => VAL.has(t)).length;
   const taskRows = entries.flatMap(([task, cells]) => {
     const queued = Math.max(0, j.attempts - cells.length);
     const order = { pass: 0, fail: 1, none: 2, running: 3 };
     const sorted = [...cells].sort((a, b) => order[a.s] - order[b.s]);
     const p = cells.filter(c => c.s === "pass").length, g = cells.filter(c => c.s === "pass" || c.s === "fail").length;
-    return [el("div", { class: "taskname" + (SELECTED.has(task) ? " sel" : TEST.has(task) ? " test" : ""),
-      title: task + (SELECTED.has(task) ? " (selected)" : TEST.has(task) ? " (test-set candidate)" : " (not selected)") }, task),
+    return [el("div", { class: "taskname" + (SELECTED.has(task) ? " sel" : TEST.has(task) ? " test" : VAL.has(task) ? " val" : ""),
+      title: task + (SELECTED.has(task) ? " (selected)" : TEST.has(task) ? " (test set)" : VAL.has(task) ? " (validation set)" : " (not selected)") }, task),
       el("div", { class: "cells" }, sorted.map(c => el("span", { class: "c c-" + c.s, title: `${c.trial}: ${c.s}${c.exc ? " (" + c.exc + ")" : ""}` })),
         Array.from({ length: queued }, () => el("span", { class: "c c-queued", title: "queued" }))),
       el("div", { class: "num muted" }, g ? `${p}/${g} pass` : "")];
@@ -121,10 +123,10 @@ function jobCard(j, live) {
       `exceptions (${j.none} of ${j.done} finished trials have no reward): ` +
       j.exceptions.map(([what, k]) => `${what} ×${k}`).join(" · ")) : null,
     off.length ? el("div", { class: "offlist" },
-      `${live ? "⚠ running" : "included"} ${off.length} task${off.length > 1 ? "s" : ""} outside the ${SELECTED.size} selected and ${TEST.size} test candidates: ` +
+      `${live ? "⚠ running" : "included"} ${off.length} task${off.length > 1 ? "s" : ""} outside the ${SELECTED.size} selected, ${TEST.size} test and ${VAL.size} validation tasks: ` +
       off.slice(0, 8).join(", ") + (off.length > 8 ? ", …" : "")) : null,
     el("details", { open: live ? "" : null }, el("summary", { class: "muted" },
-      `per-task progress` + (SELECTED.size ? ` (blue = selected, orange = test candidate; ${entries.length - off.length - nTest} blue, ${nTest} orange of ${entries.length})` : "")),
+      `per-task progress` + (SELECTED.size ? ` (blue = selected, orange = test set, green = validation; ${entries.length - off.length - nTest - nVal} blue, ${nTest} orange, ${nVal} green of ${entries.length})` : "")),
       el("div", { class: "grid" }, taskRows),
       el("div", { class: "legend" }, ...["pass", "fail", "none", "running", "queued"].map(s =>
         el("span", {}, el("i", { class: "c c-" + s }), s === "none" ? "no reward" : s)))));
@@ -265,7 +267,7 @@ function remoteSection(r) {
 async function refresh() {
   try {
     let s = await (await fetch("/api/status")).json();
-    SELECTED = new Set(s.selected_tasks || []); TEST = new Set(s.test_candidates || []);
+    SELECTED = new Set(s.selected_tasks || []); TEST = new Set(s.test_candidates || []); VAL = new Set(s.validation_tasks || []);
     const h = s.host, byM = s.overall_by_model || {};
     setModels([...s.jobs.map(j => j.model), ...(s.remotes || []).flatMap(r => r.jobs.map(j => j.model)),
                s.schedule && s.schedule.model, ...(s.remotes || []).map(r => r.schedule && r.schedule.model), ...Object.keys(byM)]);

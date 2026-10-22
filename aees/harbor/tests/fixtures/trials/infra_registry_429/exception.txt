@@ -1,0 +1,55 @@
+Traceback (most recent call last):
+  File "/Users/willzou/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/trial/trial.py", line 415, in run
+    await self._prepare()
+  File "/Users/willzou/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/trial/trial.py", line 453, in _prepare
+    await self._setup_agent_environment()
+  File "/Users/willzou/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/trial/trial.py", line 1542, in _setup_agent_environment
+    await self._start_agent_environment()
+  File "/Users/willzou/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/trial/trial.py", line 1548, in _start_agent_environment
+    await asyncio.wait_for(
+  File "/Users/willzou/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/willzou/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/environments/docker/docker.py", line 981, in start
+    await self._run_docker_compose_command(["build"])
+  File "/Users/willzou/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/environments/docker/docker.py", line 704, in _run_docker_compose_command
+    raise RuntimeError(
+RuntimeError: Docker compose command failed for environment astropy__astropy-13398. Command: docker compose --project-name astropy__astropy-13398__8pq4pgn__env --project-directory /Users/willzou/.cache/harbor/tasks/VmfKJaQztWsJcqcdJgkMZZ/astropy__astropy-13398/environment -f /private/var/folders/4f/6j8z20f14z12r9tyl9tnl_7r0000gn/T/tmpmfx5lgm7/astropy__astropy-13398__8Pq4pGn__env-docker-compose-resources.json -f /Users/willzou/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/environments/docker/docker-compose-build.yaml -f /private/var/folders/4f/6j8z20f14z12r9tyl9tnl_7r0000gn/T/tmp3enfe0di/docker-compose-environment.json -f /private/var/folders/4f/6j8z20f14z12r9tyl9tnl_7r0000gn/T/tmp5pwfatd4/docker-compose-mounts.json build. Return code: 1. Stdout:  Image astropy__astropy-13398__8pq4pgn__env-main Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 686B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.10kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest
+#3 ...
+
+#4 [auth] swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest
+#3 ERROR: unexpected status from HEAD request to https://registry-1.docker.io/v2/swebench/sweb.eval.x86_64.astropy_1776_astropy-13398/manifests/latest: 429 Too Many Requests
+------
+ > [internal] load metadata for docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest:
+------
+Dockerfile:19
+
+--------------------
+
+  17 |     # FROM ghcr.io/laude-institute/t-bench/ubuntu-24-04:latest
+
+  18 |     # FROM python:3.9-slim-bookworm
+
+  19 | >>> FROM swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest
+
+  20 |     
+
+  21 |     # View the list of available base images here:
+
+--------------------
+
+failed to solve: swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest: failed to resolve source metadata for docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest: unexpected status from HEAD request to https://registry-1.docker.io/v2/swebench/sweb.eval.x86_64.astropy_1776_astropy-13398/manifests/latest: 429 Too Many Requests
+
+. Stderr: None. 
