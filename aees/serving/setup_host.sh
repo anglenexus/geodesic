@@ -43,7 +43,7 @@ sudo apt-get update -y
 # with unmet dependencies; drop the desktop-only NVIDIA parts and let apt repair itself.
 if ! sudo apt-get check >/dev/null 2>&1; then
   warn "apt has broken dependencies; removing half-installed NVIDIA desktop packages and repairing."
-  broken=$(dpkg-query -W -f='${Package}\n' 'nvidia-driver-*' 'xserver-xorg-video-nvidia-*' 'libnvidia-gl-*' \
+  broken=$(dpkg-query -W -f='${Package}\n' 'nvidia-driver-580*' 'xserver-xorg-video-nvidia-580' 'libnvidia-gl-580' \
            'nvidia-settings' 2>/dev/null | grep -v '^$' || true)
   # shellcheck disable=SC2086
   [[ -z "$broken" ]] || sudo dpkg --remove --force-depends --force-remove-reinstreq $broken || true
