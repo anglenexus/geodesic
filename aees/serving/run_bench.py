@@ -144,7 +144,8 @@ MODELS = {
         # Above Harbor's 16 so saturation shows; each running request holds ~150 MiB of DeltaNet state.
         # CUDA graphs only up to the largest tested batch keep restarts short. Env vars override.
         serve_env={"ampere": {"MAX_RUNNING": "32"}, "_any": {"MAX_RUNNING": "64"}},
-        base_flags={"ampere": "--cuda-graph-max-bs 32", "_any": "--cuda-graph-max-bs 64"},
+        # {cg}: --cuda-graph-max-bs, or --cuda-graph-max-bs-decode in SGLang versions that split it.
+        base_flags={"ampere": "{cg} 32", "_any": "{cg} 64"},
         point_timeout=900,
         # The quality check measures tool-call formatting across settings, not reasoning: thinking off
         # keeps it fast and deterministic (thinking stays on for Harbor runs).
@@ -269,6 +270,17 @@ def slug(text):
 
 def pick(table, gpu_class):
     return table.get(gpu_class, table["_any"])
+
+
+def server_flags():
+    """Every --flag the installed SGLang server accepts (None if it can't be listed)."""
+    try:
+        p = subprocess.run([sys.executable, "-m", "sglang.launch_server", "--help"],
+                           capture_output=True, text=True, timeout=180)
+        flags = set(re.findall(r"(--[a-z0-9][a-z0-9-]*)", p.stdout + p.stderr))
+        return flags or None
+    except Exception:
+        return None
 
 
 def fmt(x, nd=0):
@@ -662,6 +674,20 @@ def main():
     def usable(x):
         s = ARMS[x]
         return a.gpu in s.get("gpus", (a.gpu,)) and (a.gpu_gb is None or a.gpu_gb >= s.get("min_gb", 0))
+    # Resolve version-dependent flag names and drop settings this SGLang can't run (argparse prefix
+    # matching otherwise turns a renamed flag into an "ambiguous option" crash at server start).
+    known = server_flags()
+    cg = "--cuda-graph-max-bs-decode" if known and "--cuda-graph-max-bs-decode" in known else "--cuda-graph-max-bs"
+    prof["base_flags"] = {k: v.replace("{cg}", cg) for k, v in prof["base_flags"].items()}
+    if known:
+        for name, spec in ARMS.items():
+            missing = [f for f in spec["flags"].split() if f.startswith("--") and f not in known]
+            if missing:
+                spec["gpus"] = ()
+                print(f"NOTE: setting {name} needs {missing}, which this SGLang doesn't have; skipping it.")
+        bad = [f for f in pick(prof["base_flags"], a.gpu).split() if f.startswith("--") and f not in known]
+        if bad:
+            sys.exit(f"This SGLang doesn't accept {bad}; tell the maintainer (run_bench.py MODELS base_flags).")
     wanted = a.arms or a.plan.get("arms") or prof["arms"]
     dropped = [x for x in wanted if x not in prof["arms"] or not usable(x)]
     if dropped:
