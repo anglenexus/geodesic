@@ -258,6 +258,7 @@ def find_marlin_repack():
     for mod, attr in (("sglang.srt.layers.quantization.compressed_tensors.schemes.compressed_tensors_wNa16",
                        "gptq_marlin_repack"),
                       ("sglang.srt.layers.quantization.gptq", "gptq_marlin_repack"),
+                      ("sglang.kernels.ops.quantization.gptq_marlin_repack", "gptq_marlin_repack"),
                       ("sglang.jit_kernel.gptq_marlin_repack", "gptq_marlin_repack"),
                       ("sgl_kernel", "gptq_marlin_repack")):
         try:
