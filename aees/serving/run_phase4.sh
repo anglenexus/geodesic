@@ -82,9 +82,9 @@ kernels() {
   step "2c load balancing: skewed batches, split-KV on/off, plan() cost"
   run_limited 4 "2c balance benchmark" "$PY" fi_bench.py balance
   step "2d weight precision: linear layers in BF16, FP8 and AWQ 4-bit, with SGLang's kernels"
-  # FP8 is measured with SGLang's prebuilt CUTLASS block-FP8 kernel; DeepGEMM (what the server picks on
-  # Hopper) would first JIT-compile for 10-20 minutes.
-  run_limited 6 "2d precision benchmark" env SGLANG_ENABLE_JIT_DEEPGEMM=0 "$PY" fi_bench.py precision
+  # FP8 goes through SGLang's dispatcher, as in the server: DeepGEMM on Hopper (it JIT-compiles on first
+  # use, excluded from timing). With DeepGEMM off, SGLang falls back to an untuned Triton kernel instead.
+  run_limited 8 "2d precision benchmark" "$PY" fi_bench.py precision
 }
 
 jit() {
