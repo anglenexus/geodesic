@@ -1,0 +1,164 @@
+{
+ "env": {
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "peak_gbs": 1555,
+  "sm": "8.0",
+  "sms": 108,
+  "torch": "2.13.0+cu130",
+  "cuda": "13.0",
+  "flashinfer": "0.6.18",
+  "time": "2026-10-22 21:31:20",
+  "model": "qwen3.5-27b",
+  "shape": {
+   "qh": 24,
+   "kvh": 4,
+   "hd": 256,
+   "layers": 16
+  }
+ },
+ "roots": [
+  "/home/ubuntu/fi-cold/jit-workspace",
+  "/home/ubuntu/fi-cold/lib/python3.12/site-packages/flashinfer/data/aot",
+  "/home/ubuntu/fi-cold/lib/python3.12/site-packages/flashinfer/data/csrc",
+  "/home/ubuntu/fi-cold/lib/python3.12/site-packages/flashinfer/data/include",
+  "/home/ubuntu/fi-cold/lib/python3.12/site-packages/flashinfer/data/spdlog/include"
+ ],
+ "variants": [
+  {
+   "key": "decode_base",
+   "desc": "Batch decode, BF16, head_dim 256 (Qwen3.5-27B)",
+   "first_s": 10.415,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 12,
+   "modules": [
+    [
+     "batch_decode_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_256_head_dim_vo_256_posenc_0_use_swa_False_use_logits_cap_False.so",
+     434808
+    ]
+   ]
+  },
+  {
+   "key": "decode_softcap",
+   "desc": "+ logits soft-cap",
+   "first_s": 10.252,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 12,
+   "modules": [
+    [
+     "batch_decode_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_256_head_dim_vo_256_posenc_0_use_swa_False_use_logits_cap_True.so",
+     438904
+    ]
+   ]
+  },
+  {
+   "key": "decode_rope",
+   "desc": "+ fused RoPE (ROPE_LLAMA)",
+   "first_s": 10.302,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 12,
+   "modules": [
+    [
+     "batch_decode_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_256_head_dim_vo_256_posenc_1_use_swa_False_use_logits_cap_False.so",
+     455288
+    ]
+   ]
+  },
+  {
+   "key": "decode_window",
+   "desc": "+ sliding window (256)",
+   "first_s": 10.221,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 12,
+   "modules": [
+    [
+     "batch_decode_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_256_head_dim_vo_256_posenc_0_use_swa_True_use_logits_cap_False.so",
+     443000
+    ]
+   ]
+  },
+  {
+   "key": "decode_fp8kv",
+   "desc": "FP8 e5m2 KV cache",
+   "first_s": 11.814,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 12,
+   "modules": [
+    [
+     "batch_decode_with_kv_cache_dtype_q_bf16_dtype_kv_e5m2_dtype_o_bf16_dtype_idx_i32_head_dim_qk_256_head_dim_vo_256_posenc_0_use_swa_False_use_logits_cap_False.so",
+     520872
+    ]
+   ]
+  },
+  {
+   "key": "decode_hd64",
+   "desc": "head_dim 64",
+   "first_s": 10.258,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 12,
+   "modules": [
+    [
+     "batch_decode_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_64_head_dim_vo_64_posenc_0_use_swa_False_use_logits_cap_False.so",
+     442944
+    ]
+   ]
+  },
+  {
+   "key": "decode_tensorcores",
+   "desc": "Decode on tensor cores (prefill kernel)",
+   "first_s": 17.756,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 26,
+   "modules": [
+    [
+     "batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_256_head_dim_vo_256_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False.so",
+     1987352
+    ]
+   ]
+  },
+  {
+   "key": "prefill_causal",
+   "desc": "Batch prefill, causal, paged KV",
+   "first_s": 0.003,
+   "cached_s": 0.001,
+   "error": null,
+   "new_files": 0,
+   "modules": []
+  },
+  {
+   "key": "single_decode",
+   "desc": "Single-request decode",
+   "first_s": 8.76,
+   "cached_s": 0.0,
+   "error": null,
+   "new_files": 12,
+   "modules": [
+    [
+     "single_decode_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_head_dim_qk_256_head_dim_vo_256_posenc_0_use_swa_False_use_logits_cap_False.so",
+     257408
+    ]
+   ]
+  },
+  {
+   "key": "single_prefill",
+   "desc": "Single-request prefill, causal",
+   "first_s": 15.891,
+   "cached_s": 0.0,
+   "error": null,
+   "new_files": 18,
+   "modules": [
+    [
+     "single_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_head_dim_qk_256_head_dim_vo_256_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False.so",
+     744608
+    ]
+   ]
+  }
+ ],
+ "diff_base_vs_softcap": "--- batch_decode_config.inc\n+++ batch_decode_config.inc\n@@ -14,5 +14,5 @@\n \n #define DISPATCH_context(DTypeQ, DTypeKV, DTypeO, IdType, HEAD_DIM_QK, HEAD_DIM_VO, POS_ENCODING_MODE, USE_SLIDING_WINDOW, USE_LOGITS_SOFT_CAP, AttentionVariant, Params, ...) { \\\n-  using AttentionVariant = DefaultAttention<false, false, false, false>; \\\n+  using AttentionVariant = DefaultAttention<false, false, true, false>; \\\n   __VA_ARGS__(); \\\n }\n@@ -26,5 +26,5 @@\n constexpr int HEAD_DIM_QK = 256;\n constexpr int HEAD_DIM_VO = 256;\n-constexpr auto USE_LOGITS_SOFT_CAP = false;\n+constexpr auto USE_LOGITS_SOFT_CAP = true;\n constexpr auto POS_ENCODING_MODE = PosEncodingMode::kNone;\n constexpr auto USE_SLIDING_WINDOW = false;"
+}
