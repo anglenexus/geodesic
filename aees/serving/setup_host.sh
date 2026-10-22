@@ -40,7 +40,14 @@ if [[ "$(uname -m)" == "aarch64" ]]; then REPO_ARCH=sbsa; fi
 log "Base packages"
 sudo apt-get update -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl wget \
-  htop tmux jq ca-certificates "linux-headers-$(uname -r)"
+  htop tmux jq ca-certificates
+# Kernel headers are only needed to build a new GPU driver; some cloud kernels have none in the archive.
+HEADERS="linux-headers-$(uname -r)"
+if apt-cache policy "$HEADERS" 2>/dev/null | grep -q "Candidate: [0-9]"; then
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$HEADERS"
+else
+  warn "No $HEADERS package for this kernel; fine unless a driver has to be installed."
+fi
 
 # NVIDIA's apt repository for Ubuntu 22.04: R580 driver, fabric manager and CUDA 13 toolkit
 if ! dpkg -s cuda-keyring >/dev/null 2>&1; then
@@ -52,6 +59,11 @@ fi
 
 install_driver() {
   # Driver and fabric manager must be the exact same R580 version; HGX (NVSwitch) boxes need the latter.
+  if [[ ! -d "/lib/modules/$(uname -r)/build" ]]; then
+    die "Can't build an R580 driver: no kernel headers for $(uname -r). Either pick a provider image that
+       already has driver >= 580 (e.g. a CUDA 13 / R580 image), or move to Ubuntu's generic kernel:
+       sudo apt-get install -y linux-generic && sudo reboot   # then re-run with UPGRADE_DRIVER=1"
+  fi
   local v
   v=$(apt-cache madison nvidia-driver-580-open | awk '{print $3}' | head -1)
   [[ -n "$v" ]] || die "nvidia-driver-580-open not found in NVIDIA's ubuntu2204 repository."
