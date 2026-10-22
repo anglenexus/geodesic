@@ -273,14 +273,19 @@ def pick(table, gpu_class):
 
 
 def server_flags():
-    """Every --flag the installed SGLang server accepts (None if it can't be listed)."""
-    try:
-        p = subprocess.run([sys.executable, "-m", "sglang.launch_server", "--help"],
-                           capture_output=True, text=True, timeout=180)
+    """Every --flag the installed SGLang server accepts (None if it can't be listed). Tries the `sglang serve`
+    CLI the serve scripts use, then the older `python -m sglang.launch_server`."""
+    clis = [str(pathlib.Path(sys.executable).with_name("sglang")), shutil.which("sglang")]
+    cmds = [[c, "serve", "--help"] for c in clis if c and pathlib.Path(c).exists()]
+    for cmd in cmds + [[sys.executable, "-m", "sglang.launch_server", "--help"]]:
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except Exception:
+            continue
         flags = set(re.findall(r"(--[a-z0-9][a-z0-9-]*)", p.stdout + p.stderr))
-        return flags or None
-    except Exception:
-        return None
+        if "--attention-backend" in flags:  # a real server help text, not an error message
+            return flags
+    return None
 
 
 def fmt(x, nd=0):
@@ -677,8 +682,11 @@ def main():
     # Resolve version-dependent flag names and drop settings this SGLang can't run (argparse prefix
     # matching otherwise turns a renamed flag into an "ambiguous option" crash at server start).
     known = server_flags()
-    cg = "--cuda-graph-max-bs-decode" if known and "--cuda-graph-max-bs-decode" in known else "--cuda-graph-max-bs"
-    prof["base_flags"] = {k: v.replace("{cg}", cg) for k, v in prof["base_flags"].items()}
+    if known is None and not a.dry_run:
+        print("NOTE: couldn't list the SGLang server's flags; running without the CUDA-graph size cap.")
+    cg = next((f for f in ("--cuda-graph-max-bs-decode", "--cuda-graph-max-bs") if known and f in known), None)
+    prof["base_flags"] = {k: (v.replace("{cg}", cg) if cg else re.sub(r"\{cg\} \d+ ?", "", v)).strip()
+                          for k, v in prof["base_flags"].items()}
     if known:
         for name, spec in ARMS.items():
             missing = [f for f in spec["flags"].split() if f.startswith("--") and f not in known]
