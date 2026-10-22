@@ -1,0 +1,58 @@
+{
+  "name": "EC2 collection on one 192-vCPU instance: ~9,800 trajectories (TB 2.1, terminus-2 + gpt-5.6-luna, 20 tasks x 490)",
+  "dataset": "terminal-bench/terminal-bench-2-1",
+  "agent": "terminus-2",
+  "model": "openai/gpt-5.6-luna",
+  "task_prefix": "terminal-bench/",
+  "tasks_file": "state/tb21_selected_tasks.txt",
+  "env_file": "~/.config/harbor/.env",
+  "jobs_root": "~/jobs",
+  "ledger": "state/ledger.sqlite",
+  "agent_kwargs": {
+    "trajectory_config": {
+      "raw_content": true,
+      "linear_history": true
+    },
+    "store_all_messages": true
+  },
+  "budget_usd": 250,
+  "budget_counts_jobs": [],
+  "budget_note": "AGGREGATE cap over every trial in this plan's batches. Measured ~$0.019/trial on the Mac pilot -> ~$190 expected for ~9,800. Checked before each batch and every 60 s during a batch; on breach the running batch's whole process group is cancelled (60 s grace) and nothing further starts.",
+  "min_free_disk_gb": 40,
+  "no_new_batch_after": null,
+  "watchdog_interval_s": 60,
+  "cancel_grace_s": 60,
+  "est_trials_per_hour": 2400,
+  "est_cost_per_trial": 0.019,
+  "batches": [
+    {
+      "name": "c192_b1_ramp",
+      "attempts": 10,
+      "concurrency": 150,
+      "status": "planned",
+      "est_trials": 200,
+      "note": "ramp-up batch at 150: check Docker CPU, agent timeouts, 'Command timed out' rate before going to 250"
+    },
+    {
+      "name": "c192_b2",
+      "attempts": 160,
+      "concurrency": 250,
+      "status": "planned",
+      "est_trials": 3200
+    },
+    {
+      "name": "c192_b3",
+      "attempts": 160,
+      "concurrency": 250,
+      "status": "planned",
+      "est_trials": 3200
+    },
+    {
+      "name": "c192_b4",
+      "attempts": 160,
+      "concurrency": 250,
+      "status": "planned",
+      "est_trials": 3200
+    }
+  ]
+}

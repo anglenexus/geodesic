@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AEES Trajectory Browser</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0;
+    --accent: #2f5bd3; --test: #d9730d; --val: #0f9d58; --pass: #1f8a4c; --fail: #c2412d; --held: #a06a00; --none: #7a7a80;
+    --code: #f2f2ef; --chip: #eef1fb;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151517; --panel: #1e1e21; --ink: #ececec; --muted: #9a9aa2; --line: #2e2e33;
+            --accent: #7aa2ff; --test: #f0a050; --val: #4cd08a; --pass: #4cc283; --fail: #ff7a63; --held: #e0a640; --none: #8d8d95;
+            --code: #121214; --chip: #262a3a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+           display: flex; gap: 20px; align-items: center; padding: 10px 20px; }
+  header b { font-size: 15px; }
+  header a { color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; }
+  header a.on { color: var(--ink); background: var(--chip); }
+  main { max-width: 1200px; margin: 0 auto; padding: 18px 20px 80px; }
+  h1 { font-size: 20px; margin: 4px 0 12px; } h2 { font-size: 16px; margin: 22px 0 8px; }
+  .crumbs { color: var(--muted); margin-bottom: 6px; } .crumbs a { color: var(--accent); text-decoration: none; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; min-width: 120px; }
+  .stat .v { font-size: 20px; font-weight: 600; } .stat .k { color: var(--muted); font-size: 12px; }
+  .tablewrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel); }
+  tr.click { cursor: pointer; } tr.click:hover td { background: var(--chip); }
+  /* the tasks selected for collection (state/tb21_selected_tasks.txt) */
+  tr.sel td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+  .selname { color: var(--accent); font-weight: 600; }
+  .b-selected { background: var(--accent); } .b-notselected { background: var(--none); }
+  tr.test td:first-child { box-shadow: inset 4px 0 0 var(--test); }
+  .testname { color: var(--test); font-weight: 600; } .b-test { background: var(--test); }
+  tr.val td:first-child { box-shadow: inset 4px 0 0 var(--val); }
+  .valname { color: var(--val); font-weight: 600; } .b-val { background: var(--val); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; }
+  .b-pass { background: var(--pass); } .b-fail { background: var(--fail); } .b-held { background: var(--held); }
+  .b-none, .b-released { background: var(--none); }
+  .bar { display: inline-block; width: 120px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; vertical-align: middle; }
+  .bar span { display: block; height: 100%; background: var(--accent); }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 12px; }
+  select, input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 18px;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .kv div span { color: var(--muted); font-size: 12px; display: block; }
+  .kv div { overflow-wrap: anywhere; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin: 12px 0; }
+  .step > .head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; padding: 9px 14px;
+                  border-bottom: 1px solid var(--line); }
+  .step > .head .id { font-weight: 700; } .muted { color: var(--muted); }
+  .src { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 7px; border-radius: 5px; background: var(--chip); }
+  .body { padding: 10px 14px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 10px 0 4px; }
+  .label:first-child { margin-top: 0; }
+  pre { margin: 0; background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+        font: 12.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre.clip { max-height: 320px; overflow: auto; }
+  .action { display: grid; grid-template-columns: 28px 1fr; gap: 8px; margin: 6px 0; }
+  .action .n { color: var(--muted); text-align: right; font: 12px var(--mono); padding-top: 9px; }
+  .fn { font: 12px var(--mono); color: var(--accent); margin-bottom: 3px; }
+  details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
+  .note { font-size: 12px; color: var(--muted); }
+  .final { border: 2px solid var(--line); }
+  .err { color: var(--fail); }
+  .navbtns { display: flex; gap: 8px; margin: 10px 0; } .navbtns a { color: var(--accent); text-decoration: none; }
+  .tests td { white-space: normal; }
+  .jobs { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 6px 0 18px; }
+  .jobs .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent);
+           color: #fff; cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: transparent; color: var(--accent); }
+  .msg { font-size: 13px; } .ok { color: var(--pass); }
+</style>
+</head>
+<body>
+<header>
+  <b>AEES Trajectory Browser</b>
+  <a href="#/ledger" id="nav-ledger">Ledger</a>
+  <a href="#/trajectories" id="nav-traj">Trajectories</a>
+  <span style="margin-left:auto" class="muted">model</span>
+  <select id="model"><option value="">all models</option></select>
+  <span class="muted">source</span>
+  <select id="source"></select>
+</header>
+<main id="app">Loading…</main>
+<script>
+"use strict";
+const app = document.getElementById("app");
+
+// ---------- tiny DOM helpers (all text goes through textContent; nothing is parsed as HTML) ----------
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v;
+    else if (k === "onclick") e.addEventListener("click", v);
+    else if (v !== undefined && v !== null) e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) {
+    if (kid === null || kid === undefined || kid === false) continue;
+    e.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  return e;
+}
+const fmtInt = n => (n === null || n === undefined) ? "—" : Number(n).toLocaleString();
+const fmtUsd = n => (n === null || n === undefined) ? "—" : "$" + Number(n).toFixed(4);
+const short = (s, n = 80) => !s ? "" : (s.length > n ? s.slice(0, n) + "…" : s);
+const taskName = t => (t || "").replace(/^terminal-bench\//, "");
+function secs(a, b) { if (!a || !b) return null; return (new Date(b) - new Date(a)) / 1000; }
+function fmtDur(s) { if (s === null) return "—"; return s >= 60 ? (s / 60).toFixed(1) + " min" : s.toFixed(0) + " s"; }
+function rewardBadge(r) {
+  if (r === 1 || r === 1.0) return el("span", { class: "badge b-pass" }, "reward 1");
+  if (r === 0 || r === 0.0) return el("span", { class: "badge b-fail" }, "reward 0");
+  return el("span", { class: "badge b-none" }, "no reward");
+}
+const statusBadge = s => el("span", { class: "badge b-" + s }, s);
+// Which ledger to show: this Mac ("local") or an EC2 remote's mirrored snapshot.
+let SOURCE = sessionStorage.getItem("source") || "local";
+let SOURCES = [];
+let SELECTED = new Set();  // bare task names, e.g. "mailman"
+// Which model to show ("" = all). Models never mix in the ledger: the model is part of every scenario key.
+let MODEL = new URLSearchParams(location.search).get("model") ?? sessionStorage.getItem("model") ?? "";
+const byModel = x => !MODEL || x === MODEL;
+function setModels(models) {  // fill the header drop-down with the models present in this source
+  const sel = document.getElementById("model");
+  const list = [...new Set(models.filter(Boolean))].sort();
+  if (MODEL && !list.includes(MODEL)) list.push(MODEL);
+  sel.replaceChildren(el("option", { value: "" }, "all models"), ...list.map(m => el("option", { value: m }, m)));
+  sel.value = MODEL;
+}
+const isSel = t => SELECTED.has(taskName(t));
+let TEST = new Set();  // post-training test set (orange), from state/tb21_test20_tasks.txt
+let VAL = new Set();   // post-training validation set (green), from state/tb21_val8_tasks.txt
+const isTest = t => TEST.has(taskName(t));
+const isVal = t => VAL.has(taskName(t));
+const rank = t => isSel(t) ? 0 : isTest(t) ? 1 : isVal(t) ? 2 : 3;  // blue, orange, green, then the rest
+const rowClass = t => isSel(t) ? " sel" : isTest(t) ? " test" : isVal(t) ? " val" : "";
+const taskCell = t => el("td", {}, el("span", { class: isSel(t) ? "selname" : isTest(t) ? "testname" : isVal(t) ? "valname" : "" }, taskName(t)));
+async function api(path) {
+  const r = await fetch(path + (path.includes("?") ? "&" : "?") + "source=" + encodeURIComponent(SOURCE));
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function pre(text, clip = true) { return el("pre", { class: clip ? "clip" : "" }, text ?? ""); }
+function setNav(which) {
+  document.getElementById("nav-ledger").className = which === "ledger" ? "on" : "";
+  document.getElementById("nav-traj").className = which === "traj" ? "on" : "";
+}
+const trialHref = t => `#/trial/${t.key}/${t.run_index}/${t.attempt}`;
+
+// ---------- page: ledger (scenarios) ----------
+async function pageLedger() {
+  setNav("ledger");
+  const allRows = await api("/api/scenarios");
+  setModels(allRows.map(r => r.fields.model));
+  const rows = allRows.filter(r => byModel(r.fields.model));
+  const sum = k => rows.reduce((a, r) => a + (Array.isArray(r[k]) ? r[k].length : (r[k] || 0)), 0);
+  const target = rows.reduce((a, r) => a + r.target, 0);
+  app.replaceChildren(
+    el("h1", {}, "Ledger — ", (SOURCES.find(x => x.name === SOURCE) || {}).label || SOURCE, MODEL ? ` · ${MODEL}` : ""),
+    el("div", { class: "note" }, "Every finished trial is logged with raw facts and its run index is held until reviewed. " +
+      "“Raw reward” counts what the verifier wrote; “passed / failed” count reviewed (final) outcomes."),
+    el("div", { class: "stats" },
+      stat("scenarios", rows.length), stat("trials logged", sum("n_trials")), stat("held (unreviewed)", sum("held")),
+      stat("reviewed pass / fail", `${sum("passed")} / ${sum("failed")}`),
+      stat("raw reward 1 / 0 / none", `${sum("raw_reward_1")} / ${sum("raw_reward_0")} / ${sum("raw_no_reward")}`),
+      stat("remaining to target", fmtInt(target - sum("passed") - sum("failed")))),
+    el("div", { class: "note", style: "margin:4px 0 8px" },
+      el("span", { class: "selname" }, "Blue"), ` = one of the ${SELECTED.size} tasks selected for collection (state/tb21_selected_tasks.txt); `,
+      el("span", { class: "testname" }, "orange"), ` = post-training test set (${TEST.size}, state/tb21_test20_tasks.txt); `,
+      el("span", { class: "valname" }, "green"), ` = validation set (${VAL.size}, state/tb21_val8_tasks.txt); see ../post_training/plan.md §2a. ` +
+      `${rows.filter(r => isSel(r.fields.task)).length} blue, ${rows.filter(r => isTest(r.fields.task)).length} orange, ` +
+      `${rows.filter(r => isVal(r.fields.task)).length} green of ${rows.length} rows; listed in that order.`),
+    SOURCE === "local" ? await jobsPanel()
+      : el("div", { class: "jobs" }, el("b", {}, "Remote source"), el("span", { class: "muted" },
+          "  ·  this EC2 runner's scheduler ingests its own batches; this view is a mirror refreshed by `python -m aees_harbor.remote sync --loop 300`. " +
+          "Run-index statuses come from the remote ledger snapshot.")),
+    el("div", { class: "tablewrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, ["task", "model", "agent · tool mode", "trials", "held", "pass", "fail",
+        "raw 1 / 0 / –", "raw pass rate", "progress to target", "next index"].map(h => el("th", {}, h)))),
+      el("tbody", {}, [...rows].sort((a, b) => (rank(a.fields.task) - rank(b.fields.task))
+          || taskName(a.fields.task).localeCompare(taskName(b.fields.task))).map(r => {
+        const f = r.fields, done = r.passed.length + r.failed.length;
+        const rate = r.n_trials ? r.raw_reward_1 / r.n_trials : null;
+        return el("tr", { class: "click" + rowClass(f.task), onclick: () => location.hash = `#/task/${r.key}` },
+          taskCell(f.task), el("td", {}, f.model), el("td", { class: "muted" }, `${f.agent} ${f.agent_version} · ${f.tool_mode}`),
+          el("td", { class: "num" }, r.n_trials), el("td", { class: "num" }, r.held.length),
+          el("td", { class: "num" }, r.passed.length), el("td", { class: "num" }, r.failed.length),
+          el("td", { class: "num" }, `${r.raw_reward_1} / ${r.raw_reward_0} / ${r.raw_no_reward}`),
+          el("td", { class: "num" }, rate === null ? "—" : (100 * rate).toFixed(0) + "%"),
+          el("td", {}, el("span", { class: "bar" }, el("span", { style: `width:${Math.min(100, 100 * (done + r.held.length) / r.target)}%` })),
+            el("span", { class: "muted" }, `  ${done + r.held.length} / ${r.target}`)),
+          el("td", { class: "num" }, r.next_index));
+      })))));
+}
+// ---------- jobs panel: ingest Harbor job folders into the ledger ----------
+async function postJSON(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function jobsPanel() {
+  const list = (await api("/api/jobs")).filter(j => byModel(j.model));
+  const msg = el("div", { class: "msg" });
+  const input = el("input", { placeholder: "job name, e.g. tb21_pilot_b2", size: 28, list: "joblist" });
+  const datalist = el("datalist", { id: "joblist" }, list.map(j => el("option", { value: j.name })));
+  async function ingest(name, btn) {
+    if (!name) { msg.className = "msg err"; msg.textContent = "Enter a job name."; return; }
+    btn.disabled = true; msg.className = "msg"; msg.textContent = `Ingesting ${name}…`;
+    try {
+      const r = await postJSON("/api/ingest", { job: name });
+      msg.className = "msg ok";
+      msg.textContent = `${r.job}: ingested ${r.ingested}, already in ledger ${r.already_in_ledger}` +
+        (r.skipped_target_full_or_frozen ? `, skipped (target full/frozen) ${r.skipped_target_full_or_frozen}` : "");
+      setTimeout(route, 900);  // refresh the ledger view
+    } catch (e) { msg.className = "msg err"; msg.textContent = String(e.message || e); btn.disabled = false; }
+  }
+  const go = el("button", { onclick: () => ingest(input.value.trim(), go) }, "Ingest");
+  input.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
+  const filter = el("input", { size: 16, value: sessionStorage.getItem("jobFilter") ?? "tb21_pilot",
+                                placeholder: "filter job names" });
+  const tbody = el("tbody");
+  const count = el("span", { class: "muted" });
+  function renderJobs() {
+    sessionStorage.setItem("jobFilter", filter.value);
+    const shown = list.filter(j => !filter.value || j.name.includes(filter.value));
+    const pending = shown.filter(j => j.finished > j.in_ledger).length;
+    count.textContent = `  ·  showing ${shown.length} of ${list.length} jobs (filter: “${filter.value || "none"}”), ` +
+      `${pending} with trials not yet in the ledger`;
+    tbody.replaceChildren(...shown.slice(0, 30).map(j => {
+      const isNew = j.finished > j.in_ledger;
+      const b = el("button", { class: isNew ? "" : "ghost" }, isNew ? "Ingest" : "Re-check");
+      b.addEventListener("click", () => ingest(j.name, b));
+      return el("tr", {}, el("td", {}, j.name), el("td", { class: "muted" }, j.model || "—"), el("td", { class: "num" }, j.trials), el("td", { class: "num" }, j.finished),
+        el("td", { class: "num" }, j.in_ledger),
+        el("td", {}, isNew ? el("span", { class: "badge b-held" }, `${j.finished - j.in_ledger} new`) : el("span", { class: "muted" }, "up to date")),
+        el("td", {}, b));
+    }));
+  }
+  filter.addEventListener("input", renderJobs);
+  renderJobs();
+  return el("div", { class: "jobs" },
+    el("b", {}, "Harbor jobs"), count,
+    el("div", { class: "row" }, el("span", { class: "muted" }, "show jobs containing"), filter),
+    el("div", { class: "row" }, input, datalist, go, msg),
+    el("div", { class: "tablewrap", style: "margin-top:10px" }, el("table", {},
+      el("thead", {}, el("tr", {}, ["job", "model", "trials", "finished", "in ledger", "", ""].map(h => el("th", {}, h)))),
+      tbody)));
+}
+function stat(k, v) { return el("div", { class: "stat" }, el("div", { class: "v" }, v), el("div", { class: "k" }, k)); }
+
+// ---------- trial tables (task page + all-trajectories page) ----------
+function trialTable(list, showTask) {
+  const heads = [...(showTask ? ["task"] : []), "run", "attempt", "status", "reward", "exception", "steps",
+                 "tokens in (cached)", "tokens out", "cost", "wall time", "job"];
+  return el("div", { class: "tablewrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, heads.map(h => el("th", {}, h)))),
+    el("tbody", {}, list.map(t => el("tr", { class: "click" + (showTask ? rowClass(t.task) : ""), onclick: () => location.hash = trialHref(t) },
+      showTask ? taskCell(t.task) : null,
+      el("td", { class: "num" }, t.run_index), el("td", { class: "num" }, t.attempt),
+      el("td", {}, statusBadge(t.status)), el("td", {}, rewardBadge(t.reward)),
+      el("td", { class: t.exception_type ? "err" : "muted" }, t.exception_type || "—"),
+      el("td", { class: "num" }, fmtInt(t.n_steps)),
+      el("td", { class: "num" }, `${fmtInt(t.tokens_in)} (${fmtInt(t.tokens_cached)})`),
+      el("td", { class: "num" }, fmtInt(t.tokens_out)), el("td", { class: "num" }, fmtUsd(t.cost_usd)),
+      el("td", { class: "num" }, fmtDur(secs(t.started_at, t.finished_at))), el("td", { class: "muted" }, t.job))))));
+}
+
+async function pageTask(key) {
+  setNav("ledger");
+  const [scen, list] = await Promise.all([api("/api/scenarios"), api(`/api/trials?key=${key}`)]);
+  const s = scen.find(x => x.key === key);
+  if (!s) throw new Error("unknown scenario " + key);
+  const f = s.fields;
+  app.replaceChildren(
+    el("div", { class: "crumbs" }, el("a", { href: "#/ledger" }, "Ledger"), " / ", taskName(f.task)),
+    el("h1", {}, taskName(f.task), " ", isSel(f.task)
+      ? el("span", { class: "badge b-selected" }, "selected")
+      : isTest(f.task) ? el("span", { class: "badge b-test" }, "post-training test set")
+      : isVal(f.task) ? el("span", { class: "badge b-val" }, "post-training validation set")
+      : el("span", { class: "badge b-notselected" }, "not selected")),
+    el("div", { class: "kv" }, ...Object.entries({
+      scenario: key, dataset: f.dataset, model: f.model, agent: `${f.agent} ${f.agent_version}`, "tool mode": f.tool_mode,
+      harbor: f.harbor_version, "agent settings": JSON.stringify(f.agent_kwargs), "task checksum": short(f.task_checksum, 20),
+      "target runs": s.target, "next index": s.next_index, held: s.held.join(", ") || "—",
+      "passed (reviewed)": s.passed.join(", ") || "—", "failed (reviewed)": s.failed.join(", ") || "—",
+      abandoned: s.abandoned.join(", ") || "—", remaining: s.remaining,
+    }).map(([k, v]) => el("div", {}, el("span", {}, k), v))),
+    el("h2", {}, `Trajectories (${list.length})`),
+    trialTable(list.sort((a, b) => a.run_index - b.run_index || a.attempt - b.attempt), false));
+}
+
+async function pageTrajectories() {
+  setNav("traj");
+  const everything = await api("/api/trials");
+  setModels(everything.map(t => t.model));
+  const all = everything.filter(t => byModel(t.model));
+  const tasks = [...new Set(all.map(t => t.task))].sort();
+  const fTask = el("select", {}, el("option", { value: "" }, "all tasks"),
+    el("option", { value: "__selected__" }, `the ${SELECTED.size} selected tasks`),
+    el("option", { value: "__test__" }, `the ${TEST.size} test-set tasks`),
+    el("option", { value: "__val__" }, `the ${VAL.size} validation tasks`),
+    tasks.map(t => el("option", { value: t }, (isSel(t) ? "● " : isTest(t) ? "◆ " : isVal(t) ? "▲ " : "") + taskName(t))));
+  const fReward = el("select", {}, ["all rewards", "1", "0", "none"].map(v => el("option", { value: v }, v)));
+  const fStatus = el("select", {}, ["all statuses", "held", "pass", "fail"].map(v => el("option", { value: v }, v)));
+  const fText = el("input", { placeholder: "search exception / job / trial…", size: 30 });
+  const holder = el("div");
+  const saved = JSON.parse(sessionStorage.getItem("trajFilters") || "{}");
+  fTask.value = saved.task || ""; fReward.value = saved.reward || "all rewards"; fStatus.value = saved.status || "all statuses"; fText.value = saved.text || "";
+  function render() {
+    sessionStorage.setItem("trajFilters", JSON.stringify({ task: fTask.value, reward: fReward.value, status: fStatus.value, text: fText.value }));
+    const txt = fText.value.toLowerCase();
+    const list = all.filter(t => (!fTask.value || (fTask.value === "__selected__" ? isSel(t.task) : fTask.value === "__test__" ? isTest(t.task) : fTask.value === "__val__" ? isVal(t.task) : t.task === fTask.value))
+      && (fReward.value === "all rewards" || (fReward.value === "none" ? t.reward === null : String(t.reward) === fReward.value + ".0" || String(t.reward) === fReward.value))
+      && (fStatus.value === "all statuses" || t.status === fStatus.value)
+      && (!txt || [t.exception_type, t.exception_head, t.job, t.trial_name].join(" ").toLowerCase().includes(txt)))
+      .sort((a, b) => a.task.localeCompare(b.task) || a.run_index - b.run_index);
+    holder.replaceChildren(el("div", { class: "note" }, `${list.length} of ${all.length} trajectories`), trialTable(list, true));
+  }
+  [fTask, fReward, fStatus].forEach(x => x.addEventListener("change", render));
+  fText.addEventListener("input", render);
+  app.replaceChildren(el("h1", {}, "Trajectories", MODEL ? ` · ${MODEL}` : ""), el("div", { class: "filters" }, fTask, fReward, fStatus, fText), holder);
+  render();
+}
+
+// ---------- page: one trajectory ----------
+async function pageTrial(key, index, attempt) {
+  setNav("traj");
+  const [d, siblings] = await Promise.all([api(`/api/trial?key=${key}&index=${index}&attempt=${attempt}`), api(`/api/trials?key=${key}`)]);
+  const f = d.facts, sc = d.scenario;
+  siblings.sort((a, b) => a.run_index - b.run_index || a.attempt - b.attempt);
+  const pos = siblings.findIndex(t => t.run_index === d.run_index && t.attempt === d.attempt);
+  const prev = siblings[pos - 1], next = siblings[pos + 1];
+  const steps = d.segments.flatMap(s => s.trajectory.steps.map(st => ({ ...st, _file: s.file })));
+  const traj0 = d.segments[0]?.trajectory || {};
+  const ph = f.phases || {};
+  const status = siblings[pos]?.status;
+
+  const header = [
+    el("div", { class: "crumbs" }, el("a", { href: "#/ledger" }, "Ledger"), " / ",
+      el("a", { href: `#/task/${key}` }, taskName(sc.task)), ` / run ${d.run_index} · attempt ${d.attempt}`),
+    el("h1", {}, `${taskName(sc.task)} — run ${d.run_index} `, rewardBadge(f.reward), " ", status ? statusBadge(status) : null),
+    el("div", { class: "navbtns" },
+      prev ? el("a", { href: trialHref(prev) }, `← run ${prev.run_index}`) : el("span", { class: "muted" }, "← first"),
+      next ? el("a", { href: trialHref(next) }, `run ${next.run_index} →`) : el("span", { class: "muted" }, "last →")),
+    el("div", { class: "kv" }, ...Object.entries({
+      "final reward": f.reward ?? "none", "ledger status": status, exception: f.exception_type || "—",
+      "steps (agent turns)": `${steps.length} (${steps.filter(s => s.source === "agent").length})`,
+      "tokens in / cached / out": `${fmtInt(f.tokens_in)} / ${fmtInt(f.tokens_cached)} / ${fmtInt(f.tokens_out)}`,
+      cost: fmtUsd(f.cost_usd), "wall time": fmtDur(secs(f.started_at, f.finished_at)),
+      "env setup": fmtDur(secs(ph.environment_setup?.started_at, ph.environment_setup?.finished_at)),
+      "agent run": fmtDur(secs(ph.agent_execution?.started_at, ph.agent_execution?.finished_at)),
+      "verifier": fmtDur(secs(ph.verifier?.started_at, ph.verifier?.finished_at)),
+      model: sc.model, agent: `${sc.agent} ${sc.agent_version} · ${sc.tool_mode}`,
+      trajectory: `${traj0.schema_version || "?"} · ${d.segments.map(s => s.file).join(", ")}`,
+      job: f.job, "trial dir": d.trial_dir,
+    }).map(([k, v]) => el("div", {}, el("span", {}, k), v))),
+    el("div", { class: "note", style: "margin-top:8px" },
+      "Per-step reward: none is recorded yet — the verifier gives one final reward for the whole trajectory (shown at the bottom). " +
+      "Per-step data below: text, actions (tool calls), observation, tokens, cost, timing."),
+  ];
+  if (d.exception) header.push(el("h2", { class: "err" }, "Exception: " + d.exception.exception_type), pre(d.exception.exception_message));
+
+  let prevTs = f.started_at;
+  const stepEls = steps.map(st => {
+    const m = st.metrics || {};
+    const dt = secs(prevTs, st.timestamp); prevTs = st.timestamp || prevTs;
+    const head = el("div", { class: "head" },
+      el("span", { class: "id" }, `Step ${st.step_id}`), el("span", { class: "src" }, st.source),
+      el("span", { class: "muted" }, (st.timestamp || "").slice(11, 19) + (dt !== null ? ` (+${fmtDur(dt)})` : "")),
+      st.source === "agent" ? el("span", { class: "muted" },
+        `tokens in ${fmtInt(m.prompt_tokens)} · cached ${fmtInt(m.cached_tokens)} · out ${fmtInt(m.completion_tokens)} · ${fmtUsd(m.cost_usd)}`) : null,
+      st.source === "agent" ? el("span", { class: "muted" }, "step reward: n/a") : null);
+    const body = el("div", { class: "body" });
+    const msg = typeof st.message === "string" ? st.message : JSON.stringify(st.message, null, 2);
+    if (st.source !== "agent") {
+      body.append(el("details", {}, el("summary", {}, `Prompt (${fmtInt(msg.length)} chars: agent instructions + task)`), pre(msg, false)));
+    } else {
+      const der = st.derived;
+      if (der) {
+        if (der.analysis) body.append(el("div", { class: "label" }, "Analysis (model text)"), el("div", {}, der.analysis));
+        if (der.plan) body.append(el("div", { class: "label" }, "Plan (model text)"), el("div", {}, der.plan));
+      } else if (!st.tool_calls) {
+        body.append(el("div", { class: "label" }, "Model output"), pre(msg));
+      } else {
+        body.append(el("div", { class: "label" }, "Message"), el("div", {}, msg));
+      }
+      if (st.reasoning_content) body.append(el("div", { class: "label" }, "Reasoning"), pre(st.reasoning_content));
+      const native = (st.tool_calls || []).map(tc => ({ name: tc.function_name, arguments: tc.arguments, id: tc.tool_call_id }));
+      const actions = native.length ? native : (der ? der.actions : []);
+      body.append(el("div", { class: "label" }, `Actions / tool calls (${actions.length})`
+        + (native.length ? " — native tool_calls" : der ? " — derived from the model's raw JSON reply" : "")));
+      if (!actions.length) body.append(el("div", { class: "muted" }, "none (the model only waited or replied)"));
+      actions.forEach((a, i) => {
+        const args = a.arguments || {};
+        const code = a.name === "bash_keystrokes" ? args.keystrokes : JSON.stringify(args, null, 2);
+        body.append(el("div", { class: "action" }, el("div", { class: "n" }, i + 1),
+          el("div", {}, el("div", { class: "fn" }, `${a.name}` + (args.duration !== undefined && args.duration !== null ? `  ·  wait ${args.duration}s` : "")
+            + (a.id ? `  ·  id ${a.id}` : "")), a.name === "mark_task_complete" ? el("div", { class: "muted" }, "declares the task complete") : pre(code))));
+      });
+      if (der) body.append(el("details", {}, el("summary", {}, "Raw model reply (verbatim)"), pre(msg)));
+    }
+    for (const res of st.observation?.results || []) {
+      const c = typeof res.content === "string" ? res.content : JSON.stringify(res.content, null, 2);
+      body.append(el("div", { class: "label" }, `Observation — terminal output after the actions (${fmtInt((c || "").length)} chars)`
+        + (res.source_call_id ? ` · for ${res.source_call_id}` : " · one combined screen for all actions")), pre(c));
+    }
+    return el("div", { class: "step", id: `step-${st.step_id}` }, head, body);
+  });
+
+  const v = d.verifier;
+  const fin = el("div", { class: "step final" },
+    el("div", { class: "head" }, el("span", { class: "id" }, "Verifier — final reward"), rewardBadge(f.reward),
+      el("span", { class: "muted" }, `reward.txt = ${v.reward_txt ?? "missing"}`)),
+    el("div", { class: "body" }));
+  const fb = fin.lastChild;
+  if (v.ctrf) {
+    const s = v.ctrf.summary || {};
+    fb.append(el("div", { class: "label" }, `Tests: ${s.passed ?? "?"} passed · ${s.failed ?? "?"} failed · ${s.skipped ?? 0} skipped (of ${s.tests ?? "?"})`));
+    fb.append(el("div", { class: "tablewrap" }, el("table", { class: "tests" },
+      el("thead", {}, el("tr", {}, ["status", "test", "duration", "message"].map(h => el("th", {}, h)))),
+      el("tbody", {}, (v.ctrf.tests || []).map(t => el("tr", {},
+        el("td", {}, statusBadge(t.status === "passed" ? "pass" : t.status === "failed" ? "fail" : "none")),
+        el("td", {}, t.name), el("td", { class: "num" }, t.duration ? Number(t.duration).toFixed(2) + " s" : "—"),
+        el("td", {}, t.message ? pre(t.message) : "—")))))));
+  } else if (v.report) {
+    fb.append(el("div", { class: "label" }, "Test report (report.json)"), pre(JSON.stringify(v.report, null, 2)));
+  } else {
+    fb.append(el("div", { class: "err" }, "No structured test report (ctrf.json / report.json) for this trial."));
+  }
+  if (v.test_log_tail) fb.append(el("details", {}, el("summary", {}, "Test log (verifier/test-stdout.txt, tail)"), pre(v.test_log_tail)));
+
+  const outline = el("div", { class: "note", style: "margin:14px 0 4px" }, "Jump to step: ",
+    ...steps.map(st => [el("a", { href: "javascript:void 0", onclick: () => document.getElementById(`step-${st.step_id}`).scrollIntoView({ behavior: "smooth" }) }, st.step_id), " "]),
+    el("a", { href: "javascript:void 0", onclick: () => fin.scrollIntoView({ behavior: "smooth" }) }, "reward"));
+  app.replaceChildren(...header, outline, ...stepEls, fin);
+  window.scrollTo(0, 0);
+}
+
+// ---------- router ----------
+async function route() {
+  const parts = location.hash.replace(/^#\/?/, "").split("/");
+  try {
+    if (parts[0] === "task") await pageTask(parts[1]);
+    else if (parts[0] === "trajectories") await pageTrajectories();
+    else if (parts[0] === "trial") await pageTrial(parts[1], parts[2], parts[3] || 1);
+    else await pageLedger();
+  } catch (e) {
+    app.replaceChildren(el("h1", { class: "err" }, "Error"), pre(String(e)));
+  }
+}
+async function initSources() {
+  try { SELECTED = new Set(await (await fetch("/api/selected")).json()); } catch (e) { SELECTED = new Set(); }
+  try { TEST = new Set(await (await fetch("/api/test_candidates")).json()); } catch (e) { TEST = new Set(); }
+  try { VAL = new Set(await (await fetch("/api/validation_tasks")).json()); } catch (e) { VAL = new Set(); }
+  const sel = document.getElementById("source");
+  try { SOURCES = await (await fetch("/api/sources")).json(); } catch (e) { SOURCES = [{ name: "local", label: "This Mac", available: true }]; }
+  if (!SOURCES.some(x => x.name === SOURCE && x.available)) SOURCE = "local";
+  sel.replaceChildren(...SOURCES.map(x => el("option", { value: x.name }, x.label + (x.available ? "" : " (not synced yet)"))));
+  sel.value = SOURCE;
+  sel.addEventListener("change", () => {
+    SOURCE = sel.value; sessionStorage.setItem("source", SOURCE);
+    if (location.hash.startsWith("#/ledger") || !location.hash) route(); else location.hash = "#/ledger";
+  });
+  const msel = document.getElementById("model");
+  msel.addEventListener("change", () => {
+    MODEL = msel.value; sessionStorage.setItem("model", MODEL);
+    // the ledger and trajectory lists re-filter in place; a task or trial page belongs to one model, so go to the ledger
+    if (!location.hash || /^#\/(ledger|trajectories)/.test(location.hash)) route(); else location.hash = "#/ledger";
+  });
+}
+window.addEventListener("hashchange", route);
+initSources().then(route);
+</script>
+</body>
+</html>

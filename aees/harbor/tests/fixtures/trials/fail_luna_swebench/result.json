@@ -1,0 +1,148 @@
+{
+    "id": "11464429-f3e5-4ef4-8372-ea2757761e60",
+    "task_name": "psf__requests-1142",
+    "trial_name": "psf__requests-1142__BbYkyqr",
+    "trial_uri": "file:///Users/willzou/code/jobs/luna_smoke2/psf__requests-1142__BbYkyqr",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/harbor-datasets.git",
+        "git_commit_id": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/psf__requests-1142"
+    },
+    "source": "swebench-verified",
+    "task_checksum": "a8b77719c949f4638e8839b367338fdec867dfb50487cbc32f6ae4ce10e677fa",
+    "config": {
+        "task": {
+            "path": "datasets/swebench-verified/psf__requests-1142",
+            "git_url": "https://github.com/laude-institute/harbor-datasets.git",
+            "git_commit_id": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "swebench-verified"
+        },
+        "trial_name": "psf__requests-1142__BbYkyqr",
+        "trials_dir": "/Users/willzou/code/jobs/luna_smoke2",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "terminus-2",
+            "import_path": null,
+            "model_name": "openai/gpt-5.6-luna",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "f518962a-360e-4399-94fc-352ac0cab9a8",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "terminus-2",
+        "version": "2.0.0",
+        "model_info": {
+            "name": "gpt-5.6-luna",
+            "provider": "openai"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 182801,
+        "n_cache_tokens": 163929,
+        "n_output_tokens": 7730,
+        "cost_usd": 0.017232280000000003,
+        "model_usage": {
+            "gpt-5.6-luna": {
+                "n_input_tokens": 182801,
+                "n_cache_tokens": 163929,
+                "n_output_tokens": 7730,
+                "cost_usd": 0.017232280000000003
+            }
+        },
+        "rollout_details": [],
+        "metadata": {
+            "n_episodes": 16,
+            "api_request_times_msec": [
+                3459.130048751831,
+                3434.5879554748535,
+                4485.535144805908,
+                4092.092990875244,
+                8801.977157592773,
+                13481.45318031311,
+                4542.45400428772,
+                4158.108949661255,
+                8002.870798110962,
+                3207.458019256592,
+                2621.1330890655518,
+                3046.0128784179688,
+                4134.529829025269,
+                5352.801084518433,
+                2989.2148971557617,
+                1658.8170528411865
+            ],
+            "summarization_count": 0
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-03T04:50:26.131224Z",
+    "finished_at": "2026-10-03T04:52:47.134424Z",
+    "environment_setup": {
+        "started_at": "2026-10-03T04:50:26.261279Z",
+        "finished_at": "2026-10-03T04:50:29.143753Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-03T04:50:29.143850Z",
+        "finished_at": "2026-10-03T04:50:45.147758Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-03T04:50:45.147941Z",
+        "finished_at": "2026-10-03T04:52:30.210406Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-03T04:52:30.855523Z",
+        "finished_at": "2026-10-03T04:52:43.038690Z"
+    },
+    "step_results": null
+}

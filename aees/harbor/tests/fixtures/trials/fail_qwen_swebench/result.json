@@ -1,0 +1,148 @@
+{
+    "id": "1ccfa3a5-586e-4263-a885-872c8b69d164",
+    "task_name": "psf__requests-1142",
+    "trial_name": "psf__requests-1142__E6M5w46",
+    "trial_uri": "file:///Users/willzou/code/jobs/2026-10-02__20-18-35/psf__requests-1142__E6M5w46",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/harbor-datasets.git",
+        "git_commit_id": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/psf__requests-1142"
+    },
+    "source": "swebench-verified",
+    "task_checksum": "a8b77719c949f4638e8839b367338fdec867dfb50487cbc32f6ae4ce10e677fa",
+    "config": {
+        "task": {
+            "path": "datasets/swebench-verified/psf__requests-1142",
+            "git_url": "https://github.com/laude-institute/harbor-datasets.git",
+            "git_commit_id": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "swebench-verified"
+        },
+        "trial_name": "psf__requests-1142__E6M5w46",
+        "trials_dir": "jobs/2026-10-02__20-18-35",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "terminus-2",
+            "import_path": null,
+            "model_name": "hosted_vllm/qwen3-4b",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {
+                "api_base": "http://localhost:30000/v1",
+                "model_info": {
+                    "max_input_tokens": 28672,
+                    "max_output_tokens": 4096,
+                    "input_cost_per_token": 0.0,
+                    "output_cost_per_token": 0.0
+                }
+            },
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "42335a58-52cf-4f2d-8e66-964e75111b95",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "terminus-2",
+        "version": "2.0.0",
+        "model_info": {
+            "name": "qwen3-4b",
+            "provider": "hosted_vllm"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 36506,
+        "n_cache_tokens": 31198,
+        "n_output_tokens": 4209,
+        "cost_usd": null,
+        "model_usage": {
+            "qwen3-4b": {
+                "n_input_tokens": 36506,
+                "n_cache_tokens": 31198,
+                "n_output_tokens": 4209,
+                "cost_usd": null
+            }
+        },
+        "rollout_details": [],
+        "metadata": {
+            "n_episodes": 8,
+            "api_request_times_msec": [
+                3644.5188522338867,
+                4098.032712936401,
+                5310.001850128174,
+                5285.085201263428,
+                4601.375102996826,
+                5460.5090618133545,
+                5344.817161560059,
+                4357.327699661255
+            ],
+            "summarization_count": 0
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-03T03:18:39.217882Z",
+    "finished_at": "2026-10-03T03:24:52.294881Z",
+    "environment_setup": {
+        "started_at": "2026-10-03T03:18:39.248378Z",
+        "finished_at": "2026-10-03T03:18:43.870490Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-03T03:18:43.870583Z",
+        "finished_at": "2026-10-03T03:19:00.174793Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-03T03:19:00.174997Z",
+        "finished_at": "2026-10-03T03:24:34.818785Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-03T03:24:35.826270Z",
+        "finished_at": "2026-10-03T03:24:48.064174Z"
+    },
+    "step_results": null
+}

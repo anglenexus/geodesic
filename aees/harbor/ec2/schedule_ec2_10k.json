@@ -1,0 +1,65 @@
+{
+  "name": "EC2 collection: 10,000 trajectories (TB 2.1, terminus-2 + gpt-5.6-luna, 20 tasks x 500)",
+  "dataset": "terminal-bench/terminal-bench-2-1",
+  "agent": "terminus-2",
+  "model": "openai/gpt-5.6-luna",
+  "task_prefix": "terminal-bench/",
+  "tasks_file": "state/tb21_selected_tasks.txt",
+  "env_file": "~/.config/harbor/.env",
+  "jobs_root": "~/jobs",
+  "ledger": "state/ledger.sqlite",
+  "agent_kwargs": {
+    "trajectory_config": {
+      "raw_content": true,
+      "linear_history": true
+    },
+    "store_all_messages": true
+  },
+  "budget_usd": 250,
+  "budget_counts_jobs": [],
+  "budget_note": "AGGREGATE cap over every trial in this plan's batches. Measured ~$0.019/trial on the Mac pilot -> ~$190 expected for 10,000. Checked before each batch and every 60 s during a batch; on breach the running batch's whole process group is cancelled (60 s grace) and nothing further starts.",
+  "min_free_disk_gb": 40,
+  "no_new_batch_after": null,
+  "watchdog_interval_s": 60,
+  "cancel_grace_s": 60,
+  "est_trials_per_hour": 1200,
+  "est_cost_per_trial": 0.019,
+  "batches": [
+    {
+      "name": "ec2_b1_ramp",
+      "attempts": 25,
+      "concurrency": 60,
+      "status": "planned",
+      "est_trials": 500,
+      "note": "ramp-up batch: verify throughput, CPU, harness 'Command timed out' rate before going to 100"
+    },
+    {
+      "name": "ec2_b2",
+      "attempts": 125,
+      "concurrency": 100,
+      "status": "planned",
+      "est_trials": 2500
+    },
+    {
+      "name": "ec2_b3",
+      "attempts": 125,
+      "concurrency": 100,
+      "status": "planned",
+      "est_trials": 2500
+    },
+    {
+      "name": "ec2_b4",
+      "attempts": 125,
+      "concurrency": 100,
+      "status": "planned",
+      "est_trials": 2500
+    },
+    {
+      "name": "ec2_b5",
+      "attempts": 100,
+      "concurrency": 100,
+      "status": "planned",
+      "est_trials": 2000
+    }
+  ]
+}

@@ -1,0 +1,300 @@
+>       resp = s.send(prep)
+
+test_requests.py:280: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+requests/sessions.py:373: in send
+    r = adapter.send(request, **kwargs)
+requests/adapters.py:161: in send
+    resp = conn.urlopen(
+requests/packages/urllib3/connectionpool.py:416: in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+requests/packages/urllib3/connectionpool.py:231: in _get_conn
+    return conn or self._new_conn()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <requests.packages.urllib3.connectionpool.HTTPConnectionPool object at 0x7ffffde66790>
+
+    def _new_conn(self):
+        """
+        Return a fresh :class:`httplib.HTTPConnection`.
+        """
+        self.num_connections += 1
+        log.info("Starting new HTTP connection (%d): %s" %
+                 (self.num_connections, self.host))
+>       return HTTPConnection(host=self.host,
+                              port=self.port,
+                              strict=self.strict)
+E       TypeError: __init__() got an unexpected keyword argument 'strict'
+
+requests/packages/urllib3/connectionpool.py:196: TypeError
+_____________________ RequestsTestCase.test_request_ok_set _____________________
+
+self = <test_requests.RequestsTestCase testMethod=test_request_ok_set>
+
+    def test_request_ok_set(self):
+>       r = requests.get(httpbin('status', '404'))
+
+test_requests.py:227: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+requests/api.py:55: in get
+    return request('get', url, **kwargs)
+requests/api.py:44: in request
+    return session.request(method=method, url=url, **kwargs)
+requests/sessions.py:280: in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+requests/sessions.py:373: in send
+    r = adapter.send(request, **kwargs)
+requests/adapters.py:161: in send
+    resp = conn.urlopen(
+requests/packages/urllib3/connectionpool.py:416: in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+requests/packages/urllib3/connectionpool.py:231: in _get_conn
+    return conn or self._new_conn()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <requests.packages.urllib3.connectionpool.HTTPConnectionPool object at 0x7ffffdcd97c0>
+
+    def _new_conn(self):
+        """
+        Return a fresh :class:`httplib.HTTPConnection`.
+        """
+        self.num_connections += 1
+        log.info("Starting new HTTP connection (%d): %s" %
+                 (self.num_connections, self.host))
+>       return HTTPConnection(host=self.host,
+                              port=self.port,
+                              strict=self.strict)
+E       TypeError: __init__() got an unexpected keyword argument 'strict'
+
+requests/packages/urllib3/connectionpool.py:196: TypeError
+_____________________ RequestsTestCase.test_status_raising _____________________
+
+self = <test_requests.RequestsTestCase testMethod=test_status_raising>
+
+    def test_status_raising(self):
+>       r = requests.get(httpbin('status', '404'))
+
+test_requests.py:231: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+requests/api.py:55: in get
+    return request('get', url, **kwargs)
+requests/api.py:44: in request
+    return session.request(method=method, url=url, **kwargs)
+requests/sessions.py:280: in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+requests/sessions.py:373: in send
+    r = adapter.send(request, **kwargs)
+requests/adapters.py:161: in send
+    resp = conn.urlopen(
+requests/packages/urllib3/connectionpool.py:416: in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+requests/packages/urllib3/connectionpool.py:231: in _get_conn
+    return conn or self._new_conn()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <requests.packages.urllib3.connectionpool.HTTPConnectionPool object at 0x7ffffdda9c10>
+
+    def _new_conn(self):
+        """
+        Return a fresh :class:`httplib.HTTPConnection`.
+        """
+        self.num_connections += 1
+        log.info("Starting new HTTP connection (%d): %s" %
+                 (self.num_connections, self.host))
+>       return HTTPConnection(host=self.host,
+                              port=self.port,
+                              strict=self.strict)
+E       TypeError: __init__() got an unexpected keyword argument 'strict'
+
+requests/packages/urllib3/connectionpool.py:196: TypeError
+______________________ RequestsTestCase.test_unicode_get _______________________
+
+self = <test_requests.RequestsTestCase testMethod=test_unicode_get>
+
+    def test_unicode_get(self):
+        url = httpbin('/get')
+>       requests.get(url, params={'foo': 'føø'})
+
+test_requests.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+requests/api.py:55: in get
+    return request('get', url, **kwargs)
+requests/api.py:44: in request
+    return session.request(method=method, url=url, **kwargs)
+requests/sessions.py:280: in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+requests/sessions.py:373: in send
+    r = adapter.send(request, **kwargs)
+requests/adapters.py:161: in send
+    resp = conn.urlopen(
+requests/packages/urllib3/connectionpool.py:416: in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+requests/packages/urllib3/connectionpool.py:231: in _get_conn
+    return conn or self._new_conn()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <requests.packages.urllib3.connectionpool.HTTPConnectionPool object at 0x7ffffdd70220>
+
+    def _new_conn(self):
+        """
+        Return a fresh :class:`httplib.HTTPConnection`.
+        """
+        self.num_connections += 1
+        log.info("Starting new HTTP connection (%d): %s" %
+                 (self.num_connections, self.host))
+>       return HTTPConnection(host=self.host,
+                              port=self.port,
+                              strict=self.strict)
+E       TypeError: __init__() got an unexpected keyword argument 'strict'
+
+requests/packages/urllib3/connectionpool.py:196: TypeError
+_________ RequestsTestCase.test_urlencoded_get_query_multivalued_param _________
+
+self = <test_requests.RequestsTestCase testMethod=test_urlencoded_get_query_multivalued_param>
+
+    def test_urlencoded_get_query_multivalued_param(self):
+    
+>       r = requests.get(httpbin('get'), params=dict(test=['foo', 'baz']))
+
+test_requests.py:251: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+requests/api.py:55: in get
+    return request('get', url, **kwargs)
+requests/api.py:44: in request
+    return session.request(method=method, url=url, **kwargs)
+requests/sessions.py:280: in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+requests/sessions.py:373: in send
+    r = adapter.send(request, **kwargs)
+requests/adapters.py:161: in send
+    resp = conn.urlopen(
+requests/packages/urllib3/connectionpool.py:416: in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+requests/packages/urllib3/connectionpool.py:231: in _get_conn
+    return conn or self._new_conn()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <requests.packages.urllib3.connectionpool.HTTPConnectionPool object at 0x7ffffdced550>
+
+    def _new_conn(self):
+        """
+        Return a fresh :class:`httplib.HTTPConnection`.
+        """
+        self.num_connections += 1
+        log.info("Starting new HTTP connection (%d): %s" %
+                 (self.num_connections, self.host))
+>       return HTTPConnection(host=self.host,
+                              port=self.port,
+                              strict=self.strict)
+E       TypeError: __init__() got an unexpected keyword argument 'strict'
+
+requests/packages/urllib3/connectionpool.py:196: TypeError
+__________________ RequestsTestCase.test_user_agent_transfers __________________
+
+self = <test_requests.RequestsTestCase testMethod=test_user_agent_transfers>
+
+    def test_user_agent_transfers(self):
+    
+        heads = {
+            'User-agent':
+                'Mozilla/5.0 (github.com/kennethreitz/requests)'
+        }
+    
+>       r = requests.get(httpbin('user-agent'), headers=heads)
+
+test_requests.py:120: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+requests/api.py:55: in get
+    return request('get', url, **kwargs)
+requests/api.py:44: in request
+    return session.request(method=method, url=url, **kwargs)
+requests/sessions.py:280: in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+requests/sessions.py:373: in send
+    r = adapter.send(request, **kwargs)
+requests/adapters.py:161: in send
+    resp = conn.urlopen(
+requests/packages/urllib3/connectionpool.py:416: in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+requests/packages/urllib3/connectionpool.py:231: in _get_conn
+    return conn or self._new_conn()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <requests.packages.urllib3.connectionpool.HTTPConnectionPool object at 0x7ffffde85940>
+
+    def _new_conn(self):
+        """
+        Return a fresh :class:`httplib.HTTPConnection`.
+        """
+        self.num_connections += 1
+        log.info("Starting new HTTP connection (%d): %s" %
+                 (self.num_connections, self.host))
+>       return HTTPConnection(host=self.host,
+                              port=self.port,
+                              strict=self.strict)
+E       TypeError: __init__() got an unexpected keyword argument 'strict'
+
+requests/packages/urllib3/connectionpool.py:196: TypeError
+=============================== warnings summary ===============================
+requests/packages/urllib3/_collections.py:7
+  /testbed/requests/packages/urllib3/_collections.py:7: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    from collections import MutableMapping
+
+test_requests.py::RequestsTestCase::test_BASICAUTH_TUPLE_HTTP_200_OK_GET
+  /testbed/requests/models.py:140: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+    if isinstance(hook, collections.Callable):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED test_requests.py::RequestsTestCase::test_basic_building
+PASSED test_requests.py::RequestsTestCase::test_entry_points
+PASSED test_requests.py::RequestsTestCase::test_invalid_url
+PASSED test_requests.py::RequestsTestCase::test_params_are_added_before_fragment
+PASSED test_requests.py::RequestsTestCase::test_path_is_not_double_encoded
+FAILED test_requests.py::RequestsTestCase::test_BASICAUTH_TUPLE_HTTP_200_OK_GET
+FAILED test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET
+FAILED test_requests.py::RequestsTestCase::test_DIGEST_HTTP_200_OK_GET - Type...
+FAILED test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_ALTERNATIVE
+FAILED test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS
+FAILED test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS
+FAILED test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD - TypeError:...
+FAILED test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT - TypeError: ...
+FAILED test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET
+FAILED test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES - Type...
+FAILED test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA
+FAILED test_requests.py::RequestsTestCase::test_custom_content_type - TypeErr...
+FAILED test_requests.py::RequestsTestCase::test_decompress_gzip - TypeError: ...
+FAILED test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post
+FAILED test_requests.py::RequestsTestCase::test_links - TypeError: __init__()...
+FAILED test_requests.py::RequestsTestCase::test_no_content_length - Assertion...
+FAILED test_requests.py::RequestsTestCase::test_prepared_request_hook - TypeE...
+FAILED test_requests.py::RequestsTestCase::test_request_ok_set - TypeError: _...
+FAILED test_requests.py::RequestsTestCase::test_status_raising - TypeError: _...
+FAILED test_requests.py::RequestsTestCase::test_unicode_get - TypeError: __in...
+FAILED test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param
+FAILED test_requests.py::RequestsTestCase::test_user_agent_transfers - TypeEr...
+=================== 22 failed, 5 passed, 2 warnings in 0.48s ===================
+Updated 1 path from 3b8ba30
+Downloading pygments (1.2MiB)
+Downloading pandas (10.6MiB)
+Downloading numpy (16.1MiB)
+Downloading aiohttp (1.7MiB)
+Downloading chardet (1.4MiB)
+Downloading virtualenv (5.2MiB)
+Downloading pyarrow (47.7MiB)
+Downloading hf-xet (4.3MiB)
+Downloading modal (1.0MiB)
+ Downloading aiohttp
+ Downloading chardet
+ Downloading hf-xet
+ Downloading pygments
+ Downloading virtualenv
+ Downloading modal
+ Downloading numpy
+ Downloading pandas
+ Downloading pyarrow
+Installed 74 packages in 247ms
+SWEBench results starts here
+FAILED
+SWEBench results ends here

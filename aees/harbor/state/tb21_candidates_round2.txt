@@ -1,0 +1,16 @@
+polyglot-c-py
+adaptive-rejection-sampler
+regex-chess
+overfull-hbox
+winning-avg-corewars
+path-tracing-reverse
+path-tracing
+polyglot-rust-c
+db-wal-recovery
+rstan-to-pystan
+circuit-fibsqrt
+make-mips-interpreter
+largest-eigenval
+mteb-retrieve
+dna-insert
+schemelike-metacircular-eval

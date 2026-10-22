@@ -1,0 +1,197 @@
+asciinema rec --stdin /logs/agent/recording.cast
+[?2004h(testbed) root@0defa78e1179:/testbed# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l
+[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004h(testbed) root@0defa78e1179:/testbed# clear
+[?2004l
+[H[J[?2004h(testbed) root@0defa78e1179:/testbed# mkdir -p test_requests
+[?2004l
+[?2004h(testbed) root@0defa78e1179:/testbed# cd test_requests
+[?2004l
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent:', r.request.headers)
+[?2004l
+[?2004h> "python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (no content-length):', r.request.headers)
+[?2004l
+[?2004h> "cd /testbed/test_requests
+[?2004l
+python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)\n"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/api.py", line 55, in get
+    return request('get', url, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/api.py", line 44, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/sessions.py", line 280, in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/sessions.py", line 373, in send
+    r = adapter.send(request, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/adapters.py", line 161, in send
+    resp = conn.urlopen(
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 416, in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 231, in _get_conn
+    return conn or self._new_conn()
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 196, in _new_conn
+    return HTTPConnection(host=self.host,
+TypeError: __init__() got an unexpected keyword argument 'strict'
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)\n"
+[?2004l
+  File "<string>", line 1
+    import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)\n
+                                                                                                                                     ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)\n"
+[?2004l
+  File "<string>", line 1
+    import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)\n
+                                                                                                                                                    ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; print('requests version:', requests.__version__)"
+[?2004l
+requests version: 1.1.0
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import urllib3; print('urllib3 version:', urllib3.__version__)"
+[?2004l
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'urllib3'
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# pip install --upgrade urllib3==1.26.12
+[?2004l
+Collecting urllib3==1.26.12
+  Downloading urllib3-1.26.12-py2.py3-none-any.whl.metadata (47 kB)
+Downloading urllib3-1.26.12-py2.py3-none-any.whl (140 kB)
+Installing collected packages: urllib3
+Successfully installed urllib3-1.26.12
+[33mWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable.It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.[0m[33m
+[0m[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# cd /testbed/test_requests
+[?2004l
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)\n"
+[?2004l
+  File "<string>", line 1
+    import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)\n
+                                                                                                                                     ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)\n"
+[?2004l
+  File "<string>", line 1
+    import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)\n
+                                                                                                                                                    ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import urllib3; print('urllib3 imported successfully')"
+[?2004l
+urllib3 imported successfully
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; print('requests version:', requests.__version__)"
+[?2004l
+requests version: 1.1.0
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)\n"
+[?2004l
+  File "<string>", line 1
+    import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)\n
+                                                                                                                                     ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)\n"
+[?2004l
+  File "<string>", line 1
+    import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)\n
+                                                                                                                                                    ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)"
+[?2004l
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/api.py", line 55, in get
+    return request('get', url, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/api.py", line 44, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/sessions.py", line 280, in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/sessions.py", line 373, in send
+    r = adapter.send(request, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/adapters.py", line 161, in send
+    resp = conn.urlopen(
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 416, in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 231, in _get_conn
+    return conn or self._new_conn()
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 196, in _new_conn
+    return HTTPConnection(host=self.host,
+TypeError: __init__() got an unexpected keyword argument 'strict'
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)"
+[?2004l
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/api.py", line 55, in get
+    return request('get', url, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/api.py", line 44, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/sessions.py", line 280, in request
+    resp = self.send(prep, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/sessions.py", line 373, in send
+    r = adapter.send(request, **kwargs)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/adapters.py", line 161, in send
+    resp = conn.urlopen(
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 416, in urlopen
+    conn = self._get_conn(timeout=pool_timeout)
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 231, in _get_conn
+    return conn or self._new_conn()
+  File "/opt/miniconda3/envs/testbed/lib/python3.9/site-packages/requests/packages/urllib3/connectionpool.py", line 196, in _new_conn
+    return HTTPConnection(host=self.host,
+TypeError: __init__() got an unexpected keyword argument 'strict'
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# pip install --upgrade requests==2.31.0
+[?2004l
+Collecting requests==2.31.0
+  Downloading requests-2.31.0-py3-none-any.whl.metadata (4.6 kB)
+Collecting charset-normalizer<4,>=2 (from requests==2.31.0)
+  Downloading charset_normalizer-3.5.2-cp39-cp39-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (46 kB)
+Collecting idna<4,>=2.5 (from requests==2.31.0)
+  Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from requests==2.31.0) (1.26.12)
+Collecting certifi>=2017.4.17 (from requests==2.31.0)
+  Downloading certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)
+Downloading requests-2.31.0-py3-none-any.whl (62 kB)
+Downloading certifi-2026.7.22-py3-none-any.whl (136 kB)
+Downloading charset_normalizer-3.5.2-cp39-cp39-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (271 kB)
+Downloading idna-3.20-py3-none-any.whl (69 kB)
+Installing collected packages: idna, charset-normalizer, certifi, requests
+  Attempting uninstall: requests
+    Found existing installation: requests 1.1.0
+    Uninstalling requests-1.1.0:
+      Successfully uninstalled requests-1.1.0
+Successfully installed certifi-2026.7.22 charset-normalizer-3.5.2 idna-3.20 requests-2.31.0
+[33mWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable.It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.[0m[33m
+[0m[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; print('requests version:', requests.__version__)"
+[?2004l
+requests version: 2.31.0
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)"
+[?2004l
+Headers sent (with Content-Length): {'User-Agent': 'python-requests/2.31.0', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive'}
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)"
+[?2004l
+Headers sent (without Content-Length): {'User-Agent': 'python-requests/2.31.0', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive'}
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# pip install --upgrade requests==2.31.0
+[?2004l
+Requirement already satisfied: requests==2.31.0 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (2.31.0)
+Requirement already satisfied: charset-normalizer<4,>=2 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from requests==2.31.0) (3.5.2)
+Requirement already satisfied: idna<4,>=2.5 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from requests==2.31.0) (3.20)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from requests==2.31.0) (1.26.12)
+Requirement already satisfied: certifi>=2017.4.17 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from requests==2.31.0) (2026.7.22)
+[33mWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable.It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.[0m[33m
+[0m[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; print('requests version:', requests.__version__)"
+[?2004l
+requests version: 2.31.0
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)"
+[?2004l
+Headers sent (with Content-Length): {'User-Agent': 'python-requests/2.31.0', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive'}
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)"
+[?2004l
+Headers sent (without Content-Length): {'User-Agent': 'python-requests/2.31.0', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive'}
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; print('requests version:', requests.__version__)"
+[?2004l
+requests version: 2.31.0
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers'); print('Headers sent (with Content-Length):', r.request.headers)"
+[?2004l
+Headers sent (with Content-Length): {'User-Agent': 'python-requests/2.31.0', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive'}
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# python3 -c "import requests; r = requests.get('http://httpbin.org/headers', headers={}); print('Headers sent (without Content-Length):', r.request.headers)"
+[?2004l
+Headers sent (without Content-Length): {'User-Agent': 'python-requests/2.31.0', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive'}
+[?2004h(testbed) root@0defa78e1179:/testbed/test_requests# 

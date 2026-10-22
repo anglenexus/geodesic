@@ -1,0 +1,300 @@
+  ESC-^F [4m<c1>[24m [4m<c2>[24m  *  Find close bracket [4m<c2>[24m.[m
+  ESC-^B [4m<c1>[24m [4m<c2>[24m  *  Find open bracket [4m<c1>[24m.[m
+        ---------------------------------------------------[m
+        Each "find close bracket" command goes forward to the close bracket [m
+          matching the ([4mN[24m-th) open bracket in the top line.[m
+        Each "find open bracket" command goes backward to the open bracket [m
+          matching the ([4mN[24m-th) close bracket in the bottom line.[m
+[m
+  m[4m<letter>[24m            Mark the current top line with <letter>.[m
+  M[4m<letter>[24m            Mark the current bottom line with <letter>.[m
+  '[4m<letter>[24m            Go to a previously marked position.[m
+  ''                   Go to the previous position.[m
+  ^X^X                 Same as '.[m
+  ESC-M[4m<letter>[24m        Clear a mark.[m
+[3mHELP -- Press RETURN for more, or q when done[23m[K
+[K...skipping...
+  N                 *  Repeat previous search in reverse direction.[m
+  ESC-n             *  Repeat previous search, spanning files.[m
+  ESC-N             *  Repeat previous search, reverse dir. & spanning files.[m
+  ESC-u                Undo (toggle) search highlighting.[m
+  ESC-U                Clear search highlighting.[m
+  &[4mpattern[24m          *  Display only matching lines.[m
+        ---------------------------------------------------[m
+        A search pattern may begin with one or more of:[m
+        ^N or !  Search for NON-matching lines.[m
+        ^E or *  Search multiple files (pass thru END OF FILE).[m
+        ^F or @  Start search at FIRST file (for /) or last file (for ?).[m
+        ^K       Highlight matches, but don't move (KEEP position).[m
+        ^R       Don't use REGULAR EXPRESSIONS.[m
+        ^W       WRAP search if no match found.[m
+ ---------------------------------------------------------------------------[m
+[m
+                           [1mJUMPING[0m[m
+[m
+  g  <  ESC-<       *  Go to first line in file (or line [4mN[24m).[m
+  G  >  ESC->       *  Go to last line in file (or line [4mN[24m).[m
+  p  %              *  Go to beginning of file (or [4mN[24m percent into file).[m
+  t                 *  Go to the ([4mN[24m-th) next tag.[m
+  T                 *  Go to the ([4mN[24m-th) previous tag.[m
+  {  (  [           *  Find close bracket } ) ].[m
+  }  )  ]           *  Find open bracket { ( [.[m
+  ESC-^F [4m<c1>[24m [4m<c2>[24m  *  Find close bracket [4m<c2>[24m.[m
+  ESC-^B [4m<c1>[24m [4m<c2>[24m  *  Find open bracket [4m<c1>[24m.[m
+        ---------------------------------------------------[m
+        Each "find close bracket" command goes forward to the close bracket [m
+          matching the ([4mN[24m-th) open bracket in the top line.[m
+        Each "find open bracket" command goes backward to the open bracket [m
+          matching the ([4mN[24m-th) close bracket in the bottom line.[m
+[m
+  m[4m<letter>[24m            Mark the current top line with <letter>.[m
+  M[4m<letter>[24m            Mark the current bottom line with <letter>.[m
+  '[4m<letter>[24m            Go to a previously marked position.[m
+  ''                   Go to the previous position.[m
+  ^X^X                 Same as '.[m
+  ESC-M[4m<letter>[24m        Clear a mark.[m
+[3mHELP -- Press RETURN for more, or q when done[23m[K
+[K        ---------------------------------------------------[m
+[3mHELP -- Press RETURN for more, or q when done[23m[K...skipping...
+[1mdiff --git a/requests/models.py b/requests/models.py[m[m
+[1mindex 9926045..5cfc134 100644[m[m
+[1m--- a/requests/models.py[m[m
+[1m+++ b/requests/models.py[m[m
+[36m@@ -332,6 +332,13 @@[m [mclass PreparedRequest(RequestEncodingMixin, RequestHooksMixin):[m[m
+     def prepare_body(self, data, files):[m[m
+         """Prepares the given HTTP body data."""[m[m
+ [m[m
+[32m+[m[32m        # Do not add a Content-Length header to bodyless GET requests.[m[m
+[32m+[m[32m        # `Request` normalizes data=None to an empty list, which otherwise[m[m
+[32m+[m[32m        # looks like a streamed body and produces Content-Length: 0.[m[m
+[32m+[m[32m        if self.method == 'GET' and not data and not files:[m[m
+[32m+[m[32m            self.body = None[m[m
+[32m+[m[32m            return[m[m
+[32m+[m[m
+         # Check if file, fo, generator, iterator.[m[m
+         # If not, run through normal process.[m[m
+ [m[m
+[36m@@ -386,6 +393,11 @@[m [mclass PreparedRequest(RequestEncodingMixin, RequestHooksMixin):[m[m
+         self.body = body[m[m
+ [m[m
+     def prepare_content_length(self, body):[m[m
+[32m+[m[32m        # Do not add a Content-Length header to bodyless GET requests.[m[m
+[32m+[m[32m        # Some servers reject GET requests containing Content-Length: 0.[m[m
+[32m+[m[32m        if self.method == 'GET' and body is None:[m[m
+[32m+[m[32m            return[m[m
+[32m+[m[m
+         self.headers['Content-Length'] = '0'[m[m
+         if hasattr(body, 'seek') and hasattr(body, 'tell'):[m[m
+             body.seek(0, 2)[m[m
+[1mdiff --git a/test_requests.py b/test_requests.py[m[m
+[1mindex c974e98..80aae02 100644[m[m
+[1m--- a/test_requests.py[m[m
+[1m+++ b/test_requests.py[m[m
+[36m@@ -282,3 +282,25 @@[m [mclass RequestsTestCase(unittest.TestCase):[m[m
+ [m[m
+ if __name__ == '__main__':[m[m
+     unittest.main()[m[m
+[32m+[m[m
+:[K
+[K
+[K:[K
+[K[32m+[m[32mclass TestPreparedRequestHeaders(unittest.TestCase):[m[m
+:[K
+[K-
+[Klog file: [Ktt[Kss[K//[Kmm[Koo[Kdd[Kee[Kll[Kss[K..[Kpp[Kyy[K  [Ktt[Kee[Kss[Ktt[K__[Krr[Kee[Kqq[Kuu[Kee[Kss[Ktt[Kss[K..[Kpp[Kyy[K  [K&&[K&&[K  [Kgg[Kii[Ktt[K  [Kdd[Kii[Kff[Kff[K  [K--[K--[Kss[Ktt[Kaa[Ktt
+[K
+[K[3mCannot write to "ts/models.py test_requests.py"  (press RETURN)[23m[40;1H[K
+[K:[K
+[K[?1l>
+--- status ---
+ [31mM[m requests/models.py
+ [31mM[m test_requests.py
+[31m??[m build/
+[31m??[m "elf.assertNotIn('Content-Length', request.headers)"
+[31m??[m "t test_requests.TestPreparedRequestHeaders"
+[31m??[m t_requests.py')
+
+--- test tail ---
+        self.assertTrue(b"text/py-content-type" in r.request.body)
+
+    def test_prepared_request_hook(self):
+        def hook(resp):
+            resp.hook_working = True
+            return resp
+
+        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})
+        prep = req.prepare()
+
+        s = requests.Session()
+        resp = s.send(prep)
+
+        self.assertTrue(hasattr(resp, 'hook_working'))
+
+    def test_links(self):
+        url = 'https://api.github.com/users/kennethreitz/repos?page=1&per_page=10'
+        r = requests.head(url=url)
+        self.assertEqual(r.links['next']['rel'], 'next')
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+class TestPreparedRequestHeaders(unittest.TestCase):
+
+    def test_get_without_body_has_no_content_length(self):
+        for data in (None, [], {}):
+            request = requests.Request(
+                'GET', 'http://example.com', data=data).prepare()
+            self.assertNotIn('Content-Length', request.headers)
+
+    def test_get_with_body_has_content_length(self):
+        request = requests.Request('GET', 'http://example.com', data='abc').prepare()
+        self.assertEqual(request.headers['Content-Length'], '3')
+
+    def test_post_without_body_has_zero_content_length(self):
+        request = requests.Request('POST', 'http://example.com').prepare()
+        self.assertEqual(request.headers['Content-Length'], '0')
+
+    def test_explicit_get_content_length_is_preserved(self):
+        request = requests.Request(
+            'GET', 'http://example.com',
+            headers={'Content-Length': '12'}).prepare()
+        self.assertEqual(request.headers['Content-Length'], '12')
+[?2004h(testbed) root@3c0822de520c:/testbed# 
+[?2004l
+[?2004h(testbed) root@3c0822de520c:/testbed# printf '%s\n' '--- tail ---' && tail -45 test_requests.py && printf '%s\n' '--- status ---' && git status --short
+[?2004l
+--- tail ---
+        self.assertTrue(b"text/py-content-type" in r.request.body)
+
+    def test_prepared_request_hook(self):
+        def hook(resp):
+            resp.hook_working = True
+            return resp
+
+        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})
+        prep = req.prepare()
+
+        s = requests.Session()
+        resp = s.send(prep)
+
+        self.assertTrue(hasattr(resp, 'hook_working'))
+
+    def test_links(self):
+        url = 'https://api.github.com/users/kennethreitz/repos?page=1&per_page=10'
+        r = requests.head(url=url)
+        self.assertEqual(r.links['next']['rel'], 'next')
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+class TestPreparedRequestHeaders(unittest.TestCase):
+
+    def test_get_without_body_has_no_content_length(self):
+        for data in (None, [], {}):
+            request = requests.Request(
+                'GET', 'http://example.com', data=data).prepare()
+            self.assertNotIn('Content-Length', request.headers)
+
+    def test_get_with_body_has_content_length(self):
+        request = requests.Request('GET', 'http://example.com', data='abc').prepare()
+        self.assertEqual(request.headers['Content-Length'], '3')
+
+    def test_post_without_body_has_zero_content_length(self):
+        request = requests.Request('POST', 'http://example.com').prepare()
+        self.assertEqual(request.headers['Content-Length'], '0')
+
+    def test_explicit_get_content_length_is_preserved(self):
+        request = requests.Request(
+            'GET', 'http://example.com',
+            headers={'Content-Length': '12'}).prepare()
+        self.assertEqual(request.headers['Content-Length'], '12')
+--- status ---
+ [31mM[m requests/models.py
+ [31mM[m test_requests.py
+[31m??[m build/
+[31m??[m "elf.assertNotIn('Content-Length', request.headers)"
+[31m??[m "t test_requests.TestPreparedRequestHeaders"
+[31m??[m t_requests.py')
+[?2004h(testbed) root@3c0822de520c:/testbed# rm -f -- "elf.assertNotIn('Content-Length', request.headers)" "t test_requests.TestPreparedRequestHeaders" "t_requests.py')"
+[?2004l
+[?2004h(testbed) root@3c0822de520c:/testbed# python - <<'PY'
+[?2004l
+[?2004h> from pathlib import Path
+[?2004l
+[?2004h> p = Path('test_requests.py')
+[?2004l
+[?2004h> s = p.read_text()
+[?2004l
+[?2004h> marker = "\nif __name__ == '__main__':\n    unittest.main()\n"
+[?2004l
+[?2004h> if marker in s:
+[?2004l
+[?2004h>     before, after = s.split(marker, 1)
+[?2004l
+[?2004h>     if 'class TestPreparedRequestHeaders' in after:
+[?2004l
+[?2004h>         s = before + after + marker
+[?2004l
+[?2004h>         p.write_text(s)
+[?2004l
+[?2004h> PY
+[?2004l
+[?2004h(testbed) root@3c0822de520c:/testbed# python -m unittest test_requests.TestPreparedRequestHeaders && python -m py_compile requests/models.py test_requests.py && git diff --check
+[?2004l
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+OK
+requests/models.py:572: SyntaxWarning: "is" with a literal. Did you mean "=="?
+  if self.status_code is 0:
+[?1h=
+
+[K[?1l>[?2004h(testbed) root@3c0822de520c:/testbed# git status --short && git diff --stat && tail -35 test_requests.py
+[?2004l
+ [31mM[m requests/models.py
+ [31mM[m test_requests.py
+[31m??[m build/
+[?1h=
+ requests/models.py | 12 [32m++++++++++++[m[m
+ test_requests.py   | 22 [32m++++++++++++++++++++++[m[m
+ 2 files changed, 34 insertions(+)[m
+
+[K[?1l>        s = requests.Session()
+        resp = s.send(prep)
+
+        self.assertTrue(hasattr(resp, 'hook_working'))
+
+    def test_links(self):
+        url = 'https://api.github.com/users/kennethreitz/repos?page=1&per_page=10'
+        r = requests.head(url=url)
+        self.assertEqual(r.links['next']['rel'], 'next')
+
+
+class TestPreparedRequestHeaders(unittest.TestCase):
+
+    def test_get_without_body_has_no_content_length(self):
+        for data in (None, [], {}):
+            request = requests.Request(
+                'GET', 'http://example.com', data=data).prepare()
+            self.assertNotIn('Content-Length', request.headers)
+
+    def test_get_with_body_has_content_length(self):
+        request = requests.Request('GET', 'http://example.com', data='abc').prepare()
+        self.assertEqual(request.headers['Content-Length'], '3')
+
+    def test_post_without_body_has_zero_content_length(self):
+        request = requests.Request('POST', 'http://example.com').prepare()
+        self.assertEqual(request.headers['Content-Length'], '0')
+
+    def test_explicit_get_content_length_is_preserved(self):
+        request = requests.Request(
+            'GET', 'http://example.com',
+            headers={'Content-Length': '12'}).prepare()
+        self.assertEqual(request.headers['Content-Length'], '12')
+
+if __name__ == '__main__':
+    unittest.main()
+[?2004h(testbed) root@3c0822de520c:/testbed# 
