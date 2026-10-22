@@ -67,7 +67,16 @@ install_driver() {
   local v
   v=$(apt-cache madison nvidia-driver-580-open | awk '{print $3}' | head -1)
   [[ -n "$v" ]] || die "nvidia-driver-580-open not found in NVIDIA's ubuntu2204 repository."
-  local pkgs=("nvidia-driver-580-open=$v")
+  # Provider images often hold or pin their own driver packages (e.g. nvidia-modprobe 550); release the
+  # holds and name the companion packages at the same version so apt replaces the old driver.
+  local held
+  held=$(apt-mark showhold | grep -Ei '^(nvidia|libnvidia|cuda-drivers|xserver-xorg-video-nvidia)' || true)
+  if [[ -n "$held" ]]; then
+    echo "Releasing held packages: $(echo "$held" | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    sudo apt-mark unhold $held
+  fi
+  local pkgs=("nvidia-driver-580-open=$v" "nvidia-modprobe=$v")
   if systemctl list-unit-files 2>/dev/null | grep -q nvidia-fabricmanager || ls /dev/nvidia-nvswitch* >/dev/null 2>&1; then
     pkgs+=("nvidia-fabricmanager=$v")
   fi
