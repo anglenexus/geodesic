@@ -1,0 +1,149 @@
+{
+ "phase3": {
+  "runs": [
+   {
+    "started": "2026-10-22T20:50:16",
+    "arms": [
+     "baseline",
+     "fp8_weights",
+     "bf16_weights"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 30,
+    "host": "computeinstance-e00fjzy2d0zyv73sce"
+   }
+  ],
+  "model": "qwen3.5-27b",
+  "model_label": "Qwen3.5-27B",
+  "served_name": "qwen3.5-27b",
+  "serve_script": "serve_qwen3_27B.sh",
+  "serve_env": {
+   "MAX_RUNNING": "64"
+  },
+  "base_flags": "--cuda-graph-max-bs-decode 64",
+  "gpu_class": "hopper",
+  "arm_flags": {
+   "baseline": "(baseline)",
+   "fp8_weights": "WEIGHTS=fp8",
+   "bf16_weights": "WEIGHTS=bf16"
+  },
+  "arm_labels": {
+   "baseline": "AWQ 4-bit weights (W4A16, Marlin), FlashInfer, prefix cache on, BF16 KV cache",
+   "fp8_weights": "FP8 weights (official Qwen FP8: W8A8, 128x128 block scales)",
+   "bf16_weights": "BF16 weights (official Qwen checkpoint, full precision)"
+  },
+  "workloads": {
+   "agent": {
+    "kind": "gsp",
+    "system": 4096,
+    "question": 128,
+    "output": 256,
+    "groups": 16
+   },
+   "chat": {
+    "kind": "random",
+    "input": 1024,
+    "output": 256
+   },
+   "long": {
+    "kind": "random",
+    "input": 8192,
+    "output": 256
+   }
+  },
+  "plan": {
+   "arms": [
+    "baseline",
+    "fp8_weights",
+    "bf16_weights"
+   ],
+   "sweeps": {
+    "_other": {
+     "agent": [
+      [
+       1,
+       8
+      ],
+      [
+       16,
+       64
+      ],
+      [
+       64,
+       192
+      ]
+     ],
+     "chat": [
+      [
+       64,
+       128
+      ]
+     ],
+     "long": [
+      [
+       16,
+       32
+      ]
+     ]
+    }
+   },
+   "extras": {
+    "cold": [
+     [
+      16,
+      48
+     ]
+    ],
+    "rates": [
+     [
+      4,
+      60
+     ],
+     [
+      16,
+      160
+     ]
+    ],
+    "p999": [
+     64,
+     1000
+    ],
+    "burst": 300
+   },
+   "budget_min": 30,
+   "reserve_min": 7,
+   "warm_output": 1
+  },
+  "versions": {
+   "torch": "2.13.0+cu130",
+   "cuda": "13.0",
+   "flashinfer": "0.6.18",
+   "sglang": "0.5.21"
+  },
+  "gpu": "NVIDIA H200, 580.196.07, 143771 MiB"
+ },
+ "phase4_env": {
+  "gpu": "NVIDIA H200",
+  "peak_gbs": 4800,
+  "sm": "9.0",
+  "sms": 132,
+  "torch": "2.13.0+cu130",
+  "cuda": "13.0",
+  "flashinfer": "0.6.18",
+  "time": "2026-10-22 21:27:34",
+  "model": "qwen3.5-27b",
+  "shape": {
+   "qh": 24,
+   "kvh": 4,
+   "hd": 256,
+   "layers": 16
+  }
+ },
+ "exported": "2026-10-22T22:06:49",
+ "git_commit": "e7c3d9f",
+ "source": {
+  "phase3": "/home/ubuntu/qwen-serve/results/qwen3.5-27b_h200_20261022-205009",
+  "phase4": "/home/ubuntu/qwen-serve/results/fi_qwen3.5-27b"
+ }
+}
