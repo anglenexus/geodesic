@@ -55,6 +55,11 @@ ARMS = {
     "mtp": dict(flags="--speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 "
                       "--speculative-num-draft-tokens 4",
                 label="MTP speculative decoding (3 steps, 4 draft tokens; random-token prompts)"),
+    # With the prefix cache on, SGLang keeps several DeltaNet state snapshots per request; on a 40 GB card its
+    # default state cache (49 slots) capped Qwen3.5-27B at 9 running requests. 80 slots allow ~16, less KV cache.
+    "mamba80": dict(flags="--max-mamba-cache-size 80",
+                    label="Larger DeltaNet state cache (80 slots: ~16 running requests, less KV cache)",
+                    gpus=("ampere",)),
     "fp8_weights": dict(flags="", label="FP8 weights (official Qwen FP8: W8A8, 128x128 block scales)",
                         env={"WEIGHTS": "fp8"}, needs="~/models/Qwen3.5-27B-FP8", min_gb=70),
     "bf16_weights": dict(flags="", label="BF16 weights (official Qwen checkpoint, full precision)",
@@ -139,7 +144,8 @@ MODELS = {
         label="Qwen3.5-27B", serve="serve_qwen3_27B.sh", served="qwen3.5-27b",
         model_dir="~/models/Qwen3.5-27B-AWQ-4bit",
         baseline_label="AWQ 4-bit weights (W4A16, Marlin), FlashInfer, prefix cache on, BF16 KV cache",
-        arms=["baseline", "fp8_weights", "bf16_weights", "no_radix", "fp8_kv", "fp8_kv_e4m3", "triton", "fa3", "mtp"],
+        arms=["baseline", "fp8_weights", "bf16_weights", "mamba80", "no_radix", "fp8_kv", "fp8_kv_e4m3", "triton", "fa3",
+              "mtp"],
         plans={"ampere": PLAN_27B_A100, "_any": PLAN_27B_HOPPER},
         # Above Harbor's 16 so saturation shows; each running request holds ~150 MiB of DeltaNet state.
         # CUDA graphs only up to the largest tested batch keep restarts short. Env vars override.

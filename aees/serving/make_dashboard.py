@@ -21,11 +21,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 PCTS = [50, 90, 99, 99.9]
-ARM_ORDER = ["baseline", "no_radix", "fp8_kv", "fp8_kv_e4m3", "page16", "triton", "fa3", "mtp",
+ARM_ORDER = ["baseline", "mamba80", "no_radix", "fp8_kv", "fp8_kv_e4m3", "page16", "triton", "fa3", "mtp",
              "fp8_weights", "bf16_weights"]
 ARM_COLORS = {"baseline": "#1f6feb", "no_radix": "#d1495b", "fp8_kv": "#2a9d8f", "fp8_kv_e4m3": "#2a9d8f",
               "page16": "#e9a23b", "triton": "#6c757d", "fa3": "#8250df", "mtp": "#bf3989",
-              "fp8_weights": "#0a7d6e", "bf16_weights": "#9a6700"}
+              "fp8_weights": "#0a7d6e", "bf16_weights": "#9a6700",
+              "mamba80": "#1a7f37"}
 WL_ORDER = ["agent", "chat", "long"]
 WL_COLORS = {"agent": "#1f6feb", "chat": "#2a9d8f", "long": "#e9a23b"}
 PCT_STYLE = {50: ("#8ab4f8", "dot"), 90: ("#4c8df6", "dashdot"), 99: ("#1f6feb", "solid"),
