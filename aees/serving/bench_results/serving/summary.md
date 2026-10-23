@@ -1,21 +1,21 @@
-# Qwen3.5-27B on A100-SXM4-40GB
+# qwen3.5-27b on A100-SXM4-40GB
 
-Measured 2026-10-22 with SGLang 0.5.21, FlashInfer 0.6.18, torch 2.13.0+cu130 (CUDA 13.0). Plan: full, capped at 30 min.
+Measured ? with SGLang ?, FlashInfer 0.6.18, torch 2.13.0+cu130 (CUDA 13.0). Plan: full.
 
 How to read this: **TTFT** (time to first token) is how long a user waits before the answer starts; **ITL** (inter-token latency) is the gap between streamed tokens, so 1000 / ITL is one user's reading speed in tokens/s; **throughput** is output tokens/s summed over all users. **p50** is the typical request, **p99** the slowest 1 in 100. **Concurrency** is how many requests are in flight at once.
 
 ## Phase 4: weight precision in the linear layers
 
-Time the model's weight matrices take per forward pass (all layers), measured with the kernels SGLang uses: BF16 (W16A16) = torch F.linear (cuBLAS). 1-64 tokens is decoding (reading weights dominates), 1024+ is prefill (math dominates).
+Time the model's weight matrices take per forward pass (all layers), measured with the kernels SGLang uses: BF16 (W16A16) = torch F.linear (cuBLAS); AWQ 4-bit W4A16 (Marlin) = sglang apply_gptq_marlin_linear (Marlin W4A16). 1-64 tokens is decoding (reading weights dominates), 1024+ is prefill (math dominates).
 
-| tokens per forward pass | bf16 ms |
-|---|---|
-| 1 | 37.8 |
-| 16 | 38.5 |
-| 64 | 43.5 |
-| 256 | 62.0 |
-| 1024 | 202 |
-| 4096 | 764 |
+| tokens per forward pass | bf16 ms | awq ms | awq speedup |
+|---|---|---|---|
+| 1 | 37.8 | 13.6 | 2.79x |
+| 16 | 38.4 | 14.1 | 2.72x |
+| 64 | 44.9 | 21.3 | 2.11x |
+| 256 | 63.0 | 64.7 | 0.97x |
+| 1024 | 199 | 249 | 0.80x |
+| 4096 | 759 | 994 | 0.76x |
 
 ## Phase 4: attention decode kernel time by KV-cache format (µs)
 

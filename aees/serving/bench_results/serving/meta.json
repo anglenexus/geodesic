@@ -1,0 +1,26 @@
+{
+ "phase3": {},
+ "phase4_env": {
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "peak_gbs": 1555,
+  "sm": "8.0",
+  "sms": 108,
+  "torch": "2.13.0+cu130",
+  "cuda": "13.0",
+  "flashinfer": "0.6.18",
+  "time": "2026-10-22 21:28:44",
+  "model": "qwen3.5-27b",
+  "shape": {
+   "qh": 24,
+   "kvh": 4,
+   "hd": 256,
+   "layers": 16
+  }
+ },
+ "exported": "2026-10-23T02:52:30",
+ "git_commit": "f214016",
+ "source": {
+  "phase3": "/home/ubuntu/geodesic/aees/serving",
+  "phase4": "/home/ubuntu/qwen-serve/results/fi_qwen3.5-27b"
+ }
+}
