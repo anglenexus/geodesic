@@ -1,0 +1,13 @@
+diff --git a/agent_server/trial_runner.py b/agent_server/trial_runner.py
+index cd7eb6e2..fde79212 100644
+--- a/agent_server/trial_runner.py
++++ b/agent_server/trial_runner.py
+@@ -63,7 +63,7 @@ def _agent_connection_config(
+     """Build agent-specific model connection kwargs and environment variables."""
+     if request.agent_name in _HOST_PROCESS_AGENTS:
+         kwargs: dict[str, Any] = {
+-            "parser_name": "xml",
++            "parser_name": os.getenv("HARBOR_TERMINUS_2_PARSER", "xml"),
+             "interleaved_thinking": True,
+             "abort_on_response_length_exceeded": True,
+             "llm_call_kwargs": dict(request.sampling_params or {}),
