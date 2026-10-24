@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# serve_qwen3_27B.sh - run Qwen3.5-27B (4-bit AWQ) with SGLang on one A100-40GB, in a tmux session,
-# as the model behind Harbor runs. Same port and tunnel as serve.sh, so Harbor only changes the
+# serve_qwen3_27B.sh - run Qwen3.5-27B with SGLang on one GPU (A100-40GB or H100/H200), in a tmux
+# session, as the model behind Harbor runs and for the Phase 3/4 benchmarks. Same port and tunnel as serve.sh, so Harbor only changes the
 # model name (-m hosted_vllm/qwen3.5-27b). Only one of the two servers fits on the GPU at a time.
 #
 # Usage:  ./serve_qwen3_27B.sh start | stop | restart | status | logs | tunnel
 #
-# Memory on 40 GB: ~20 GB of weights; the rest holds the KV cache of the 16 full-attention layers
+# Weight precision (WEIGHTS=..., all served under the same model name):
+#   awq   cyankiwi/Qwen3.5-27B-AWQ-4bit  ~20 GB  W4A16 on Marlin kernels; the only one that fits 40 GB well
+#   fp8   Qwen/Qwen3.5-27B-FP8           ~31 GB  W8A8, 128x128 block scales; FP8 tensor cores on Hopper
+#   bf16  Qwen/Qwen3.5-27B               ~56 GB  full precision, as in Qwen's published evaluations
+#
+# Memory on 40 GB with awq: ~20 GB of weights; the rest holds the KV cache of the 16 full-attention layers
 # (64 KiB/token) and a fixed ~150 MiB linear-attention state per running request (48 layers).
 # MAX_RUNNING caps the latter; it should be at least Harbor's -n.
 #
@@ -19,11 +24,19 @@
 #                                   "--speculative-algo NEXTN --speculative-num-steps 3
 #                                    --speculative-eagle-topk 1 --speculative-num-draft-tokens 4"
 #   SERVER_ENV="VAR=..."            extra environment for the server process
-#   MODEL_ID / MODEL_DIR / WORK_DIR  must match what setup_host_qwen3_27B.sh used
+#   WEIGHTS=awq | fp8 | bf16        checkpoint to serve (setup_host_qwen3_27B.sh downloads them)
+#   MODEL_ID / MODEL_DIR / WORK_DIR  override the checkpoint; must match what setup_host_qwen3_27B.sh used
 set -euo pipefail
 
 WORK_DIR="${WORK_DIR:-$HOME/qwen-serve}"
-MODEL_ID="${MODEL_ID:-cyankiwi/Qwen3.5-27B-AWQ-4bit}"
+WEIGHTS="${WEIGHTS:-awq}"
+case "$WEIGHTS" in
+  awq)  DEFAULT_ID=cyankiwi/Qwen3.5-27B-AWQ-4bit ;;
+  fp8)  DEFAULT_ID=Qwen/Qwen3.5-27B-FP8 ;;
+  bf16) DEFAULT_ID=Qwen/Qwen3.5-27B ;;
+  *)    echo "WEIGHTS must be awq, fp8 or bf16 (got '$WEIGHTS')"; exit 1 ;;
+esac
+MODEL_ID="${MODEL_ID:-$DEFAULT_ID}"
 MODEL_DIR="${MODEL_DIR:-$HOME/models/${MODEL_ID##*/}}"
 SERVED_NAME="${SERVED_NAME:-qwen3.5-27b}"
 HOST="${HOST:-127.0.0.1}"
@@ -53,7 +66,8 @@ summary() {
   local log="$LOG_DIR/latest.log"
   echo "--- startup facts (record these in the run log) ---"
   grep -m1 -iE "attention.?backend" "$log" || true
-  grep -m1 -iE "quantization|compressed.?tensors|marlin" "$log" || true
+  grep -m1 -iE "quantization|compressed.?tensors|marlin|fp8" "$log" || true
+  grep -m1 -iE "load weight end" "$log" || true
   grep -m1 -E "max_total_num_tokens" "$log" || true
   grep -m1 -iE "mamba" "$log" || true
   grep -m1 -iE "cuda graph" "$log" || true
@@ -62,7 +76,7 @@ summary() {
   curl -s "${AUTH[@]}" "$URL/v1/chat/completions" -H "Content-Type: application/json" \
     -d "{\"model\":\"$SERVED_NAME\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello in five words.\"}],\"max_tokens\":32,\"temperature\":0,\"chat_template_kwargs\":{\"enable_thinking\":false}}" \
     | python3 -c "import json,sys; r=json.load(sys.stdin); print('reply:', r['choices'][0]['message']['content'])"
-  echo "Endpoint: http://$HOST:$PORT/v1   model name: $SERVED_NAME"
+  echo "Endpoint: http://$HOST:$PORT/v1   model name: $SERVED_NAME   weights: $WEIGHTS"
   echo "Harbor:   -m hosted_vllm/$SERVED_NAME --ak api_base='\"http://127.0.0.1:$PORT/v1\"'"
   tunnel
 }
@@ -83,7 +97,7 @@ tunnel() {
 
 start() {
   if running; then echo "A server is already running (tmux session '$SESSION'). Use: $0 restart"; return; fi
-  [[ -f "$MODEL_DIR/config.json" ]] || { echo "Model not found at $MODEL_DIR; run setup_host_qwen3_27B.sh first."; exit 1; }
+  [[ -f "$MODEL_DIR/config.json" ]] || { echo "Model not found at $MODEL_DIR; run WEIGHTS=$WEIGHTS setup_host_qwen3_27B.sh first."; exit 1; }
   [[ -d "$WORK_DIR/.venv" ]] || { echo "No venv at $WORK_DIR/.venv; run setup_host_qwen3_27B.sh first."; exit 1; }
   local used
   used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
@@ -93,13 +107,14 @@ start() {
     exit 1
   fi
   mkdir -p "$LOG_DIR"
-  local log; log="$LOG_DIR/server_27b_$(date +%Y%m%d_%H%M%S).log"
+  local log; log="$LOG_DIR/server_27b_${WEIGHTS}_$(date +%Y%m%d_%H%M%S).log"
+  echo "Weights: $WEIGHTS ($MODEL_DIR)"
   local opt=""
   [[ -z "$API_KEY" ]] || opt+=" --api-key $API_KEY"
   [[ -z "$REASONING_PARSER" ]] || opt+=" --reasoning-parser $REASONING_PARSER"
 
   # The exact command is written to a file so every run is reproducible from the log dir.
-  # No --quantization flag: SGLang reads the compressed-tensors config from the checkpoint.
+  # No --quantization flag: SGLang reads the quantization config (compressed-tensors or fp8) from the checkpoint.
   cat > "$WORK_DIR/.run_server_27b.sh" <<EOF
 #!/usr/bin/env bash
 source "$WORK_DIR/.venv/bin/activate"

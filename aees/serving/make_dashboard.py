@@ -21,9 +21,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 PCTS = [50, 90, 99, 99.9]
-ARM_ORDER = ["baseline", "no_radix", "fp8_kv", "page16", "triton"]
-ARM_COLORS = {"baseline": "#1f6feb", "no_radix": "#d1495b", "fp8_kv": "#2a9d8f",
-              "page16": "#e9a23b", "triton": "#6c757d"}
+ARM_ORDER = ["baseline", "mamba80", "no_radix", "fp8_kv", "fp8_kv_e4m3", "page16", "triton", "fa3", "mtp",
+             "fp8_weights", "bf16_weights"]
+ARM_COLORS = {"baseline": "#1f6feb", "no_radix": "#d1495b", "fp8_kv": "#2a9d8f", "fp8_kv_e4m3": "#2a9d8f",
+              "page16": "#e9a23b", "triton": "#6c757d", "fa3": "#8250df", "mtp": "#bf3989",
+              "fp8_weights": "#0a7d6e", "bf16_weights": "#9a6700",
+              "mamba80": "#1a7f37"}
 WL_ORDER = ["agent", "chat", "long"]
 WL_COLORS = {"agent": "#1f6feb", "chat": "#2a9d8f", "long": "#e9a23b"}
 PCT_STYLE = {50: ("#8ab4f8", "dot"), 90: ("#4c8df6", "dashdot"), 99: ("#1f6feb", "solid"),
@@ -362,7 +365,7 @@ def quality_table(run_dir):
         if arm == "baseline":
             base = cases
         agree = ""
-        if base is not None:
+        if base is not None and cases:
             same = sum(1 for a, b in zip(cases, base) if a.get("tool") == b.get("tool") and a.get("args") == b.get("args"))
             agree = f"{same / len(cases):.0%}"
         rows.append({"setting": arm, "prompts": len(cases), "correct tool": f"{q['summary']['tool_ok']:.0%}",
@@ -597,7 +600,8 @@ def build(run_dir, slo):
             table[col] = table[col].round(1)
     v = meta.get("versions", {})
     runs = meta.get("runs", [{}])
-    subtitle = (f"Qwen3-4B · {meta.get('gpu', 'GPU n/a')} · SGLang {v.get('sglang', '?')} · FlashInfer "
+    model = meta.get("model_label", "Qwen3-4B")
+    subtitle = (f"{model} · {meta.get('gpu', 'GPU n/a')} · SGLang {v.get('sglang', '?')} · FlashInfer "
                 f"{v.get('flashinfer', '?')} · torch {v.get('torch', '?')} (CUDA {v.get('cuda', '?')}) · "
                 f"started {runs[0].get('started', '?')} · SLO at {P}: TTFT ≤ {slo['ttft']:g} ms, ITL ≤ {slo['itl']:g} ms")
     flags = "".join(f"<li><b>{html.escape(k)}</b>: {html.escape(meta.get('arm_labels', {}).get(k, ''))} "
@@ -609,9 +613,9 @@ def build(run_dir, slo):
                     f"{html.escape((arm_dir / 'server.cmd').read_text())}</pre></details>"
 
     page = f"""<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Qwen3-4B serving benchmark</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{html.escape(model.split(" ")[0])} serving benchmark</title>
 <style>{CSS}</style></head><body><main>
-<h1>Qwen3-4B serving benchmark: SGLang + FlashInfer</h1><p class="sub">{html.escape(subtitle)}</p>
+<h1>{html.escape(model)} serving benchmark: SGLang + FlashInfer</h1><p class="sub">{html.escape(subtitle)}</p>
 <div class="cards">{cards}</div>
 {abl_html}
 {''.join(parts)}

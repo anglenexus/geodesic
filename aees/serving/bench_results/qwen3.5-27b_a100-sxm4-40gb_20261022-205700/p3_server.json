@@ -1,0 +1,40 @@
+{
+ "baseline": {
+  "kv_pool_tokens": 134392,
+  "cache_hit_rate": {
+   "agent": 0.0,
+   "long": 0.0,
+   "chat": 0.0
+  },
+  "launch": "#!/usr/bin/env bash\nsource \"/home/ubuntu/qwen-serve/.venv/bin/activate\"\nexport CUDA_HOME=/usr/local/cuda-13.0 PATH=/usr/local/cuda-13.0/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}\n\nsglang serve \"/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit\" \\\n  --served-model-name qwen3.5-27b \\\n  --host 127.0.0.1 --port 30000 \\\n  --attention-backend flashinfer \\\n  --sampling-backend flashinfer \\\n  --tool-call-parser qwen3_coder \\\n  --context-length 32768 \\\n  --mem-fraction-static 0.88 \\\n  --max-running-requests 32 \\\n  --chunked-prefill-size 4096 \\\n  --enable-metrics \\\n  --enable-cache-report \\\n  --log-level info --reasoning-parser qwen3 --cuda-graph-max-bs-decode 32 2>&1 | tee \"/home/ubuntu/qwen-serve/logs/server_27b_awq_20261022_205720.log\"",
+  "startup_log": [
+   "[2026-10-22 20:57:32] server_args={'model_path': '/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit', 'tokenizer_path': '/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit', 'tokenizer_mode': 'auto', 'tokenizer_backend': 'huggingface', 'tokenizer_worker_num': 1, 'detokenizer_worker_num': 1, 'skip_tokenizer_init': Fals",
+   "[2026-10-22 20:57:44] Multimodal attention backend not set. Use triton_attn.",
+   "[2026-10-22 20:57:57] Load weight end. elapsed=12.94 s, type=Qwen3_5ForConditionalGeneration, quant=compressed-tensors, avail mem=20.15 GB, mem usage=18.83 GB.",
+   "[2026-10-22 20:57:58] max_running_requests is capped to 9 by the mamba state cache (max_mamba_cache_size=49, 5 state slots per request). To raise it: increase --mamba-full-memory-ratio or --max-mamba-cache-size, or halve the state size with --mamba-ssm-dtype bfloat16.",
+   "[2026-10-22 20:57:58] Capture target prefill CUDA graph begin. backend=breakable, num_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304,",
+   "[2026-10-22 21:03:44] max_total_num_tokens=134392, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=9, context_len=32768, available_gpu_mem=2.48 GB"
+  ],
+  "weights_gb": 18.83,
+  "ready_seconds": 390
+ },
+ "no_radix": {
+  "kv_pool_tokens": 174325,
+  "cache_hit_rate": {
+   "agent": 0.0,
+   "long": 0.0,
+   "chat": 0.0
+  },
+  "launch": "#!/usr/bin/env bash\nsource \"/home/ubuntu/qwen-serve/.venv/bin/activate\"\nexport CUDA_HOME=/usr/local/cuda-13.0 PATH=/usr/local/cuda-13.0/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}\n\nsglang serve \"/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit\" \\\n  --served-model-name qwen3.5-27b \\\n  --host 127.0.0.1 --port 30000 \\\n  --attention-backend flashinfer \\\n  --sampling-backend flashinfer \\\n  --tool-call-parser qwen3_coder \\\n  --context-length 32768 \\\n  --mem-fraction-static 0.88 \\\n  --max-running-requests 32 \\\n  --chunked-prefill-size 4096 \\\n  --enable-metrics \\\n  --enable-cache-report \\\n  --log-level info --reasoning-parser qwen3 --cuda-graph-max-bs-decode 32 --disable-radix-cache 2>&1 | tee \"/home/ubuntu/qwen-serve/logs/server_27b_awq_20261022_211402.log\"",
+  "startup_log": [
+   "[2026-10-22 21:14:12] server_args={'model_path': '/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit', 'tokenizer_path': '/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit', 'tokenizer_mode': 'auto', 'tokenizer_backend': 'huggingface', 'tokenizer_worker_num': 1, 'detokenizer_worker_num': 1, 'skip_tokenizer_init': Fals",
+   "[2026-10-22 21:14:24] Multimodal attention backend not set. Use triton_attn.",
+   "[2026-10-22 21:14:29] Load weight end. elapsed=5.63 s, type=Qwen3_5ForConditionalGeneration, quant=compressed-tensors, avail mem=20.15 GB, mem usage=18.83 GB.",
+   "[2026-10-22 21:14:31] Mamba Cache is allocated. max_mamba_cache_size: 32, conv_state size: 0.09GB, ssm_state size: 4.64GB ",
+   "[2026-10-22 21:14:31] Capture target prefill CUDA graph begin. backend=breakable, num_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304,",
+   "[2026-10-22 21:15:11] max_total_num_tokens=174325, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=32, context_len=32768, available_gpu_mem=2.41 GB"
+  ],
+  "weights_gb": 18.83,
+  "ready_seconds": 80
+ }
+}

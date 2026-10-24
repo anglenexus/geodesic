@@ -1,0 +1,968 @@
+{
+ "baseline": {
+  "summary": {
+   "n": 37,
+   "tool_ok": 1.0,
+   "args_ok": 1.0
+  },
+  "cases": [
+   {
+    "prompt": "What's the weather in Paris right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Paris",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Tokyo right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Tokyo",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Austin right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Austin",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Nairobi right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Nairobi",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Lima right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Lima",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Oslo right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Oslo",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Seoul right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Seoul",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Cairo right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Cairo",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 100 USD to EUR.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 100,
+     "from_currency": "USD",
+     "to_currency": "EUR"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 250 GBP to JPY.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 250,
+     "from_currency": "GBP",
+     "to_currency": "JPY"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 75.5 EUR to USD.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 75.5,
+     "from_currency": "EUR",
+     "to_currency": "USD"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 1200 JPY to USD.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 1200,
+     "from_currency": "JPY",
+     "to_currency": "USD"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 60 CAD to EUR.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 60,
+     "from_currency": "CAD",
+     "to_currency": "EUR"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 9 AUD to GBP.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 9,
+     "from_currency": "AUD",
+     "to_currency": "GBP"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 500 CHF to USD.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 500,
+     "from_currency": "CHF",
+     "to_currency": "USD"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 42 USD to INR.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 42,
+     "from_currency": "USD",
+     "to_currency": "INR"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Team sync' on my calendar for 2026-10-12 at 09:30.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Team sync",
+     "date": "2026-10-12",
+     "time": "09:30"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Dentist' on my calendar for 2026-11-03 at 14:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Dentist",
+     "date": "2026-11-03",
+     "time": "14:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Quarterly review' on my calendar for 2026-12-01 at 10:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Quarterly review",
+     "date": "2026-12-01",
+     "time": "10:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Lunch with Ana' on my calendar for 2026-10-20 at 12:15.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Lunch with Ana",
+     "date": "2026-10-20",
+     "time": "12:15"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Flight to Denver' on my calendar for 2026-11-18 at 07:45.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Flight to Denver",
+     "date": "2026-11-18",
+     "time": "07:45"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Gym' on my calendar for 2026-10-15 at 18:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Gym",
+     "date": "2026-10-15",
+     "time": "18:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Board meeting' on my calendar for 2027-01-09 at 16:30.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Board meeting",
+     "date": "2027-01-09",
+     "time": "16:30"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Call with vendor' on my calendar for 2026-10-29 at 11:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Call with vendor",
+     "date": "2026-10-29",
+     "time": "11:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'rate limits'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "rate limits"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'refund policy'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "refund policy"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'SSO setup'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "SSO setup"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'data retention'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "data retention"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'API keys'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "API keys"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'webhooks'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "webhooks"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'billing cycle'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "billing cycle"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'export to CSV'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "export to CSV"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Say hi in five words.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What is 2+2? Answer with just the number.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Name three primary colors.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Translate 'good morning' to Spanish.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Is a tomato a fruit? One sentence.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   }
+  ]
+ },
+ "no_radix": {
+  "summary": {
+   "n": 37,
+   "tool_ok": 1.0,
+   "args_ok": 1.0
+  },
+  "cases": [
+   {
+    "prompt": "What's the weather in Paris right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Paris",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Tokyo right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Tokyo",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Austin right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Austin",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Nairobi right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Nairobi",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Lima right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Lima",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Oslo right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Oslo",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Seoul right now, in celsius?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Seoul",
+     "unit": "celsius"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What's the weather in Cairo right now, in fahrenheit?",
+    "expected_tool": "get_weather",
+    "tool": "get_weather",
+    "args": {
+     "city": "Cairo",
+     "unit": "fahrenheit"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 100 USD to EUR.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 100,
+     "from_currency": "USD",
+     "to_currency": "EUR"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 250 GBP to JPY.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 250,
+     "from_currency": "GBP",
+     "to_currency": "JPY"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 75.5 EUR to USD.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 75.5,
+     "from_currency": "EUR",
+     "to_currency": "USD"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 1200 JPY to USD.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 1200,
+     "from_currency": "JPY",
+     "to_currency": "USD"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 60 CAD to EUR.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 60,
+     "from_currency": "CAD",
+     "to_currency": "EUR"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 9 AUD to GBP.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 9,
+     "from_currency": "AUD",
+     "to_currency": "GBP"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 500 CHF to USD.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 500,
+     "from_currency": "CHF",
+     "to_currency": "USD"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Convert 42 USD to INR.",
+    "expected_tool": "convert_currency",
+    "tool": "convert_currency",
+    "args": {
+     "amount": 42,
+     "from_currency": "USD",
+     "to_currency": "INR"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Team sync' on my calendar for 2026-10-12 at 09:30.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Team sync",
+     "date": "2026-10-12",
+     "time": "09:30"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Dentist' on my calendar for 2026-11-03 at 14:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Dentist",
+     "date": "2026-11-03",
+     "time": "14:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Quarterly review' on my calendar for 2026-12-01 at 10:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Quarterly review",
+     "date": "2026-12-01",
+     "time": "10:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Lunch with Ana' on my calendar for 2026-10-20 at 12:15.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Lunch with Ana",
+     "date": "2026-10-20",
+     "time": "12:15"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Flight to Denver' on my calendar for 2026-11-18 at 07:45.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Flight to Denver",
+     "date": "2026-11-18",
+     "time": "07:45"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Gym' on my calendar for 2026-10-15 at 18:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Gym",
+     "date": "2026-10-15",
+     "time": "18:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Board meeting' on my calendar for 2027-01-09 at 16:30.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Board meeting",
+     "date": "2027-01-09",
+     "time": "16:30"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Put 'Call with vendor' on my calendar for 2026-10-29 at 11:00.",
+    "expected_tool": "create_event",
+    "tool": "create_event",
+    "args": {
+     "title": "Call with vendor",
+     "date": "2026-10-29",
+     "time": "11:00"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'rate limits'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "rate limits"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'refund policy'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "refund policy"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'SSO setup'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "SSO setup"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'data retention'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "data retention"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'API keys'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "API keys"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'webhooks'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "webhooks"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'billing cycle'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "billing cycle"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Search our docs for 'export to CSV'.",
+    "expected_tool": "search_docs",
+    "tool": "search_docs",
+    "args": {
+     "query": "export to CSV"
+    },
+    "valid_json": true,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Say hi in five words.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "What is 2+2? Answer with just the number.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Name three primary colors.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Translate 'good morning' to Spanish.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   },
+   {
+    "prompt": "Is a tomato a fruit? One sentence.",
+    "expected_tool": null,
+    "tool": null,
+    "args": {},
+    "valid_json": false,
+    "tool_ok": true,
+    "args_ok": true,
+    "error": null
+   }
+  ]
+ }
+}

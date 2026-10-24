@@ -4,6 +4,8 @@
 #   python smoke_test.py                 # smoke tests, printing every input and output
 #   python smoke_test.py chat            # interactive streaming chat over stdin/stdout
 #   python smoke_test.py chat --tools --system "You are a terse assistant."
+#   python smoke_test.py chat --model qwen3.5-27b              # thinking models: reasoning shown dimmed
+#   python smoke_test.py chat --model qwen3.5-27b --no-think   # ask the model to skip thinking
 # The API address defaults to http://127.0.0.1:30000/v1 (override with --base-url or API_PORT=...).
 import argparse, json, os, sys, time, urllib.request
 from openai import OpenAI
@@ -18,8 +20,13 @@ p.add_argument("--model", default="qwen3-4b")
 p.add_argument("--system", default="You are a helpful assistant.")
 p.add_argument("--tools", action="store_true", help="chat mode: enable the demo get_weather tool")
 p.add_argument("--temperature", type=float, default=0.7)
-p.add_argument("--max-tokens", type=int, default=1024)
+p.add_argument("--max-tokens", type=int, default=8192, help="thinking counts toward this")
+p.add_argument("--no-think", action="store_true",
+               help="send enable_thinking=false (Qwen3/3.5 chat templates; ignored by other models)")
 args = p.parse_args()
+# Sent on every request; harmless for models whose chat template has no thinking switch.
+EXTRA = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}} if args.no_think else {}
+DIM, RESET = "\033[2m", "\033[0m"
 
 try:  # fail fast, with the fix, if the tunnel isn't up
     urllib.request.urlopen(args.base_url.rstrip("/") + "/models", timeout=5).read()
@@ -57,10 +64,13 @@ def call(label, messages, **kw):
     if kw.get("tools"):
         print(f"    [tools] {[t['function']['name'] for t in kw['tools']]}")
     t = time.perf_counter()
-    r = client.chat.completions.create(model=args.model, messages=messages, **kw)
+    r = client.chat.completions.create(model=args.model, messages=messages, **EXTRA, **kw)
     ms = 1000 * (time.perf_counter() - t)
     c = r.choices[0]
     print("  OUTPUT:")
+    reasoning = getattr(c.message, "reasoning_content", None)
+    if reasoning:
+        print(f"    [reasoning] {short(reasoning)!r}")
     print(f"    [assistant] {c.message.content!r}")
     for tc in c.message.tool_calls or []:
         print(f"    [tool_call] {tc.function.name}({tc.function.arguments})")
@@ -70,7 +80,7 @@ def call(label, messages, **kw):
 
 def smoke_tests():
     call("1. Plain chat", [{"role": "user", "content": "Say hello in five words."}],
-         temperature=0, max_tokens=32)
+         temperature=0, max_tokens=args.max_tokens)  # room for thinking models to finish
     r = call("2. Tool call (expect finish_reason=tool_calls)",
              [{"role": "user", "content": "What's the weather in Mountain View, in celsius?"}],
              tools=TOOLS, temperature=0)
@@ -85,16 +95,30 @@ def smoke_tests():
 def stream_turn(history):
     """One streamed assistant turn; returns the tool calls the model made, if any."""
     kw = {"tools": TOOLS} if args.tools else {}
-    t0, ttft, text, calls = time.perf_counter(), None, "", {}
+    t0, ttft, t_answer, text, calls = time.perf_counter(), None, None, "", {}
+    n_reasoning, finish, thinking = 0, None, False
     stream = client.chat.completions.create(model=args.model, messages=history, stream=True,
-        temperature=args.temperature, max_tokens=args.max_tokens, **kw)
+        temperature=args.temperature, max_tokens=args.max_tokens, **EXTRA, **kw)
     print("bot> ", end="", flush=True)
     for chunk in stream:
         if not chunk.choices:
             continue
         d = chunk.choices[0].delta
-        if ttft is None and (d.content or d.tool_calls):
+        finish = chunk.choices[0].finish_reason or finish
+        reasoning = getattr(d, "reasoning_content", None)  # set by the server's --reasoning-parser
+        if ttft is None and (reasoning or d.content or d.tool_calls):
             ttft = time.perf_counter() - t0
+        if reasoning:
+            n_reasoning += len(reasoning)
+            if not thinking:
+                print(f"{DIM}[thinking] ", end="")
+                thinking = True
+            print(reasoning, end="", flush=True)
+        if (d.content or d.tool_calls) and t_answer is None:
+            t_answer = time.perf_counter() - t0
+            if thinking:
+                print(f"{RESET}\n     ", end="")
+                thinking = False
         if d.content:
             text += d.content
             print(d.content, end="", flush=True)
@@ -107,7 +131,16 @@ def stream_turn(history):
             if tc.function and tc.function.arguments:
                 c["args"] += tc.function.arguments
     total = time.perf_counter() - t0
-    print(f"\n      (TTFT {1000 * (ttft or total):.0f} ms, total {total:.1f} s)")
+    if thinking:
+        print(RESET, end="")
+    stats = f"TTFT {1000 * (ttft or total):.0f} ms"
+    if n_reasoning:
+        answer = f"{t_answer:.1f} s" if t_answer is not None else "never"
+        stats += f", thinking {n_reasoning} chars, answer started {answer}"
+    print(f"\n      ({stats}, total {total:.1f} s, finish_reason={finish})")
+    if finish == "length":
+        print(f"      Hit --max-tokens {args.max_tokens}"
+              + (" while still thinking; raise it or use --no-think." if t_answer is None else "."))
     msg = {"role": "assistant", "content": text}
     if calls:
         msg["tool_calls"] = [{"id": c["id"], "type": "function",

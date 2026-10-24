@@ -1,0 +1,149 @@
+{
+ "phase3": {
+  "runs": [
+   {
+    "started": "2026-10-22T20:57:10",
+    "arms": [
+     "baseline",
+     "no_radix",
+     "mtp"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 30,
+    "host": "129-213-23-188"
+   }
+  ],
+  "model": "qwen3.5-27b",
+  "model_label": "Qwen3.5-27B",
+  "served_name": "qwen3.5-27b",
+  "serve_script": "serve_qwen3_27B.sh",
+  "serve_env": {
+   "MAX_RUNNING": "32"
+  },
+  "base_flags": "--cuda-graph-max-bs-decode 32",
+  "gpu_class": "ampere",
+  "arm_flags": {
+   "baseline": "(baseline)",
+   "no_radix": "--disable-radix-cache",
+   "mtp": "--speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4"
+  },
+  "arm_labels": {
+   "baseline": "AWQ 4-bit weights (W4A16, Marlin), FlashInfer, prefix cache on, BF16 KV cache",
+   "no_radix": "Prefix (radix) cache off",
+   "mtp": "MTP speculative decoding (3 steps, 4 draft tokens; random-token prompts)"
+  },
+  "workloads": {
+   "agent": {
+    "kind": "gsp",
+    "system": 4096,
+    "question": 128,
+    "output": 256,
+    "groups": 16
+   },
+   "chat": {
+    "kind": "random",
+    "input": 1024,
+    "output": 256
+   },
+   "long": {
+    "kind": "random",
+    "input": 8192,
+    "output": 256
+   }
+  },
+  "plan": {
+   "arms": [
+    "baseline",
+    "no_radix",
+    "mtp"
+   ],
+   "sweeps": {
+    "_other": {
+     "agent": [
+      [
+       1,
+       4
+      ],
+      [
+       16,
+       32
+      ],
+      [
+       32,
+       64
+      ]
+     ],
+     "chat": [
+      [
+       32,
+       64
+      ]
+     ],
+     "long": [
+      [
+       8,
+       16
+      ]
+     ]
+    }
+   },
+   "extras": {
+    "cold": [
+     [
+      16,
+      32
+     ]
+    ],
+    "rates": [
+     [
+      1,
+      20
+     ],
+     [
+      4,
+      60
+     ]
+    ],
+    "p999": [
+     32,
+     600
+    ],
+    "burst": 150
+   },
+   "budget_min": 30,
+   "reserve_min": 8,
+   "warm_output": 1
+  },
+  "versions": {
+   "torch": "2.13.0+cu130",
+   "cuda": "13.0",
+   "flashinfer": "0.6.18",
+   "sglang": "0.5.21"
+  },
+  "gpu": "NVIDIA A100-SXM4-40GB, 580.196.07, 40960 MiB"
+ },
+ "phase4_env": {
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "peak_gbs": 1555,
+  "sm": "8.0",
+  "sms": 108,
+  "torch": "2.13.0+cu130",
+  "cuda": "13.0",
+  "flashinfer": "0.6.18",
+  "time": "2026-10-22 21:28:44",
+  "model": "qwen3.5-27b",
+  "shape": {
+   "qh": 24,
+   "kvh": 4,
+   "hd": 256,
+   "layers": 16
+  }
+ },
+ "exported": "2026-10-22T22:35:27",
+ "git_commit": "a3886d7",
+ "source": {
+  "phase3": "/home/ubuntu/qwen-serve/results/qwen3.5-27b_a100-sxm4-40gb_20261022-205700",
+  "phase4": "/home/ubuntu/qwen-serve/results/fi_qwen3.5-27b"
+ }
+}

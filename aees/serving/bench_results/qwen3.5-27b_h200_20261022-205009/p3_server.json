@@ -1,0 +1,59 @@
+{
+ "baseline": {
+  "kv_pool_tokens": 894521,
+  "cache_hit_rate": {
+   "long": 0.0,
+   "agent": 0.966,
+   "chat": 0.0
+  },
+  "launch": "#!/usr/bin/env bash\nsource \"/home/ubuntu/qwen-serve/.venv/bin/activate\"\nexport CUDA_HOME=/usr/local/cuda-13.0 PATH=/usr/local/cuda-13.0/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}\n\nsglang serve \"/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit\" \\\n  --served-model-name qwen3.5-27b \\\n  --host 127.0.0.1 --port 30000 \\\n  --attention-backend flashinfer \\\n  --sampling-backend flashinfer \\\n  --tool-call-parser qwen3_coder \\\n  --context-length 32768 \\\n  --mem-fraction-static 0.88 \\\n  --max-running-requests 64 \\\n  --chunked-prefill-size 4096 \\\n  --enable-metrics \\\n  --enable-cache-report \\\n  --log-level info --reasoning-parser qwen3 --cuda-graph-max-bs-decode 64 2>&1 | tee \"/home/ubuntu/qwen-serve/logs/server_27b_awq_20261022_205026.log\"",
+  "startup_log": [
+   "[2026-10-22 20:50:33] server_args={'model_path': '/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit', 'tokenizer_path': '/home/ubuntu/models/Qwen3.5-27B-AWQ-4bit', 'tokenizer_mode': 'auto', 'tokenizer_backend': 'huggingface', 'tokenizer_worker_num': 1, 'detokenizer_worker_num': 1, 'skip_tokenizer_init': Fals",
+   "[2026-10-22 20:50:42] Multimodal attention backend not set. Use fa3.",
+   "[2026-10-22 20:50:46] Load weight end. elapsed=4.20 s, type=Qwen3_5ForConditionalGeneration, quant=compressed-tensors, avail mem=120.29 GB, mem usage=18.83 GB.",
+   "[2026-10-22 20:50:47] Mamba Cache is allocated. max_mamba_cache_size: 340, conv_state size: 0.94GB, ssm_state size: 47.95GB ",
+   "[2026-10-22 20:50:48] Capture target prefill CUDA graph begin. backend=breakable, num_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304,",
+   "[2026-10-22 20:51:21] max_total_num_tokens=894521, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=64, context_len=32768, available_gpu_mem=14.31 GB"
+  ],
+  "weights_gb": 18.83,
+  "ready_seconds": 65
+ },
+ "bf16_weights": {
+  "kv_pool_tokens": 615355,
+  "cache_hit_rate": {
+   "long": 0.0,
+   "agent": 0.897,
+   "chat": 0.0
+  },
+  "launch": "#!/usr/bin/env bash\nsource \"/home/ubuntu/qwen-serve/.venv/bin/activate\"\nexport CUDA_HOME=/usr/local/cuda-13.0 PATH=/usr/local/cuda-13.0/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}\n\nsglang serve \"/home/ubuntu/models/Qwen3.5-27B\" \\\n  --served-model-name qwen3.5-27b \\\n  --host 127.0.0.1 --port 30000 \\\n  --attention-backend flashinfer \\\n  --sampling-backend flashinfer \\\n  --tool-call-parser qwen3_coder \\\n  --context-length 32768 \\\n  --mem-fraction-static 0.88 \\\n  --max-running-requests 64 \\\n  --chunked-prefill-size 4096 \\\n  --enable-metrics \\\n  --enable-cache-report \\\n  --log-level info --reasoning-parser qwen3 --cuda-graph-max-bs-decode 64 2>&1 | tee \"/home/ubuntu/qwen-serve/logs/server_27b_bf16_20261022_211254.log\"",
+  "startup_log": [
+   "[2026-10-22 21:13:01] server_args={'model_path': '/home/ubuntu/models/Qwen3.5-27B', 'tokenizer_path': '/home/ubuntu/models/Qwen3.5-27B', 'tokenizer_mode': 'auto', 'tokenizer_backend': 'huggingface', 'tokenizer_worker_num': 1, 'detokenizer_worker_num': 1, 'skip_tokenizer_init': False, 'load_format': ",
+   "[2026-10-22 21:13:10] Multimodal attention backend not set. Use fa3.",
+   "[2026-10-22 21:13:20] Load weight end. elapsed=10.17 s, type=Qwen3_5ForConditionalGeneration, avail mem=88.07 GB, mem usage=51.05 GB.",
+   "[2026-10-22 21:13:21] max_running_requests is capped to 46 by the mamba state cache (max_mamba_cache_size=234, 5 state slots per request). To raise it: increase --mamba-full-memory-ratio or --max-mamba-cache-size, or halve the state size with --mamba-ssm-dtype bfloat16.",
+   "[2026-10-22 21:13:21] Capture target prefill CUDA graph begin. backend=breakable, num_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304,",
+   "[2026-10-22 21:13:47] max_total_num_tokens=615355, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=46, context_len=32768, available_gpu_mem=14.40 GB"
+  ],
+  "weights_gb": 51.05,
+  "ready_seconds": 60
+ },
+ "fp8_weights": {
+  "kv_pool_tokens": 809196,
+  "cache_hit_rate": {
+   "long": 0.0,
+   "agent": 0.966,
+   "chat": 0.0
+  },
+  "launch": "#!/usr/bin/env bash\nsource \"/home/ubuntu/qwen-serve/.venv/bin/activate\"\nexport CUDA_HOME=/usr/local/cuda-13.0 PATH=/usr/local/cuda-13.0/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}\n\nsglang serve \"/home/ubuntu/models/Qwen3.5-27B-FP8\" \\\n  --served-model-name qwen3.5-27b \\\n  --host 127.0.0.1 --port 30000 \\\n  --attention-backend flashinfer \\\n  --sampling-backend flashinfer \\\n  --tool-call-parser qwen3_coder \\\n  --context-length 32768 \\\n  --mem-fraction-static 0.88 \\\n  --max-running-requests 64 \\\n  --chunked-prefill-size 4096 \\\n  --enable-metrics \\\n  --enable-cache-report \\\n  --log-level info --reasoning-parser qwen3 --cuda-graph-max-bs-decode 64 2>&1 | tee \"/home/ubuntu/qwen-serve/logs/server_27b_fp8_20261022_210507.log\"",
+  "startup_log": [
+   "[2026-10-22 21:05:15] server_args={'model_path': '/home/ubuntu/models/Qwen3.5-27B-FP8', 'tokenizer_path': '/home/ubuntu/models/Qwen3.5-27B-FP8', 'tokenizer_mode': 'auto', 'tokenizer_backend': 'huggingface', 'tokenizer_worker_num': 1, 'detokenizer_worker_num': 1, 'skip_tokenizer_init': False, 'load_f",
+   "[2026-10-22 21:05:24] Multimodal attention backend not set. Use fa3.",
+   "[2026-10-22 21:05:29] Load weight end. elapsed=5.47 s, type=Qwen3_5ForConditionalGeneration, quant=fp8, avail mem=110.65 GB, mem usage=28.47 GB.",
+   "[2026-10-22 21:05:30] max_running_requests is capped to 61 by the mamba state cache (max_mamba_cache_size=309, 5 state slots per request). To raise it: increase --mamba-full-memory-ratio or --max-mamba-cache-size, or halve the state size with --mamba-ssm-dtype bfloat16.",
+   "[2026-10-22 21:05:30] Capture target prefill CUDA graph begin. backend=breakable, num_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304,",
+   "[2026-10-22 21:08:41] max_total_num_tokens=809196, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=61, context_len=32768, available_gpu_mem=14.26 GB"
+  ],
+  "weights_gb": 28.47,
+  "ready_seconds": 220
+ }
+}

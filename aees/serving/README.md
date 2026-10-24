@@ -2,7 +2,7 @@
 
 ## Summary
 
-This PR adds `geodesic/aees/serving/`: nine scripts that take a blank Ubuntu 24.04 GPU host to a running Qwen3-4B server, benchmark it, and investigate FlashInfer's key mechanisms. Everything runs from this one flat folder; the venv, logs and results live in `~/qwen-serve` outside the repo.
+This PR adds `geodesic/aees/serving/`: nine scripts that take a blank Ubuntu 22.04 GPU host (the one OS for every host) to a running Qwen3-4B server, benchmark it, and investigate FlashInfer's key mechanisms. Everything runs from this one flat folder; the venv, logs and results live in `~/qwen-serve` outside the repo.
 
 - **Phases 1–2, serving:** one script installs the driver, CUDA 13, SGLang and version-matched FlashInfer wheels; another runs the server with FlashInfer attention, the prefix cache and Prometheus metrics.
 - **Phase 3, benchmarks:** an unattended matrix covering latency, throughput, QPS, p99.9 tails, burst and cold start, across five server settings, plus a tool-call quality check. The output is one interactive HTML dashboard.
@@ -25,6 +25,10 @@ This PR also includes `geodesic/aees/harbor/`: the experiment and set-up guide f
 | `fi_bench.py` | Phase 4 microbenchmarks (`sparse`, `balance`, `jit`) and the report builder (`report`), at Qwen3-4B attention shapes | GPU host |
 | `fi_jit_setup.sh` | Builds a "cold" venv (same torch and FlashInfer, no prebuilt kernels, private JIT cache) so compilation can be measured | GPU host |
 | `fi_trace.py` | Opt-in server hook that saves FlashInfer's paged-KV index arrays every 50th `plan()` call. Loaded only by `run_phase4.sh trace`; inert unless `FI_TRACE_DIR` is set | GPU host (server process) |
+| `setup_host_qwen3_27B.sh` | Qwen3.5-27B: runs `setup_host.sh`, downloads the AWQ 4-bit, FP8 and BF16 checkpoints (AWQ only on GPUs under 75 GB), checks each fits the GPU | GPU host |
+| `serve_qwen3_27B.sh` | Qwen3.5-27B server lifecycle, like `serve.sh`; `WEIGHTS=awq\|fp8\|bf16` picks the checkpoint, thinking on with the `qwen3` reasoning parser | GPU host |
+| `export_results.py` | Shrinks a Phase 3 run and a Phase 4 folder into `bench_results/<run-id>/` (~100 KB): readable `summary.md` and run log, per-point percentiles, tails, quality, time series, kernel results | GPU host |
+| `bench_results/` | Committed results, one folder per run; its README explains every file and column | Repo |
 
 ## How to run
 
@@ -45,6 +49,16 @@ python run_bench.py --quick   # ~15 min pipeline check; full run without --quick
 ```
 
 Dashboard: `http://127.0.0.1:8000/<run-id>/dashboard.html`. Phase 4 report: `http://127.0.0.1:8000/fi/fi_report.html`.
+
+## Qwen3.5-27B on A100-40GB and H200
+
+`run_bench.py --model qwen3.5-27b` and `MODEL=qwen3.5-27b ./run_phase4.sh` run Phases 3 and 4 for the 27B, each capped
+at 30 minutes (`--budget-min` / `BUDGET_MIN`). Points that don't fit are skipped and logged in `run_log.md`.
+
+- **A100-40GB:** AWQ 4-bit (the only checkpoint that leaves room for the KV cache on 40 GB), compared with prefix cache off and MTP speculative decoding.
+- **H100/H200:** the three weight precisions, AWQ 4-bit (W4A16, Marlin), FP8 (W8A8, 128×128 blocks) and BF16, on the same tests.
+- **Phase 4:** runs at the 27B's attention shapes: 24 query heads, 4 KV heads, head_dim 256. Only its 16 full-attention layers use FlashInfer; the other 48 are Gated DeltaNet. It adds FP8 e4m3 KV and a weight-precision GEMM test (2d) that uses SGLang's own FP8-block and Marlin kernels.
+- **Results:** export to `bench_results/` and are committed from the GPU host.
 
 ## Findings
 
@@ -100,6 +114,6 @@ Dashboard: `http://127.0.0.1:8000/<run-id>/dashboard.html`. Phase 4 report: `htt
 
 ## Reviewer checklist
 
-- [ ] `results/` and `logs/` are not committed (they live in `~/qwen-serve`; add them to `.gitignore` if you ever point `WORK_DIR` into the repo)
+- [ ] `results/` and `logs/` are not committed (they live in `~/qwen-serve`; add them to `.gitignore` if you ever point `WORK_DIR` into the repo). Only the compact exports in `bench_results/` are committed
 - [ ] Shell scripts are executable in git: `git update-index --chmod=+x geodesic/aees/serving/*.sh`
 - [ ] No hostnames, IPs or keys in the scripts (the tunnel command uses `<gpu-host-ip>`)

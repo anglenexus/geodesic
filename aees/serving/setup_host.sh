@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup_host.sh - Phases 1-2: turn a fresh Ubuntu 24.04 NVIDIA GPU host into a Qwen3-4B
-# serving stack: R580+ driver, CUDA 13 toolkit, uv venv, SGLang + version-matched
-# FlashInfer wheels, model weights, and a FlashInfer correctness check.
+# setup_host.sh - Phases 1-2: turn a fresh Ubuntu 22.04 NVIDIA GPU host into a Qwen serving
+# stack: R580+ driver, CUDA 13 toolkit, uv venv, SGLang + version-matched FlashInfer wheels,
+# model weights, and a FlashInfer correctness check. Every host (A100, H200) uses this one stack.
 #
 # Usage:  bash setup_host.sh
 # Safe to re-run: finished steps are skipped. If it has to install a GPU driver it
@@ -11,6 +11,7 @@
 #   MODEL_ID=Qwen/Qwen3-4B-Instruct-2507   model to download
 #   SGLANG_VERSION=0.5.21                  version validated in the plan; "" = latest
 #   WORK_DIR=~/qwen-serve                  venv + logs live here
+#   UPGRADE_DRIVER=1                       replace a pre-R580 driver (CUDA 13 needs R580+)
 #   HF_TOKEN=...                           only for gated models
 set -euo pipefail
 
@@ -21,38 +22,114 @@ SGLANG_VERSION="${SGLANG_VERSION-0.5.21}"
 CUDA_PKG="cuda-toolkit-13-0"
 CUDA_HOME_DIR="/usr/local/cuda-13.0"
 MIN_DRIVER=580
+UBUNTU=22.04
 
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33mWARN: %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*"; exit 1; }
 
-# 0. OS check
+# 0. OS check: one stack everywhere (Ubuntu 22.04, NVIDIA's ubuntu2204 packages)
 . /etc/os-release
-if [[ "${VERSION_ID:-}" != "24.04" ]]; then
-  warn "Tested on Ubuntu 24.04; this host is ${PRETTY_NAME:-unknown}."
+if [[ "${VERSION_ID:-}" != "$UBUNTU" ]]; then
+  die "This stack targets Ubuntu $UBUNTU; this host is ${PRETTY_NAME:-unknown}. Re-image it with Ubuntu $UBUNTU."
 fi
 REPO_ARCH=x86_64
 if [[ "$(uname -m)" == "aarch64" ]]; then REPO_ARCH=sbsa; fi
 
-# 1. Base packages
+# 1. Base packages (Python 3.12 comes from uv, headers included, so no python3.12-dev here)
 log "Base packages"
 sudo apt-get update -y
+# A driver install that failed halfway (e.g. desktop GL packages clashing with the provider's) leaves apt
+# with unmet dependencies; drop the desktop-only NVIDIA parts and let apt repair itself.
+if ! sudo apt-get check >/dev/null 2>&1; then
+  warn "apt has broken dependencies; removing half-installed NVIDIA desktop packages and repairing."
+  broken=$(dpkg-query -W -f='${Package}\n' 'nvidia-driver-580*' 'xserver-xorg-video-nvidia-580' 'libnvidia-gl-580' \
+           'nvidia-settings' 2>/dev/null | grep -v '^$' || true)
+  # shellcheck disable=SC2086
+  [[ -z "$broken" ]] || sudo dpkg --remove --force-depends --force-remove-reinstreq $broken || true
+  sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y
+fi
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl wget \
-  htop tmux jq ca-certificates python3.12-dev "linux-headers-$(uname -r)"
+  htop tmux jq ca-certificates
+# Kernel headers are only needed to build a new GPU driver; some cloud kernels have none in the archive.
+HEADERS="linux-headers-$(uname -r)"
+if apt-cache policy "$HEADERS" 2>/dev/null | grep -q "Candidate: [0-9]"; then
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$HEADERS"
+else
+  warn "No $HEADERS package for this kernel; fine unless a driver has to be installed."
+fi
+
+# NVIDIA's apt repository for Ubuntu 22.04: R580 driver, fabric manager and CUDA 13 toolkit
+if ! dpkg -s cuda-keyring >/dev/null 2>&1; then
+  wget -qO /tmp/cuda-keyring.deb \
+    "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/${REPO_ARCH}/cuda-keyring_1.1-1_all.deb"
+  sudo dpkg -i /tmp/cuda-keyring.deb
+  sudo apt-get update -y
+fi
+
+install_driver() {
+  # Headless compute driver (no OpenGL/X packages) at one exact R580 version; NVSwitch (HGX) boxes also
+  # need the fabric manager at that same version.
+  if [[ ! -d "/lib/modules/$(uname -r)/build" ]]; then
+    die "Can't build an R580 driver: no kernel headers for $(uname -r). Either pick a provider image that
+       already has driver >= 580 (e.g. a CUDA 13 / R580 image), or move to Ubuntu's generic kernel:
+       sudo apt-get install -y linux-generic && sudo reboot   # then re-run with UPGRADE_DRIVER=1"
+  fi
+  local v
+  v=$(apt-cache madison nvidia-headless-580-open | awk '{print $3}' | head -1)
+  [[ -n "$v" ]] || die "nvidia-headless-580-open not found in NVIDIA's ubuntu2204 repository."
+  # Provider images hold/pin their own driver packages; release the holds.
+  local held
+  held=$(apt-mark showhold | grep -Ei '^(nvidia|libnvidia|cuda-drivers|xserver-xorg-video-nvidia)' | grep -viE 'container|docker' || true)
+  if [[ -n "$held" ]]; then
+    echo "Releasing held packages: $(echo "$held" | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    sudo apt-mark unhold $held
+  fi
+  # Remove every other driver package (old versions, desktop-only 580 parts, half-installed leftovers) so
+  # their files can't clash; the container toolkit (Docker GPU support) stays.
+  sudo dpkg --configure -a || true
+  local old
+  old=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version}\n' 2>/dev/null \
+        | awk '$1 !~ /^(un|rc|pn)/ {print $2, $3}' \
+        | grep -E '^(nvidia|libnvidia|xserver-xorg-video-nvidia|cuda-drivers|nvidia-settings)' \
+        | grep -viE 'container|docker' \
+        | awk -v v="$v" '$2 != v || $1 ~ /^(nvidia-driver-580|libnvidia-gl|libnvidia-extra|libnvidia-egl|xserver-xorg|nvidia-settings)/ {print $1}' || true)
+  if [[ -n "$old" ]]; then
+    echo "Removing old driver packages: $(echo "$old" | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    sudo dpkg --remove --force-remove-reinstreq $old >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
+    sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y $old || true
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y || true
+  fi
+  local pkgs=("nvidia-headless-580-open=$v" "nvidia-utils-580=$v" "nvidia-modprobe=$v")
+  # Only when an NVSwitch is visible (bare-metal HGX); a VM with passed-through GPUs has none and its
+  # fabric manager would just fail to start.
+  if lspci -nn -d 10de: 2>/dev/null | grep -q '\[0680\]'; then
+    pkgs+=("nvidia-fabricmanager=$v")
+  fi
+  echo "Installing ${pkgs[*]}"
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades "${pkgs[@]}"
+  [[ " ${pkgs[*]} " == *fabricmanager* ]] && sudo systemctl enable nvidia-fabricmanager
+  echo
+  echo "Driver $v installed. Reboot now, then run this script again (no UPGRADE_DRIVER needed)."
+  echo "On a cloud VM, stop and start it from the provider console instead of 'sudo reboot': replacing a"
+  echo "driver needs a full GPU reset, otherwise the new driver fails with 'WPR2 already up' / No devices found."
+  exit 0
+}
 
 # 2. NVIDIA driver (R580+ is required by CUDA 13)
 log "NVIDIA driver"
 if command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
   DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
   if (( ${DRV%%.*} < MIN_DRIVER )); then
-    die "Driver $DRV is older than R$MIN_DRIVER. Upgrade it (provider image or 'ubuntu-drivers list --gpgpu'), reboot, re-run."
+    [[ "${UPGRADE_DRIVER:-0}" == 1 ]] || die "Driver $DRV is older than R$MIN_DRIVER. Re-run with UPGRADE_DRIVER=1 to replace it with R580, then reboot."
+    install_driver
   fi
   echo "Driver $DRV OK"
 else
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nvidia-driver-580-server-open
-  echo
-  echo "Driver installed. Reboot now (sudo reboot), then run this script again."
-  exit 0
+  install_driver
 fi
 
 # 3. CUDA 13 toolkit (provides nvcc for FlashInfer's JIT path)
@@ -60,12 +137,6 @@ log "CUDA 13 toolkit"
 if [[ -x "$CUDA_HOME_DIR/bin/nvcc" ]]; then
   echo "Found $("$CUDA_HOME_DIR/bin/nvcc" --version | tail -1)"
 else
-  if ! dpkg -s cuda-keyring >/dev/null 2>&1; then
-    wget -qO /tmp/cuda-keyring.deb \
-      "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/${REPO_ARCH}/cuda-keyring_1.1-1_all.deb"
-    sudo dpkg -i /tmp/cuda-keyring.deb
-    sudo apt-get update -y
-  fi
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$CUDA_PKG"
 fi
 ENV_SNIPPET="export CUDA_HOME=$CUDA_HOME_DIR; export PATH=\$CUDA_HOME/bin:\$PATH; export LD_LIBRARY_PATH=\$CUDA_HOME/lib64:\${LD_LIBRARY_PATH:-}"
