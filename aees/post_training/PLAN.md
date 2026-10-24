@@ -291,7 +291,7 @@ Miles' Harbor example for local Docker (`examples/swe-agent-harbor-docker`) talk
 - **Timeouts.** The server scales every task timeout by 2 by default. `HARBOR_TIMEOUT_MULTIPLIER=1.0` keeps the `task.toml` values, as in the ledger and Phase 4 evaluation. There's no `--agent-timeout`, so each task's own timeout applies (training tasks: agent 750–1800 s, verifier 360–1800 s). Miles' client-side ceiling `AGENT_TRIAL_TIMEOUT` counts time a trial spends **queued** behind the 16 running ones (Miles sends all 160 at once), so `scripts/run.sh` sets it to 12 h, as a backstop only.
 - **Image cleanup off.** Every 30 min the server runs `docker image prune -a`, which would delete the pre-pulled task images between waves. `DOCKER_PRUNE_INTERVAL_SEC=1e9` turns it off. Containers are still removed after each trial (`compose down`).
 - **Ports.** Miles' session server uses 30000–30015 (16 workers), and its router uses 31000. The agent server uses 11000. terminus-2 runs inside the agent server process on the host, so it reaches the session server at 127.0.0.1.
-- **What comes back.** Every trial returns a reward (0 if the verifier didn't run) and an `exit_status`: `Submitted`, `TimeLimitExceeded`, `SequenceLengthLimitExceeded`, `AgentError` (including the 48k limit), or `Error: …`. Miles marks a sample aborted only if no model call was recorded or collecting its tokens failed (`agentic_tool_call.py:123,134`). So `check_no_aborted` drops a group only in that case; every other failure trains as reward 0 (§8 item 6).
+- **What comes back.** Every trial returns a reward (0 if the verifier didn't run) and an `exit_status`: `Submitted`, `TimeLimitExceeded`, `SequenceLengthLimitExceeded`, `AgentError` (including the 48k limit), or `Error: …`. Miles marks a sample aborted only if no model call was recorded or collecting its tokens failed (`agentic_tool_call.py:123,134`). So `check_no_aborted` drops a group only in that case. Every other failure trains as reward 0, except the infrastructure failures that `grpo/infra_filter.py` excludes per attempt (§8 item 6).
 
 ---
 
@@ -489,7 +489,7 @@ Use **Qwen3.5-4B** (same `qwen3_5` architecture, about 7× faster) to check the 
 2. Check each of these:
    - **TITO:** for a few trajectories, compare the session server's token IDs with the training sample's token IDs, exactly. Use `verify_session_tito_tokenizer.py`.
    - **Loss mask:** decode the masked-in tokens and confirm they're exactly the assistant replies.
-   - **Rewards:** Harbor's verifier result lands in `Sample.reward`. As built, infrastructure failures come back as reward 0 (§2b, agent server). Whether to exclude them instead, as in `../harbor/README.md` §6, is §8 item 6, decided before the first GRPO run.
+   - **Rewards:** Harbor's verifier result lands in `Sample.reward`. Infrastructure failures (the fixed list in §8 item 6) are excluded per attempt; timeouts and the 48k limit count. Check that an injected failure (e.g. a missing task folder) is masked and its group's other attempts still train.
    - **Adapter sync:** after one update, SGLang serves the new adapter (`--check-lora-weight-equal`).
    - **Logprob agreement:** the trainer's recomputed logprobs match SGLang's for the same tokens, within bf16 noise.
 3. Run 10 steps and check that reward on the training tasks moves.
@@ -558,7 +558,8 @@ post_training/
 │   └── rollout.py               # Miles SFT rollout: renders chats as GRPO's token stream
 ├── grpo/
 │   ├── split_tasks.py           # task lists -> grpo_train.jsonl / grpo_val.jsonl
-│   └── harbor_parser.patch      # agent server: terminus-2 parser from an env var
+│   ├── harbor_parser.patch      # agent server: terminus-2 parser from an env var; exception type in each reply
+│   └── infra_filter.py          # excludes infra failures per attempt from GRPO groups (§8 item 6)
 ├── tests/                       # unit tests (the loss-mask check lives here)
 └── data/                        # generated jsonl (git-ignored; copy to the box or regenerate)
 ```
@@ -576,7 +577,37 @@ Miles is used as an installed dependency. Our code is configs, thin wrappers, an
 3. ~~Does the Harbor connector drive `terminus-2`?~~ Answered from the code (2026-10-23): yes, through the agent server, with fixed agent kwargs plus env-var knobs. The parser needed a patch (§2b, agent server).
 4. How does the session server handle a chat template that rewrites history (Qwen strips earlier `<think>` blocks)? Does that break the token prefix and produce one sample per tree leaf (v2)?
 5. ~~Default loss averaging~~ (answered from the code: per-sample mean unless `--calculate-per-token-loss`; default LR 1e-6; `--eps-clip-high` unset by default). Still open: which other extras (KL, filtering, importance-sampling correction) are on by default.
-6. **Before the first GRPO run:** failed attempts in a group of 8 can be (a) treated as aborted, which drops the whole group (Miles' `check_no_aborted` filter, the safer default), or (b) kept with reward 0. Do a web search plus analysis for infrastructure failures and for agent timeouts / the 48k limit separately. Ledger, training tasks (2026-10-23): infrastructure failures (no reward: tmux send-keys failures, 120 s command timeouts) are 1.6% of Luna trials (21/1349), 2.0% of Qwen3.5-27B (2/100), 0.9% of Qwen3-4B (1/109, excluding 15 operator cancellations). At 2% per attempt, a group of 8 has at least one failure 15% of the time. Agent timeouts are graded (reward 0) today: Luna 10.7%, Qwen3.5-27B 63% (thinking on, AWQ). Treated as aborted at 63%, almost every group would be dropped. **From the code (2026-10-23):** as built, only samples with no model call are aborted, and everything else is reward 0. The 48k limit and real infrastructure errors share `exit_status: "AgentError"`, so a filter for (a) would have to read the exception type from the trial folder. When Miles drops a group, it pulls the next task and runs 8 more trials to refill the step (`inference_rollout_train.py:127-160`), costing about one extra wave, and a task may appear twice in that step.
+6. **Infrastructure failures and timeouts in GRPO groups (decided 2026-10-23).**
+   - **Rule: exclude an attempt only when the policy cannot have caused its failure. Everything else keeps its reward:** the verifier's result, or 0 when no verifier ran.
+   - **Excluded (infra), from a fixed list:**
+     - the container never started (`EnvironmentStartTimeoutError`) or agent setup failed (`AgentSetupTimeoutError`);
+     - the agent server answered `Error: …`, `TaskNotFound`, `InvalidInstanceId`, `InvalidSessionServerId`, `Flushed` or `ImportError`;
+     - the agent server couldn't be reached (Miles' agent function returns nothing; today that trains as reward 0);
+     - no model call was recorded (Miles drops the whole group itself, `apply_aborted_filter`).
+   - **Kept as failures:**
+     - agent timeouts (the verifier still runs, so work finished in time counts);
+     - the 48k limit (reward 0);
+     - verifier timeouts and crashes;
+     - mid-episode errors.
+   - **Exclude per attempt, not per group.** The excluded attempt gets loss mask 0 (`Sample.remove_sample`). The group's mean and std are computed over the remaining attempts, reusing Miles' own GRPO normalization (`grpo/infra_filter.py` via `--custom-reward-post-process-path`). If fewer than 4 of 8 remain, the whole group is masked (the std is too noisy). If more than 10% of a step is excluded, the run stops: that's an outage, not noise.
+   - **Why per attempt:** Miles' built-in path drops the whole group and refills it with 8 more trials. At a 2% infra rate that throws out ~15% of groups (1 − 0.98⁸), mostly good attempts, and adds ~1.5 waves per step. Applied to timeouts, it's unworkable: 60% of groups at Luna's 10.7% timeout rate, 99.9% at Qwen3.5-27B's 63%, where the refills never end.
+   - **Why timeouts stay failures:**
+     - The policy causes them (long commands, loops, long replies), and the reward should push those down. In a group with 2 passes and 6 timeouts, scoring the timeouts 0 teaches "finish in time"; masking them leaves no comparison.
+     - Masking them would let the policy escape a low reward by timing out.
+     - Masking would drop the hardest tasks from training while evaluation still counts their timeouts.
+     - **The fix for a high timeout rate is less thinking and shorter output in rollouts**, not hiding the zeros. The one exception is false timeouts from CPU overload, handled by concurrency (D14): compare each task's timeout rate with Phase 0 at the same concurrency.
+   - **Mid-episode "infra" errors are mostly the policy's doing.** On the ledger's no-reward trials, checked 2026-10-23:
+     - The tmux send-keys failures (22) mostly follow the model sending `set -e` / `set -eu` into the interactive shell, which exits on the next failing command and takes the tmux session with it.
+     - The "Command timed out after 120 seconds" errors (16) are `docker compose exec` calls collecting terminal output from a container that stopped responding. They're spread over 11 tasks; the cause is either the policy's own processes or host load.
+     - Both score 0. Their rate is logged; a jump in one step points to the host.
+   - **Evidence (web, 2026-10-23):**
+     - Miles fork PR celve/miles#7: discards pre-start and unreachable-service failures; timeouts, step limits and `max_seq_len` "stay scored 0" so a policy can't escape a low reward.
+     - iCoder-27B: a sentinel reward for unjudgeable attempts, removed from group statistics, advantage 0, normalized over the valid ones.
+     - ClawGym II: sandbox failures excluded; wall-clock timeouts terminated, not excluded.
+     - SWE-Master: masking timeouts after an SFT warm start led to "continuous degradation in reward and eventual training collapse".
+     - rStar2-Agent and DAPO: filtering over-long outputs gave no benefit.
+     - DeepSWE masked timeouts successfully, but trained from scratch on easier data.
+   - **Needs:** `grpo/harbor_parser.patch` also returns the trial's exception type (in `agent_metrics`). Today's `exit_status` reports both the 48k limit and tmux failures as `AgentError`, and a container-start timeout as `TimeLimitExceeded`.
 
 ---
 

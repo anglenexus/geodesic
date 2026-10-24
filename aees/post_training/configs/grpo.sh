@@ -50,6 +50,7 @@ AGENT_ARGS=(
   --custom-rm-path generate.reward_func                    # reward = the verifier's, from the agent server
   --rollout-function-path generate.RolloutFn               # Miles' rollout + agent timing metrics
   --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted
+  --custom-reward-post-process-path grpo.infra_filter.post_process_rewards   # infra out per attempt (§8 item 6)
   --tito-model qwen36                                      # Qwen3.6 token stream with preserve_thinking (D9)
   --use-session-server --session-server-port 30000 --session-server-workers 16   # ports 30000-30015
   --sglang-router-port 31000

@@ -84,7 +84,7 @@ fi
 git -C "$DATA/src/harbor" fetch origin "$HARBOR_REF"
 git -C "$DATA/src/harbor" checkout -- agent_server/trial_runner.py 2>/dev/null || true   # drop an earlier patch
 git -C "$DATA/src/harbor" checkout --detach "$HARBOR_COMMIT"   # the branch can move; the commit can't
-git -C "$DATA/src/harbor" apply "$HERE/grpo/harbor_parser.patch"   # terminus-2 parser from HARBOR_TERMINUS_2_PARSER
+git -C "$DATA/src/harbor" apply "$HERE/grpo/harbor_parser.patch"   # JSON parser via env var; exception type in replies
 (cd "$DATA/src/harbor" && uv sync)       # pip can't resolve the branch's uv-workspace dependency
 
 echo "== 6/9 Miles image + pinned Miles source (mounted over /root/miles at launch)"

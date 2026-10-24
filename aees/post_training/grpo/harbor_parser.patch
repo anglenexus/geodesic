@@ -1,5 +1,5 @@
 diff --git a/agent_server/trial_runner.py b/agent_server/trial_runner.py
-index cd7eb6e2..fde79212 100644
+index cd7eb6e2..e54fe307 100644
 --- a/agent_server/trial_runner.py
 +++ b/agent_server/trial_runner.py
 @@ -63,7 +63,7 @@ def _agent_connection_config(
@@ -11,3 +11,12 @@ index cd7eb6e2..fde79212 100644
              "interleaved_thinking": True,
              "abort_on_response_length_exceeded": True,
              "llm_call_kwargs": dict(request.sampling_params or {}),
+@@ -412,6 +412,8 @@ async def _run_trial(request: RunRequest) -> dict[str, Any]:
+         exit_status = _extract_exit_status(result)
+         exit_status_detail = _extract_exit_status_detail(result)
+         agent_metrics = _extract_metrics(result)
++        exc = getattr(result, "exception_info", None)   # read by post_training grpo/infra_filter.py
++        agent_metrics["exception_type"] = getattr(exc, "exception_type", "")
+ 
+         return {
+             "reward": reward,
