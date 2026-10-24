@@ -1,0 +1,8 @@
+db-wal-recovery
+configure-git-webserver
+sanitize-git-repo
+largest-eigenval
+polyglot-rust-c
+sqlite-with-gcov
+mailman
+large-scale-text-editing

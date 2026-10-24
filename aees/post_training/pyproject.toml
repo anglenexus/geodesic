@@ -9,7 +9,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "torch>=2.5",            # proto/ tests run the training load on CPU
+    "safetensors>=0.4",      # proto/adapter.py
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

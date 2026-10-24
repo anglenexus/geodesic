@@ -521,9 +521,91 @@ Use **Qwen3.5-4B** (same `qwen3_5` architecture, about 7× faster) to check the 
 | Offload, reload, adapter sync | ~1–3 min per step | Moving 54 GB of base weights between CPU and GPU in each direction |
 | **Total** | **~65–100 min per step → ~15–22 steps per day** | |
 
-Most of the time is Docker trials, not GPU work. Two ways to improve this, once the synchronous loop works:
-- Cap the agent timeout per task.
-- Overlap rollout and training (Miles supports async rollout).
+Most of the time is Docker trials, not GPU work. Ways to improve this, once the synchronous loop works:
+- Run the sandboxes on an EC2 CPU box (32+ at once) and keep the H200 alternating: no code change.
+- Fewer timeouts (less thinking): timed-out trials hold 25–80% of trial-minutes in the collected runs.
+- Overlap rollout and training on the one H200: §5b measures whether that is feasible before any code is written.
+
+---
+
+## 5b. Overlap prototype: serving and training on one H200 at the same time (2026-10-24)
+
+**Question.** Can SGLang serve the agents' rollouts while the LoRA trainer runs on the same GPU, so a step
+takes max(rollout, training) instead of rollout + training? Miles can't do this today: native LoRA needs
+`--colocate`, and Miles' async trainer refuses `--colocate`. So the prototype measures the GPU itself
+first, with no Miles changes.
+
+**Calculated beforehand** (the prototype replaces these):
+- **Decode is HBM-bound.** Every decode step re-reads all weights: 54 GB in bf16 means ≥11 ms per step,
+  ~70 tokens/s per stream, and only 2–12% of the tensor cores at 6–32 sequences.
+- **Training is compute-bound.** 48k-token micro-batches run at ~50–60% tensor use and ~30–50% of HBM.
+- **Their needs complement each other, but together they want more bandwidth than the GPU has.** Expect
+  decode ~1.3–1.8× slower and training ~1.2–1.5× slower while they overlap.
+- **Memory capacity is the real limit.** bf16 serving (~89 GB) plus training as configured (~135 GB) is
+  224 GB. What fits (~129 GB): FP8 weights and FP8 KV cache for serving (~48 GB), plus checkpointed layer
+  inputs offloaded to host RAM (−32 GB) and logits computed in chunks (−22 GB) for training (~81 GB).
+- **How the GPU is shared:**
+  - Without MPS, the two processes time-slice: no real overlap, and decode waits behind training kernels.
+  - With MPS, they share one context and their kernels run at the same time.
+  - CUDA streams don't help across processes.
+  - MIG can't split 141 GB into 135 + 48.
+- **Staleness.** Overlap means each batch was sampled by the policy one update old (lag 1). The
+  correction would be a per-token weight min(π_trainer / π_sampler, C), which also covers the FP8/bf16
+  difference. It is a training extra (D7), so it is off unless decided. Lag 2 adds nothing while
+  rollout > training.
+
+**What runs** (`proto/bench.sh`, in the pinned Miles image):
+- **Serving:** the real Qwen3.6-27B in SGLang (bf16, and the official FP8 checkpoint), with a random r = 64
+  adapter.
+- **Agent load:** `proto/agent_load.py` replays turn sizes and environment waits from 907 real trials
+  (`proto/load_profile.json`: Luna, Qwen3-4B and Qwen3.5-27B, token counts and durations only).
+- **Training load:** `proto/train_proxy.py` has the model's exact layer shapes, flash attention and Miles'
+  per-micro-batch pattern (old log-probs, forward, recompute, backward, Adam), and a ballast tensor for the
+  rest of the 54 GB base. It does not run the delta-rule kernel (~2% of FLOPs).
+- **Real trials:** an EC2 m7i.8xlarge runs 8 real terminus-2 trials the whole time, through an SSH tunnel
+  and a logging pass-through, so the share of trial time spent waiting on the model is measured, not
+  assumed.
+
+| Phase | Server | Load | Measures |
+|---|---|---|---|
+| pcie | — | 4 GB copies | host↔GPU GB/s (offload budget) |
+| train_alone, train_alone_offload | — | trainer, 48k micro-batches | tokens/s, TFLOPS, peak memory, cost of offloading |
+| serve_bf16 | bf16, 0.85 | 16 agents | production serving baseline |
+| serve_fp8_32, serve_fp8 | FP8, 0.36 | 32, then 16 agents | the serving config that fits beside the trainer |
+| co_timeslice | FP8, no MPS | 16 agents + trainer (offload) | both slowdowns, time-sliced |
+| serve_fp8_mps | FP8, MPS | 16 agents | MPS baseline |
+| co_mps, co_mps70 | FP8, MPS | 16 agents + trainer at 100% / 70% of SMs | both slowdowns under MPS; adapter hot-load ×5 |
+
+GPU counters (DCGM SM, tensor and DRAM activity, when profiling is allowed; nvidia-smi otherwise) are
+sampled every second.
+
+**Pass criteria** (`proto/report.py`), per co-run phase:
+- no out-of-memory at 48k, with ≥ 8 GB headroom
+- decode ≤ 1.5× slower (median per token), and p99 stream stall ≤ 10 s
+- training ≤ 1.5× slower
+- the projected step time, with sandboxes on EC2, is ≥ 15% shorter than alternating
+
+**Cost:**
+- H200: ~25 min of setup, then ~60 min of phases. About $9 at $6.56/h.
+- EC2: ~$3.
+- If it passes, building the overlap is still 1–2 weeks of Miles changes (a remote SGLang, adapter pushes,
+  chunked logits, activation offload) plus the staleness decision.
+
+**How to run** (laptop, from `aees/post_training`):
+1. `bash proto/ec2_up.sh`: launches the EC2 box in us-east-2 with the laptop's AWS CLI profile, SSH from
+   this IP only, and a self-terminate after 4 h. Installs Harbor and pulls the 8 task images (~15–20 min).
+2. Create the Nebius H200 (Ubuntu 22.04 image with an NVIDIA driver ≥ 580), then
+   `bash proto/kickoff.sh <h200-ip> [user]`:
+   - copies this folder to the H200
+   - lets EC2 forward to the H200's port 30000 and nothing else
+   - starts `setup.sh` (steps 1–4, 6, 7; bf16 + FP8 weights) and `proto/bench.sh` in tmux `proto` on the H200
+   - starts `proto/ec2_trials.sh` in tmux `proto` on EC2
+3. Watch: `ssh <h200> tail -f proto_<RUN>.log`. Done when `/data/proto/<RUN>/bench.log` says "done".
+4. `bash proto/fetch.sh` (results to `data/proto/<RUN>/`, then `report.md`), then `bash proto/ec2_down.sh`,
+   then delete the H200.
+
+To re-run phases: `PHASES="co_mps co_mps70" bash proto/bench.sh` on the H200. Knobs: `SERVE_MEM_CO`,
+`CO_MIN`, `MPS_CAP`, `AGENTS`.
 
 ---
 
@@ -616,6 +698,14 @@ post_training/
 ├── monitor/
 │   ├── server.py                # training tracker on the box: reads the run's files, serves the page (§6)
 │   └── index.html               # the page: charts and tables, live or from a saved snapshot
+├── proto/                       # overlap prototype (§5b): serve + train on one H200, with EC2 sandboxes
+│   ├── bench.sh                 # H200: all phases in the Miles container; MPS daemon on the host
+│   ├── train_proxy.py           # training load with the model's shapes; shapes.py: layer shapes, FLOPs
+│   ├── agent_load.py            # agents replaying load_profile.json (make_profile.py builds it); adapter hot-load
+│   ├── adapter.py               # random r = 64 adapter named after the checkpoint's modules
+│   ├── report.py                # slowdowns, projected step times, pass/fail -> report.md
+│   ├── ec2_up.sh, ec2_prepare.sh, ec2_trials.sh, ec2_down.sh, llm_log_proxy.py   # EC2 box + real trials
+│   └── kickoff.sh, fetch.sh     # laptop: start everything; pull results and write the report
 ├── tests/                       # unit tests (the loss-mask check lives here)
 └── data/                        # generated jsonl (git-ignored; copy to the box or regenerate)
 ```
