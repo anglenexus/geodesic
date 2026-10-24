@@ -205,17 +205,66 @@ function costSummary(s) {
   }
   const local = s.aggregate_cost_usd || 0;
   const rem = (s.remotes || []).map(r => ({ name: r.config.name, api: r.aggregate_cost_usd || 0,
-    ec2: (r.sync.ec2 || {}).cost_usd || 0 }));
-  const api = local + rem.reduce((a, r) => a + r.api, 0), ec2 = rem.reduce((a, r) => a + r.ec2, 0);
+    ec2: (r.sync.ec2 || {}).cost_usd || 0, live: isLive(r) }));
+  const act = rem.filter(r => r.live), old = rem.filter(r => !r.live);
+  const sum = (xs, k) => xs.reduce((a, r) => a + r[k], 0);
+  const active = local + sum(act, "api") + sum(act, "ec2"), earlier = sum(old, "api") + sum(old, "ec2");
   return [
-    el("h2", {}, "Costs (this schedule + EC2 runners)"),
+    el("h2", {}, "Costs"),
     el("div", { class: "stats" },
-      stat("total so far", "$" + (api + ec2).toFixed(2)),
+      stat("active runs (Mac schedule + running EC2)", "$" + active.toFixed(2)),
       stat("API, Mac schedule", "$" + local.toFixed(2)),
-      ...rem.map(r => stat(`API, ${r.name}`, "$" + r.api.toFixed(2))),
-      ...rem.map(r => stat(`EC2 compute, ${r.name}`, "$" + r.ec2.toFixed(2)))),
+      ...act.flatMap(r => [stat(`API, ${r.name}`, "$" + r.api.toFixed(2)), stat(`EC2 compute, ${r.name}`, "$" + r.ec2.toFixed(2))]),
+      ...(old.length ? [stat(`earlier EC2 runs (${old.map(r => r.name).join(", ")}), API + compute`, "$" + earlier.toFixed(2))] : []),
+      stat("all of the above", "$" + (active + earlier).toFixed(2))),
     el("div", { class: "muted" }, "API cost = sum of each trial's cost_usd (Harbor/LiteLLM pricing). EC2 compute = uptime × on-demand $/h " +
       "(AWS public price list); EBS storage not included. Remote numbers are as of the last sync."),
+  ];
+}
+
+const isLive = r => ((r.sync || {}).ec2 || {}).state === "running";
+
+// One row per active plan: progress, pass rate, cost vs cap and a projected finish, plus a combined total.
+function runOverview(s) {
+  const plans = [];
+  if (s.schedule) plans.push({ where: "this Mac", sc: s.schedule, jobs: s.jobs, agg: s.aggregate_cost_usd });
+  for (const r of (s.remotes || []).filter(isLive))
+    if (r.schedule) plans.push({ where: r.config.name, sc: r.schedule, jobs: r.jobs, agg: r.aggregate_cost_usd });
+  if (!plans.length) return [];
+  const rows = plans.map(p => {
+    const byName = Object.fromEntries(p.jobs.map(j => [j.name, j]));
+    const bs = p.sc.batches.filter(b => !["skipped", "stopped"].includes(b.status));
+    const js = bs.map(b => byName[b.name]).filter(Boolean);
+    const total = bs.reduce((a, b) => a + (byName[b.name] ? byName[b.name].total : b.est_trials || 0), 0);
+    const done = js.reduce((a, j) => a + j.done, 0), pass = js.reduce((a, j) => a + j.pass, 0);
+    const graded = js.reduce((a, j) => a + j.pass + j.fail, 0), none = js.reduce((a, j) => a + j.none, 0);
+    const cur = js.find(j => j.running > 0);
+    const rate = (cur && cur.throughput_per_hour) || p.sc.est_trials_per_hour || 0;
+    const left = total - done;
+    const eta = left <= 0 ? "done" : rate ? new Date(Date.now() + left / rate * 3600000) : null;
+    return { ...p, total, done, pass, graded, none, rate, left, eta, batch: bs.filter(b => b.status === "done").length + "/" + bs.length };
+  });
+  const T = k => rows.reduce((a, r) => a + r[k], 0);
+  const last = rows.map(r => r.eta).filter(e => e instanceof Date).sort((a, b) => b - a)[0];
+  const fmt = e => e === "done" ? "done" : e ? e.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+  const cell = (v, cls) => el("td", { class: cls || "", style: "padding:4px 10px" }, v);
+  return [
+    el("h2", {}, "Active runs"),
+    el("div", { class: "stats" },
+      stat("trials done (all active plans)", `${n(T("done"))} / ${n(T("total"))}`),
+      stat("raw pass rate", T("graded") ? `${(100 * T("pass") / T("graded")).toFixed(0)}%` : "—"),
+      stat("no reward", `${n(T("none"))}${T("done") ? ` (${(100 * T("none") / T("done")).toFixed(1)}%)` : ""}`, T("done") && T("none") > 0.05 * T("done") ? "warn" : ""),
+      stat("API cost / caps", `$${rows.reduce((a, r) => a + (r.agg || 0), 0).toFixed(2)} / $${rows.reduce((a, r) => a + r.sc.budget_usd, 0)}`),
+      stat("projected finish (all)", last ? fmt(last) : rows.every(r => r.eta === "done") ? "done" : "—")),
+    el("div", { class: "job" }, el("table", { style: "width:100%;border-collapse:collapse" },
+      el("thead", {}, el("tr", {}, ["where", "plan", "batches done", "trials", "pass", "no reward", "API / cap", "rate", "finish (proj.)"].map(h =>
+        el("th", { style: "text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:4px 10px" }, h)))),
+      el("tbody", {}, rows.map(r => el("tr", {},
+        cell(r.where), cell(r.sc.name, "muted"), cell(r.batch, "num"), cell(`${n(r.done)} / ${n(r.total)}`, "num"),
+        cell(r.graded ? `${(100 * r.pass / r.graded).toFixed(0)}%` : "—", "num"), cell(n(r.none), "num"),
+        cell(`$${(r.agg || 0).toFixed(2)} / $${r.sc.budget_usd}`, "num"), cell(r.rate ? `${n(r.rate)}/h` : "—", "num"), cell(fmt(r.eta))))))),
+    el("div", { class: "muted" }, "Projected finish = remaining trials ÷ the current batch's throughput over the last 20 min " +
+      "(the plan's estimate before a batch has run 20 min); it ignores the slow tail of the last trials."),
   ];
 }
 
@@ -281,8 +330,8 @@ async function refresh() {
     const live = new Set(h.running_jobs || []);
     app.replaceChildren(
       ...costSummary(s),
-      ...[...(s.remotes || [])].sort((a, b) => ((b.sync.ec2 || {}).state === "running") - ((a.sync.ec2 || {}).state === "running"))
-        .flatMap(remoteSection),
+      ...runOverview(s),
+      ...(s.remotes || []).filter(isLive).flatMap(remoteSection),
       ...scheduleSection(s.schedule, s.jobs, live, s.stop_file, s.aggregate_cost_usd, "Mac schedule"),
       el("h2", {}, "Host"),
       el("div", { class: "stats" },
@@ -299,7 +348,8 @@ async function refresh() {
         stat("progress", o.target ? `${(100 * (o.held + o.passed + o.failed) / o.target).toFixed(2)}%` : "—")),
       el("div", { class: "muted" }, "Ledger counts only ingested trials — ingest finished jobs in the trajectory browser."),
       el("h2", {}, `Recent Harbor jobs on this Mac (${s.jobs.length})` + (MODEL ? ` · ${MODEL}` : "")),
-      ...s.jobs.map(j => jobCard(j, live.has(j.name))));
+      ...s.jobs.map(j => jobCard(j, live.has(j.name))),
+      ...(s.remotes || []).filter(r => !isLive(r)).flatMap(remoteSection));
   } catch (e) {
     document.getElementById("updated").textContent = "error: " + e;
   }
