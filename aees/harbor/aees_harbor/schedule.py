@@ -81,8 +81,15 @@ def preflight_api(env_file: Path, model: str, tries: int = 3) -> tuple[bool, str
 
 
 def harbor_running() -> list[str]:
-    out = subprocess.run(["pgrep", "-fl", "harbor run"], capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if "harbor run" in l and "pgrep" not in l]
+    """Command lines of running `harbor run` processes. Uses ps for the full command line:
+    `pgrep -fl` prints it on macOS but only the process name on Linux (which hid running jobs on EC2)."""
+    pids = subprocess.run(["pgrep", "-f", "harbor run"], capture_output=True, text=True).stdout.split()
+    out = []
+    for pid in pids:
+        cmd = subprocess.run(["ps", "-o", "command=", "-p", pid], capture_output=True, text=True).stdout.strip()
+        if "harbor run" in cmd and "pgrep" not in cmd:
+            out.append(f"{pid} {cmd}")
+    return out
 
 
 def job_cost(job_dir: Path) -> float:
