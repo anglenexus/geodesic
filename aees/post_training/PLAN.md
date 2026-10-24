@@ -557,6 +557,36 @@ Most of the time is Docker trials, not GPU work. Two ways to improve this, once 
 - **Access from the laptop:** `scripts/tunnel.sh user@box`, then open http://localhost:8770. "Download snapshot" saves `status.json`, which the page can open offline. `scripts/pull_run.sh` copies a run's inputs (a few MB) so the tracker also runs locally.
 - **Phase 1:** check the Miles metric names against the candidate lists at the top of the page's script. The page also lists every key it finds.
 
+**How to run the tracker**
+
+1. **On the box**, start it next to the run, in its own terminal or tmux window. It only reads files, so it can be started before, during or after training, and restarted at any time; host history is kept in `$DATA/monitor/<run>/host.jsonl`.
+   ```bash
+   cd aees/post_training
+   RUN=grpo_pilot1 python3 monitor/server.py        # RUN = the last part of SAVE_DIR (= agent_server.sh's RUN)
+   # options: --data /data (or DATA=...), --num-rollout 50 (or NUM_ROLLOUT=...), --port 8770
+   ```
+   It prints `tracking grpo_pilot1: http://127.0.0.1:8770` and listens on the box's loopback only.
+2. **On the laptop**, open the tunnel and keep it running. Extra ssh options go after the host:
+   ```bash
+   bash scripts/tunnel.sh ubuntu@<box> [-i ~/.ssh/key.pem]   # PORT=8770 by default
+   ```
+   Then open **http://localhost:8770**. The page refreshes every 30 s. The header turns red ("stalled?") if nothing new has been logged for 2× the median step time (at least 20 min), and the data age turns red if the tracker itself stops refreshing.
+3. **Offline:**
+   - **Snapshot:** click "Download snapshot" on the page (it saves `<run>_status.json`). Later, open `monitor/index.html` straight from disk and load the file with "Open snapshot".
+   - **Full copy:** `bash scripts/pull_run.sh ubuntu@<box> grpo_pilot1` copies the run's tracker inputs into `runs/`, laid out like the box's `/data`. Then on the laptop:
+     ```bash
+     python3 monitor/server.py --run grpo_pilot1 --data runs    # Python 3.10+; open http://localhost:8770
+     ```
+     Add `WITH_TRAJECTORIES=1` to also copy transcripts (MBs per trial).
+4. **Phase 0 baselines (optional):** after Phase 0, write `monitor/baseline.json`:
+   ```json
+   {"train": 0.22, "val": 0.30, "test": 0.25, "tasks": {"mailman": 0.375, "crack-7z-hash": 0.0}}
+   ```
+   - `train`, `val` and `test` are overall pass rates, drawn as dashed lines and as the first row of the checkpoint table.
+   - `tasks` holds per-task pass rates on the training tasks, shown as the heatmap's "base" column (passes out of 8).
+5. **Evals:** the Phase 4 eval script writes checkpoint N's trials to `$DATA/trials/eval/<run>/iter_<N>/{val,test}/<trial>/`. N is Miles' 0-based rollout id, the same as the checkpoint's `iter_<N>` folder. The tracker picks them up on its next refresh.
+6. **Try it without a run:** `tests/test_monitor.py` has a fake-run generator (`make_run`). A 20-task × 8-attempt, 25-step fake run was checked in headless Chrome on 2026-10-24.
+
 ---
 
 ## 7. Code layout (as built, 2026-10-23)
