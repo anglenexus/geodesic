@@ -536,6 +536,27 @@ Most of the time is Docker trials, not GPU work. Two ways to improve this, once 
 - **Time:** rollout, train, sync and offload durations; GPU memory peak in each phase.
 - Every training trajectory also goes into the `aees_harbor` ledger, tagged with run ID and step, so it can be browsed in the existing trajectory browser.
 
+**Training tracker (built 2026-10-24): `monitor/server.py` + `monitor/index.html`.**
+- **How it works.** It runs on the box with the host's python3 (3.10 or later), uses the standard library only, and binds to 127.0.0.1:8770. Every 30 s it re-reads what the run already writes, with no wandb:
+  - Miles' event log `$SAVE_DIR/events/*.jsonl` (all `rollout/*`, `train/*`, `perf/*` metrics per step);
+  - each trial's `result.json`, assigned to a step by finish time;
+  - checkpoint folders;
+  - eval trials under `$DATA/trials/eval/<run>/iter_N/{val,test}/` (the layout the Phase 4 eval script writes);
+  - `nvidia-smi`, `/proc/meminfo`, `df`, `docker ps`.
+- **What it shows:**
+  - status (running / stalled / finished), step k/N (= epochs), elapsed time, step time, ETA;
+  - success rates: train per step, val/test per checkpoint, with Phase 0 baselines from an optional `monitor/baseline.json`;
+  - how attempts ended (passed / failed / timeout / 48k / error / excluded infra);
+  - loss, gradient norm, entropy, trainer vs SGLang log-prob difference, KL, clip fraction;
+  - tasks with a learning signal;
+  - output tokens per turn, turns, parse-error rate;
+  - time per step (rollout / training / slowest trial), trials per hour;
+  - host memory;
+  - a picker for any logged metric;
+  - a per-task heatmap, a checkpoint table (best by validation) and recent trials.
+- **Access from the laptop:** `scripts/tunnel.sh user@box`, then open http://localhost:8770. "Download snapshot" saves `status.json`, which the page can open offline. `scripts/pull_run.sh` copies a run's inputs (a few MB) so the tracker also runs locally.
+- **Phase 1:** check the Miles metric names against the candidate lists at the top of the page's script. The page also lists every key it finds.
+
 ---
 
 ## 7. Code layout (as built, 2026-10-23)
@@ -552,6 +573,8 @@ post_training/
 ├── scripts/
 │   ├── run.sh                   # run.sh sft|grpo: docker run the Miles image, start Ray, submit the job
 │   ├── agent_server.sh          # Harbor agent server on the host (GRPO)
+│   ├── tunnel.sh                # laptop: SSH tunnel to the tracker
+│   ├── pull_run.sh              # laptop: copy a run's tracker inputs for offline viewing
 │   └── backup.sh                # upload a run's adapters to HF or S3
 ├── sft/
 │   ├── export_trajectories.py   # ledger -> chat jsonl (passing trials)
@@ -560,6 +583,9 @@ post_training/
 │   ├── split_tasks.py           # task lists -> grpo_train.jsonl / grpo_val.jsonl
 │   ├── harbor_parser.patch      # agent server: terminus-2 parser from an env var; exception type in each reply
 │   └── infra_filter.py          # excludes infra failures per attempt from GRPO groups (§8 item 6)
+├── monitor/
+│   ├── server.py                # training tracker on the box: reads the run's files, serves the page (§6)
+│   └── index.html               # the page: charts and tables, live or from a saved snapshot
 ├── tests/                       # unit tests (the loss-mask check lives here)
 └── data/                        # generated jsonl (git-ignored; copy to the box or regenerate)
 ```
