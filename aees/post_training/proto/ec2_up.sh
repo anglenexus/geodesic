@@ -50,6 +50,7 @@ SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "ubu
 until "${SSH[@]}" true 2>/dev/null; do sleep 5; done
 
 echo "== copying aees/harbor + prototype scripts"
+"${SSH[@]}" 'mkdir -p geodesic/aees proto'          # rsync creates only the last folder
 RSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new"
 rsync -az -e "$RSH" --exclude .venv --exclude '*.sqlite' --exclude 'state/remote/' --exclude '*.log' \
   --exclude __pycache__ "$HERE/../../harbor/" "ubuntu@$IP:geodesic/aees/harbor/"
