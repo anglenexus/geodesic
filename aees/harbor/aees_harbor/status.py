@@ -98,9 +98,9 @@ def job_status(job: Path, now: dt.datetime) -> dict:
             finished_at.append(_ts(r["finished_at"]))
             cost += (r.get("agent_result") or {}).get("cost_usd") or 0
             cells.setdefault(task, []).append({"s": state, "exc": exc, "msg": msg[0][:100] if msg else None,
-                                               "trial": trial.name})
+                                               "trial": trial.name, "t": r.get("started_at")})
         else:
-            cells.setdefault(task, []).append({"s": "running", "trial": trial.name})
+            cells.setdefault(task, []).append({"s": "running", "trial": trial.name, "t": r.get("started_at")})
     total = len(tasks) * attempts or sum(len(v) for v in cells.values())
     started = sum(len(v) for v in cells.values())
     done = len(finished_at)
@@ -168,8 +168,10 @@ def remote_status(remotes_path: Path | None, now: dt.datetime) -> list[dict]:
     return out
 
 
-def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path | None = None,
+def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path | list[Path] | None = None,
            remotes_path: Path | None = None) -> dict:
+    """schedule_path may be several Mac plans (e.g. a night run and the day run after it); the last one is
+    the current plan (STOP file, kill switch), and all of them get batch tables, job cards and costs."""
     now = dt.datetime.now(dt.timezone.utc)
     dirs = sorted((d for d in jobs_root.iterdir() if (d / "config.json").exists()),
                   key=lambda p: p.stat().st_mtime, reverse=True)[:RECENT_JOBS]
@@ -185,24 +187,32 @@ def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path |
     overall = totals(scen)
     by_model = {m: totals([s for s in scen if s["fields"].get("model") == m])
                 for m in sorted({s["fields"].get("model") for s in scen} - {None})}
-    schedule = _json(schedule_path) if schedule_path else None
-    if schedule:  # make sure every scheduled batch that has started gets a job card
-        for b in schedule.get("batches", []):
+    paths = [schedule_path] if isinstance(schedule_path, Path) else list(schedule_path or [])
+    schedules = []
+    for path in paths:
+        plan = _json(path)
+        if not plan:
+            continue
+        for b in plan.get("batches", []):  # make sure every scheduled batch that has started gets a job card
             d = jobs_root / b["name"]
             if (d / "config.json").exists() and d not in dirs:
                 dirs.append(d)
-    agg = aggregate_cost(schedule) if schedule else None
+        schedules.append({"path": str(path), "plan": plan, "aggregate_cost_usd": aggregate_cost(plan)})
+    schedule = schedules[-1]["plan"] if schedules else None
+    agg = schedules[-1]["aggregate_cost_usd"] if schedules else None
+    current = paths[-1] if paths else None
     return {"now": now.isoformat(), "host": host, "overall": overall, "overall_by_model": by_model, "schedule": schedule, "aggregate_cost_usd": agg,
+            "schedules": schedules,
             "selected_tasks": selected_tasks(), "test_candidates": test_candidates(),
             "validation_tasks": validation_tasks(),
-            "stop_file": bool(schedule_path and (schedule_path.parent / "STOP").exists()),
+            "stop_file": bool(current and (current.parent / "STOP").exists()),
             "jobs": [job_status(d, now) for d in dirs], "remotes": remote_status(remotes_path, now)}
 
 
 class Handler(BaseHTTPRequestHandler):
     jobs_root: Path
     ledger_path: Path
-    schedule_path: Path
+    schedule_path: list[Path]
     remotes_path: Path | None
     monitor: HostMonitor
 
@@ -230,12 +240,13 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Live status of Harbor collection runs")
     p.add_argument("--jobs-root", type=Path, default=Path("~/code/jobs"))
     p.add_argument("--ledger", type=Path, default=Path("state/ledger.sqlite"))
-    p.add_argument("--schedule", type=Path, default=Path("state/schedule_overnight.json"))
+    p.add_argument("--schedule", type=Path, action="append",
+                   help="Mac plan(s); repeat to show several (oldest first, the last is the current one)")
     p.add_argument("--remotes", type=Path, default=Path("state/remotes.json"),
                    help="EC2 remotes config; their mirrors are shown too (see aees_harbor.remote)")
     p.add_argument("--port", type=int, default=8766)
     args = p.parse_args()
-    Handler.schedule_path = args.schedule.resolve()
+    Handler.schedule_path = [x.resolve() for x in (args.schedule or [Path("state/schedule_overnight.json")])]
     Handler.remotes_path = args.remotes.resolve() if args.remotes.exists() else None
     Handler.jobs_root = args.jobs_root.expanduser().resolve()
     Handler.ledger_path = args.ledger.resolve()

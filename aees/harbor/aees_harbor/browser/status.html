@@ -96,8 +96,8 @@ function jobCard(j, live) {
   const nTest = entries.filter(([t]) => TEST.has(t)).length, nVal = entries.filter(([t]) => VAL.has(t)).length;
   const taskRows = entries.flatMap(([task, cells]) => {
     const queued = Math.max(0, j.attempts - cells.length);
-    const order = { pass: 0, fail: 1, none: 2, running: 3 };
-    const sorted = [...cells].sort((a, b) => order[a.s] - order[b.s]);
+    // time order (by trial start), so the bar shows the real sequence of outcomes; not-yet-started cells go last
+    const sorted = [...cells].sort((a, b) => (a.t || "9999").localeCompare(b.t || "9999"));
     const p = cells.filter(c => c.s === "pass").length, g = cells.filter(c => c.s === "pass" || c.s === "fail").length;
     return [el("div", { class: "taskname" + (SELECTED.has(task) ? " sel" : TEST.has(task) ? " test" : VAL.has(task) ? " val" : ""),
       title: task + (SELECTED.has(task) ? " (selected)" : TEST.has(task) ? " (test set)" : VAL.has(task) ? " (validation set)" : " (not selected)") }, task),
@@ -126,7 +126,7 @@ function jobCard(j, live) {
       `${live ? "⚠ running" : "included"} ${off.length} task${off.length > 1 ? "s" : ""} outside the ${SELECTED.size} selected, ${TEST.size} test and ${VAL.size} validation tasks: ` +
       off.slice(0, 8).join(", ") + (off.length > 8 ? ", …" : "")) : null,
     el("details", { open: live ? "" : null }, el("summary", { class: "muted" },
-      `per-task progress` + (SELECTED.size ? ` (blue = selected, orange = test set, green = validation; ${entries.length - off.length - nTest - nVal} blue, ${nTest} orange, ${nVal} green of ${entries.length})` : "")),
+      `per-task progress, in start order` + (SELECTED.size ? ` (blue = selected, orange = test set, green = validation; ${entries.length - off.length - nTest - nVal} blue, ${nTest} orange, ${nVal} green of ${entries.length})` : "")),
       el("div", { class: "grid" }, taskRows),
       el("div", { class: "legend" }, ...["pass", "fail", "none", "running", "queued"].map(s =>
         el("span", {}, el("i", { class: "c c-" + s }), s === "none" ? "no reward" : s)))));
@@ -203,7 +203,8 @@ function costSummary(s) {
         "Self-hosted models report $0. Pick “all models” for the full spend including EC2 compute."),
     ];
   }
-  const local = s.aggregate_cost_usd || 0;
+  const plans = s.schedules || [];
+  const local = plans.length ? plans.reduce((a, x) => a + (x.aggregate_cost_usd || 0), 0) : (s.aggregate_cost_usd || 0);
   const rem = (s.remotes || []).map(r => ({ name: r.config.name, api: r.aggregate_cost_usd || 0,
     ec2: (r.sync.ec2 || {}).cost_usd || 0, live: isLive(r) }));
   const act = rem.filter(r => r.live), old = rem.filter(r => !r.live);
@@ -213,7 +214,7 @@ function costSummary(s) {
     el("h2", {}, "Costs"),
     el("div", { class: "stats" },
       stat("active runs (Mac schedule + running EC2)", "$" + active.toFixed(2)),
-      stat("API, Mac schedule", "$" + local.toFixed(2)),
+      stat(plans.length > 1 ? `API, Mac (${plans.length} plans)` : "API, Mac schedule", "$" + local.toFixed(2)),
       ...act.flatMap(r => [stat(`API, ${r.name}`, "$" + r.api.toFixed(2)), stat(`EC2 compute, ${r.name}`, "$" + r.ec2.toFixed(2))]),
       ...(old.length ? [stat(`earlier EC2 runs (${old.map(r => r.name).join(", ")}), API + compute`, "$" + earlier.toFixed(2))] : []),
       stat("all of the above", "$" + (active + earlier).toFixed(2))),
@@ -227,7 +228,10 @@ const isLive = r => ((r.sync || {}).ec2 || {}).state === "running";
 // One row per active plan: progress, pass rate, cost vs cap and a projected finish, plus a combined total.
 function runOverview(s) {
   const plans = [];
-  if (s.schedule) plans.push({ where: "this Mac", sc: s.schedule, jobs: s.jobs, agg: s.aggregate_cost_usd });
+  const final = ["done", "stopped", "skipped", "killed", "failed"];
+  for (const x of (s.schedules || (s.schedule ? [{ plan: s.schedule, aggregate_cost_usd: s.aggregate_cost_usd }] : [])))
+    if (x.plan.batches.some(b => !final.includes(b.status)))
+      plans.push({ where: "this Mac", sc: x.plan, jobs: s.jobs, agg: x.aggregate_cost_usd });
   for (const r of (s.remotes || []).filter(isLive))
     if (r.schedule) plans.push({ where: r.config.name, sc: r.schedule, jobs: r.jobs, agg: r.aggregate_cost_usd });
   if (!plans.length) return [];
@@ -297,7 +301,8 @@ function remoteSection(r) {
       stat("last sync", ago(sy.synced_at), syncAge > 15 ? "warn" : ""),
       stat("EC2 state", e.state || "—", e.state && e.state !== "running" ? "warn" : ""),
       stat("uptime", e.hours !== undefined ? `${e.hours.toFixed(1)} h` : "—"),
-      stat("EC2 compute cost", e.cost_usd !== undefined && e.cost_usd !== null ? `$${e.cost_usd.toFixed(2)} @ $${c.hourly_usd}/h` : "—"),
+      stat("EC2 compute cost" + (e.prior_compute_usd ? ` (incl. $${e.prior_compute_usd.toFixed(2)} before a restart)` : ""),
+        e.cost_usd !== undefined && e.cost_usd !== null ? `$${e.cost_usd.toFixed(2)} @ $${c.hourly_usd}/h` : "—"),
       stat("API cost / cap", r.aggregate_cost_usd !== null && r.aggregate_cost_usd !== undefined ? `$${r.aggregate_cost_usd.toFixed(2)}${cap ? " / $" + cap : ""}` : "—",
         cap && r.aggregate_cost_usd > 0.8 * cap ? "warn" : ""),
       stat("scheduler", h.scheduler_alive ? "running" : "not running"),
@@ -319,20 +324,22 @@ async function refresh() {
     SELECTED = new Set(s.selected_tasks || []); TEST = new Set(s.test_candidates || []); VAL = new Set(s.validation_tasks || []);
     const h = s.host, byM = s.overall_by_model || {};
     setModels([...s.jobs.map(j => j.model), ...(s.remotes || []).flatMap(r => r.jobs.map(j => j.model)),
-               s.schedule && s.schedule.model, ...(s.remotes || []).map(r => r.schedule && r.schedule.model), ...Object.keys(byM)]);
+               s.schedule && s.schedule.model, ...(s.schedules || []).map(x => x.plan.model), ...(s.remotes || []).map(r => r.schedule && r.schedule.model), ...Object.keys(byM)]);
     const o = MODEL ? (byM[MODEL] || { scenarios: 0, target: 0, held: 0, passed: 0, failed: 0 }) : s.overall;
     // only this model's jobs, schedules and EC2 runners
     s = { ...s, jobs: s.jobs.filter(j => byModel(j.model)),
           remotes: (s.remotes || []).map(r => ({ ...r, jobs: r.jobs.filter(j => byModel(j.model)) }))
             .filter(r => !MODEL || r.jobs.length || (r.schedule && r.schedule.model === MODEL)),
-          schedule: s.schedule && byModel(s.schedule.model) ? s.schedule : null };
+          schedule: s.schedule && byModel(s.schedule.model) ? s.schedule : null,
+          schedules: (s.schedules || []).filter(x => byModel(x.plan.model)) };
     document.getElementById("updated").textContent = `updated ${new Date(s.now).toLocaleTimeString()} · refreshes every 10 s`;
     const live = new Set(h.running_jobs || []);
     app.replaceChildren(
       ...costSummary(s),
       ...runOverview(s),
       ...(s.remotes || []).filter(isLive).flatMap(remoteSection),
-      ...scheduleSection(s.schedule, s.jobs, live, s.stop_file, s.aggregate_cost_usd, "Mac schedule"),
+      ...[...(s.schedules || [])].reverse().flatMap((x, i) =>
+        scheduleSection(x.plan, s.jobs, live, i === 0 && s.stop_file, x.aggregate_cost_usd, i === 0 ? "Mac schedule (current)" : "Mac schedule (earlier)")),
       el("h2", {}, "Host"),
       el("div", { class: "stats" },
         stat("harbor jobs running", live.size ? [...live].join(", ") : "none"),

@@ -104,3 +104,24 @@ def test_validation_tasks_reads_its_own_list(tmp_path):
     f.write_text("kv-store-grpc\npath-tracing\n")
     assert browse.validation_tasks(f) == ["kv-store-grpc", "path-tracing"]
     assert browse.validation_tasks(tmp_path / "missing.txt") == []
+
+
+def test_status_lists_several_mac_plans_and_sums_their_costs(tmp_path):
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    led = tmp_path / "l.sqlite"
+    Ledger(led).close()
+    plans = []
+    for name, cost in (("night_b1", 0.5), ("day_b1", 0.25)):
+        t = jobs / name / "t__1"
+        t.mkdir(parents=True)
+        (jobs / name / "config.json").write_text(json.dumps({"agents": [{"model_name": "openai/x"}], "n_attempts": 1}))
+        (t / "result.json").write_text(json.dumps({"agent_result": {"cost_usd": cost}}))
+        p = tmp_path / f"plan_{name}.json"
+        p.write_text(json.dumps({"jobs_root": str(jobs), "budget_usd": 5, "budget_counts_jobs": [], "model": "openai/x",
+                                 "batches": [{"name": name, "status": "done", "attempts": 1, "concurrency": 1}]}))
+        plans.append(p)
+    s = status.status(jobs, led, {}, plans, None)
+    assert [x["aggregate_cost_usd"] for x in s["schedules"]] == [0.5, 0.25]
+    assert s["schedule"]["batches"][0]["name"] == "day_b1" and s["aggregate_cost_usd"] == 0.25  # last = current
+    assert {j["name"] for j in s["jobs"]} == {"night_b1", "day_b1"}
