@@ -602,7 +602,7 @@ sampled every second.
    - starts `proto/ec2_trials.sh` in tmux `proto` on EC2
 3. Watch: `ssh <h200> tail -f proto_<RUN>.log`. Done when `/data/proto/<RUN>/bench.log` says "done".
 4. `bash proto/fetch.sh` (results to `data/proto/<RUN>/`, then `report.md` and `dashboard.html`), then
-   `bash proto/ec2_down.sh`, then delete the H200. `fetch.sh` can also be run mid-run for a partial dashboard.
+   `bash proto/ec2_down.sh`, then delete the H200. For a live view during the run: `bash proto/watch.sh` (fetches every minute; the page reloads itself and shows the running phase and `bench.log`).
 
 `dashboard.html` (one file, opens offline) shows, per phase grouped as inference only / training only /
 together: projected minutes per GRPO step, alternating vs overlapped, as bars per rollout scenario; decode
@@ -712,7 +712,7 @@ post_training/
 │   ├── report.py                # slowdowns, projected step times, pass/fail -> report.md, dashboard.html
 │   ├── dashboard.html           # results page; report.py embeds report.json into a copy per run
 │   ├── ec2_up.sh, ec2_prepare.sh, ec2_trials.sh, ec2_down.sh, llm_log_proxy.py   # EC2 box + real trials
-│   └── kickoff.sh, fetch.sh     # laptop: start everything; pull results and write the report
+│   └── kickoff.sh, fetch.sh, watch.sh   # laptop: start everything; pull results + report; live view
 ├── tests/                       # unit tests (the loss-mask check lives here)
 └── data/                        # generated jsonl (git-ignored; copy to the box or regenerate)
 ```

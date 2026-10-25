@@ -14,4 +14,4 @@ if [ -f "$HERE/proto/state/ec2.env" ]; then
   rsync -az -e "ssh -i ${KEY:-$HOME/.ssh/aees-ec2.pem}" --include '*/' --include result.json --exclude '*' \
     "ubuntu@$EC2_IP:proto/jobs/" "$DEST/ec2/jobs/" || true
 fi
-cd "$HERE" && uv run python -m proto.report "$DEST"
+cd "$HERE" && uv run python -m proto.report "$DEST" ${LIVE:+--live}       # LIVE=1: include the running phase

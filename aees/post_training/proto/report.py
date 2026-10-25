@@ -3,6 +3,7 @@
   uv run python -m proto.report data/proto/<RUN>
 Input: <run>/<phase>/phase.json + agents.jsonl, train.jsonl, gpu.csv, dcgm.txt, hotload.jsonl (bench.sh),
 and optionally <run>/ec2/calls.jsonl (llm_log_proxy.py on EC2: real Harbor trials).
+With --live (proto/watch.sh), the phase still running (no phase.json yet) is included, and the page reloads itself.
 Output: per-phase serving/training/GPU numbers; for each co-run phase, the slowdowns against the matching
 alone phases, projected step times (alternating vs overlapped) and pass/fail against CRITERIA; and
 dashboard.html, proto/dashboard.html with report.json embedded (charts, opens offline).
@@ -10,6 +11,7 @@ dashboard.html, proto/dashboard.html with report.json embedded (charts, opens of
 import json
 import statistics
 import sys
+import time
 from pathlib import Path
 
 from proto.shapes import Shapes
@@ -66,13 +68,29 @@ def dcgm_rows(path: Path) -> list[dict]:
     return rows
 
 
-def load_run(run: Path) -> dict:
-    phases = {}
-    for meta in sorted(run.glob("*/phase.json")):
-        d = meta.parent
-        phases[d.name] = {"meta": json.loads(meta.read_text()), "agents": jsonl(d / "agents.jsonl"),
-                          "train": jsonl(d / "train.jsonl"), "hot": jsonl(d / "hotload.jsonl"),
-                          "gpu": gpu_rows(d / "gpu.csv"), "dcgm": dcgm_rows(d / "dcgm.txt")}
+def load_phase(d: Path, meta: dict) -> dict:
+    return {"meta": meta, "agents": jsonl(d / "agents.jsonl"), "train": jsonl(d / "train.jsonl"),
+            "hot": jsonl(d / "hotload.jsonl"), "gpu": gpu_rows(d / "gpu.csv"), "dcgm": dcgm_rows(d / "dcgm.txt")}
+
+
+def running_phase(run: Path):
+    """The phase bench.log started last, if it has no phase.json yet: its folder name, else None."""
+    log = run / "bench.log"
+    starts = [line.split("] phase ", 1)[1].strip() for line in (log.read_text().splitlines() if log.exists() else [])
+              if "] phase " in line]
+    return starts[-1] if starts and not (run / starts[-1] / "phase.json").exists() else None
+
+
+def load_run(run: Path, live: bool = False) -> dict:
+    """Finished phases (phase.json written by bench.sh's phase_end); with live, also the running one, whose
+    meta is only {name, running, t0, t1} from its GPU samples."""
+    phases = {meta.parent.name: load_phase(meta.parent, json.loads(meta.read_text()))
+              for meta in sorted(run.glob("*/phase.json"))}
+    if live and (name := running_phase(run)):
+        p = load_phase(run / name, {})
+        if p["gpu"]:
+            p["meta"] = {"name": name, "running": True, "t0": p["gpu"][0]["t"], "t1": p["gpu"][-1]["t"]}
+            phases[name] = p
     return dict(sorted(phases.items(), key=lambda kv: kv[1]["meta"]["t0"]))          # in the order they ran
 
 
@@ -236,8 +254,8 @@ def verdict(summ: dict, name: str, gen_share: float) -> dict:
     return out
 
 
-def build(run: Path) -> dict:
-    phases = load_run(run)
+def build(run: Path, live: bool = False) -> dict:
+    phases = load_run(run, live)
     cfg = run / "config.json"
     s = Shapes.from_config(cfg) if cfg.exists() else Shapes()
     summ = {n: phase_summary(p, s) for n, p in phases.items()}
@@ -252,9 +270,11 @@ def build(run: Path) -> dict:
     gen_share = statistics.median(real) if real else statistics.median(synth) if synth else 0.4
     pcie = next((r for r in jsonl(run / "pcie" / "train.jsonl") if r.get("type") == "pcie"), None)
     co = [n for n in summ if summ[n]["meta"].get("co")]
+    log = run / "bench.log"
     t0 = min((p["meta"]["t0"] for p in phases.values()), default=0.0)
     return {"run": run.name, "gen_share": gen_share, "gen_share_source": "real trials" if real else "synthetic agents",
             "pcie": pcie, "phases": summ, "verdicts": {n: verdict(summ, n, gen_share) for n in co},
+            "live": live, "generated": time.time(), "bench_log": log.read_text().splitlines()[-40:] if log.exists() else [],
             "constants": {"criteria": CRITERIA, "tokens_per_step": TOKENS_PER_STEP, "switch_min": SWITCH_MIN,
                           "warmup_s": WARMUP_S}, "t0": t0,
             "ec2_calls": [[round(c["t_send"] - t0, 2), round(c["t_end"] - c["t_send"], 2), c.get("status")]
@@ -300,12 +320,14 @@ def markdown(rep: dict) -> str:
 def dashboard(rep: dict) -> str:
     """proto/dashboard.html with the report embedded, so the saved page opens offline."""
     page = Path(__file__).with_name("dashboard.html").read_text()
+    if rep.get("live"):
+        page = page.replace("<head>", '<head>\n<meta http-equiv="refresh" content="60">', 1)   # watch.sh rewrites it each minute
     return page.replace("const EMBEDDED = null;", "const EMBEDDED = " + json.dumps(rep).replace("</", "<\\/") + ";", 1)
 
 
 if __name__ == "__main__":
     run = Path(sys.argv[1])
-    rep = build(run)
+    rep = build(run, live="--live" in sys.argv[2:])
     (run / "report.json").write_text(json.dumps(rep, indent=1))
     (run / "report.md").write_text(markdown(rep))
     (run / "dashboard.html").write_text(dashboard(rep))

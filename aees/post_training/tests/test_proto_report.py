@@ -190,3 +190,22 @@ def test_scripts_parse_and_reference_real_things():
     phases = re.search(r'PHASES=\$\{PHASES:-"([^"]+)"', bench).group(1).split()
     for p in phases:                                     # every default phase is run somewhere
         assert re.search(rf'(has {p}\b|for t in .*\b{p}\b)', bench), p
+
+
+def test_live_mode_shows_the_running_phase(run):
+    t = T0 + 5000
+    for name in ("serve_bf16", "co_mps70"):                  # serve_bf16 failed (no phase.json); co_mps70 is running
+        (run / name).mkdir()
+        (run / name / "gpu.csv").write_text(f"{t},90,80,100000,{TOTAL_MIB},600\n{t + 30},91,80,101000,{TOTAL_MIB},610\n")
+    (run / "co_mps70" / "train.jsonl").write_text("".join(json.dumps(r) + "\n" for r in train_rows(t, 2, 10.0)))
+    (run / "bench.log").write_text("[01:00:00] phase serve_bf16\n[01:00:01] SGLang failed\n[01:10:00] phase co_mps70\n")
+    assert "co_mps70" not in rp.build(run)["phases"]
+    rep = rp.build(run, live=True)
+    assert "serve_bf16" not in rep["phases"] and list(rep["phases"])[-1] == "co_mps70"
+    p = rep["phases"]["co_mps70"]
+    assert p["meta"] == {"name": "co_mps70", "running": True, "t0": t, "t1": t + 30} and p["train"]["steps"] == 2
+    assert "co_mps70" not in rep["verdicts"] and rep["live"] and rep["bench_log"][-1] == "[01:10:00] phase co_mps70"
+    assert '<meta http-equiv="refresh" content="60">' in rp.dashboard(rep)
+    assert "http-equiv" not in rp.dashboard(rp.build(run))
+    (run / "co_mps70" / "phase.json").write_text(json.dumps({"name": "co_mps70", "t0": t, "t1": t + 30}))
+    assert rp.running_phase(run) is None

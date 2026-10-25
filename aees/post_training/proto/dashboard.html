@@ -68,6 +68,7 @@
     <div class="card"><h2>Concurrency in this phase</h2><div id="conc"></div></div>
   </div>
   <div class="grid">
+    <div class="card wide scroll" id="logCard" hidden><h2>bench.log (last 40 lines)</h2><pre id="benchLog" style="margin:0;font-size:12px"></pre></div>
     <div class="card wide"><h2>Real terminus-2 trials on EC2 through the tunnel (whole run)</h2><div id="ec2"></div></div>
   </div>
 </div>
@@ -81,8 +82,9 @@ const fmt = (v, d = 2) => typeof v === "boolean" ? (v ? "yes" : "no") : v == nul
 const sum = a => a.reduce((x, y) => x + y, 0);
 const quantile = (a, q) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y);
                              return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
-const group = p => p.meta.co ? "together" : p.meta.serve ? "inference" : "training";
-const GROUPS = [["inference", "Inference only"], ["training", "Training only"], ["together", "Training and inference together"]];
+const group = p => p.meta.running ? "running" : p.meta.co ? "together" : p.meta.serve ? "inference" : "training";
+const GROUPS = [["inference", "Inference only"], ["training", "Training only"], ["together", "Training and inference together"],
+                ["running", "Running now (not finished; no verdict yet)"]];
 const settings = m => [m.serve ? m.serve.toUpperCase() + " weights" : null, m.mps ? (m.mps_pct ? `MPS, trainer ≤${m.mps_pct}% SMs` : "MPS")
   : m.serve && m.train ? "time-slicing" : null, m.agents ? `${m.agents} agents` : null,
   m.train ? (m.train.offload ? "activation offload" : "no offload") : null].filter(Boolean).join(", ");
@@ -138,9 +140,12 @@ function header(rep) {
   $("title").textContent = `Overlap Prototype: ${rep.run}`;
   $("pills").innerHTML = Object.entries(rep.verdicts).map(([n, v]) =>
     `<span class="pill" style="background:${v.pass ? "var(--ok)" : "var(--bad)"}">${esc(n)}: ${v.pass ? "PASS" : "FAIL"}</span>`).join(" ");
-  const span = Math.max(...Object.values(rep.phases).map(p => p.meta.t1)) - rep.t0;
+  const span = Object.keys(rep.phases).length ? Math.max(...Object.values(rep.phases).map(p => p.meta.t1)) - rep.t0 : 0;
   $("summary").innerHTML = `generation share of trial time <b>${fmt(rep.gen_share)}</b> (${esc(rep.gen_share_source)})`
     + ` · PCIe ${fmt(rep.pcie?.h2d_gbps)} GB/s to GPU, ${fmt(rep.pcie?.d2h_gbps)} back · run ${fmt(span / 60, 2)} min`;
+  const run = Object.values(rep.phases).find(p => p.meta.running);
+  if (rep.live) $("pills").innerHTML = `<span class="pill" style="background:var(--s1)">LIVE${run ? `: ${esc(run.meta.name)}` : ""}</span> `
+    + $("pills").innerHTML + ` <span class="muted">built ${new Date(rep.generated * 1000).toLocaleTimeString()}, reloads every minute</span>`;
   $("tokens").textContent = `${(rep.constants.tokens_per_step / 1e6).toFixed(1)}M`;
 }
 
@@ -283,9 +288,12 @@ function ec2(rep) {
 function render(rep) {
   $("empty").hidden = true; $("main").hidden = false;
   header(rep); gantt(rep); table(rep); bars(rep); ec2(rep);
-  const names = Object.keys(rep.phases), first = names.find(n => rep.phases[n].meta.co) || names[0];
+  const names = Object.keys(rep.phases);
+  const kept = decodeURIComponent(location.hash.slice(1));          // the phase picked before a reload
+  const first = names.includes(kept) ? kept : names.find(n => rep.phases[n].meta.running) || names.find(n => rep.phases[n].meta.co) || names[0];
+  $("logCard").hidden = !(rep.bench_log || []).length; $("benchLog").textContent = (rep.bench_log || []).join("\n");
   $("phasePick").innerHTML = names.map(n => `<option ${n === first ? "selected" : ""}>${esc(n)}</option>`).join("");
-  $("phasePick").onchange = e => timeline(rep, e.target.value);
+  $("phasePick").onchange = e => { location.hash = encodeURIComponent(e.target.value); timeline(rep, e.target.value); };
   if (first) timeline(rep, first);
 }
 if (EMBEDDED) render(EMBEDDED);
