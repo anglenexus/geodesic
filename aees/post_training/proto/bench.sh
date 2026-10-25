@@ -108,7 +108,8 @@ serve() {             # serve <bf16|fp8> <mem fraction> <mps 0|1> <log>: start S
     # shellcheck disable=SC2046
     docker exec -d $(mps_env "$3") "$C" bash -c "python3 -m sglang.launch_server --model-path $model \
       --served-model-name qwen3.6-27b --host 127.0.0.1 --port 30000 --mem-fraction-static $2 \
-      --context-length 57344 --enable-cache-report --decode-log-interval 40 ${extra[*]} ${lora[*]:-} > $4 2>&1"
+      --context-length 57344 --enable-cache-report --decode-log-interval 40 ${extra[*]} ${lora[*]:-} \
+      > ${4/#$OUT//root/proto_out/$RUN} 2>&1"               # the log's path inside the container
     for _ in $(seq 180); do
       curl -sf http://127.0.0.1:30000/health_generate >/dev/null 2>&1 && { log "SGLang up: $1, mem $2, mps $3, $try"; return 0; }
       docker exec "$C" pgrep -f sglang.launch_server >/dev/null || break
