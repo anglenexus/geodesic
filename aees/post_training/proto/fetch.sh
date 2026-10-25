@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pull the prototype's results to the laptop and write the report (PLAN.md §5b):
-#   H200 /data/proto/$RUN -> data/proto/$RUN ;  EC2 ~/proto/out -> data/proto/$RUN/ec2 ;  report.md + report.json
+#   H200 /data/proto/$RUN -> data/proto/$RUN ;  EC2 ~/proto/out -> data/proto/$RUN/ec2 ;
+#   report.md + report.json + dashboard.html. Safe to run mid-run (partial results).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)                    # aees/post_training
 source "$HERE/proto/state/run.env"

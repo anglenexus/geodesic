@@ -601,8 +601,14 @@ sampled every second.
    - starts `setup.sh` (steps 1–4, 6, 7; bf16 + FP8 weights) and `proto/bench.sh` in tmux `proto` on the H200
    - starts `proto/ec2_trials.sh` in tmux `proto` on EC2
 3. Watch: `ssh <h200> tail -f proto_<RUN>.log`. Done when `/data/proto/<RUN>/bench.log` says "done".
-4. `bash proto/fetch.sh` (results to `data/proto/<RUN>/`, then `report.md`), then `bash proto/ec2_down.sh`,
-   then delete the H200.
+4. `bash proto/fetch.sh` (results to `data/proto/<RUN>/`, then `report.md` and `dashboard.html`), then
+   `bash proto/ec2_down.sh`, then delete the H200. `fetch.sh` can also be run mid-run for a partial dashboard.
+
+`dashboard.html` (one file, opens offline) shows, per phase grouped as inference only / training only /
+together: projected minutes per GRPO step, alternating vs overlapped, as bars per rollout scenario; decode
+ms/token and training s/micro-batch alone vs together; peak GPU memory; the checks; one phase over time
+(ms/token per call, micro-batches, SM/tensor/HBM activity, memory, stalls, requests in flight, tok/s); and
+the real EC2 trials' latency over the whole run.
 
 To re-run phases: `PHASES="co_mps co_mps70" bash proto/bench.sh` on the H200. Knobs: `SERVE_MEM_CO`,
 `CO_MIN`, `MPS_CAP`, `AGENTS`.
@@ -703,7 +709,8 @@ post_training/
 │   ├── train_proxy.py           # training load with the model's shapes; shapes.py: layer shapes, FLOPs
 │   ├── agent_load.py            # agents replaying load_profile.json (make_profile.py builds it); adapter hot-load
 │   ├── adapter.py               # random r = 64 adapter named after the checkpoint's modules
-│   ├── report.py                # slowdowns, projected step times, pass/fail -> report.md
+│   ├── report.py                # slowdowns, projected step times, pass/fail -> report.md, dashboard.html
+│   ├── dashboard.html           # results page; report.py embeds report.json into a copy per run
 │   ├── ec2_up.sh, ec2_prepare.sh, ec2_trials.sh, ec2_down.sh, llm_log_proxy.py   # EC2 box + real trials
 │   └── kickoff.sh, fetch.sh     # laptop: start everything; pull results and write the report
 ├── tests/                       # unit tests (the loss-mask check lives here)

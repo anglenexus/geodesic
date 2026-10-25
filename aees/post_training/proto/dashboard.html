@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlap Prototype</title>
+<!-- Results of one proto/bench.sh run (PLAN.md §5b). proto/report.py writes <run>/dashboard.html: this page
+     with report.json embedded. Opened bare, it asks for a report.json (Open report.json). -->
+<style>
+  :root { --bg:#fff; --fg:#1d1d1f; --muted:#6e6e73; --line:#e5e5ea; --card:#f7f7f9; --band:rgba(217,119,6,.12);
+          --ok:#1a7f37; --warn:#b26b00; --bad:#c62828; --s1:#2563eb; --s2:#16a34a; --s3:#d97706; --s4:#9333ea; --s5:#0891b2; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111214; --fg:#ececf0; --muted:#9a9aa3;
+          --line:#2a2b30; --card:#1a1b1f; --band:rgba(251,191,36,.12); --s1:#60a5fa; --s2:#4ade80; --s3:#fbbf24;
+          --s4:#c084fc; --s5:#22d3ee; } }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 8px 0 0; } h2 { font-size:14px; margin:0 0 6px; color:var(--muted); }
+  h3 { font-size:13px; margin:10px 0 4px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; margin-bottom:12px; }
+  .pill { padding:2px 8px; border-radius:10px; color:#fff; font-weight:600; font-size:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap:12px; margin-bottom:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px; min-width:0; }
+  .wide { grid-column:1 / -1; } .scroll { overflow-x:auto; }
+  .note { font-size:12px; color:var(--muted); margin:4px 0 0; }
+  svg { width:100%; display:block; } .legend { font-size:12px; color:var(--muted); }
+  table { border-collapse:collapse; font-size:12px; width:100%; } td, th { padding:2px 6px; text-align:left;
+          border-bottom:1px solid var(--line); white-space:nowrap; } th { color:var(--muted); font-weight:600; }
+  tr.group td { font-weight:700; padding-top:8px; }
+  .muted { color:var(--muted); } .bad { color:var(--bad); font-weight:600; } .good { color:var(--ok); font-weight:600; }
+  .hbar { display:grid; grid-template-columns:minmax(90px, 160px) 1fr; gap:2px 8px; align-items:center; font-size:12px; }
+  .track { position:relative; height:16px; } .seg { position:absolute; top:0; height:100%; border-radius:3px;
+          font-size:11px; color:#fff; overflow:hidden; white-space:nowrap; padding-left:4px; box-sizing:border-box; }
+  .refline { position:absolute; top:-2px; bottom:-2px; border-left:2px dashed var(--bad); }
+  button, select, label.file { font:inherit; padding:2px 8px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="bar"><h1 id="title">Overlap Prototype</h1><span id="pills"></span><span id="summary" class="muted"></span>
+  <span style="flex:1"></span>
+  <label class="file">Open report.json <input type="file" accept=".json" hidden onchange="openFile(this.files[0])"></label></div>
+<div id="empty" class="card">No report loaded. Run <code>bash proto/fetch.sh</code> (writes <code>data/proto/&lt;RUN&gt;/dashboard.html</code>),
+  or open a <code>report.json</code>.</div>
+<div id="main" hidden>
+  <div class="grid">
+    <div class="card wide"><h2>Time per GRPO step: alternating vs overlapped (projected from the measured slowdowns)</h2>
+      <div id="gantt"></div>
+      <p class="note">Alternating: rollout, then training, then the switch (offload, onload, adapter sync). Overlapped: training
+        runs during the next rollout (one step stale), slowed by sharing the GPU; it lengthens the rollout by the generation share
+        × (decode slowdown − 1) × the overlapped training time. Rollout minutes are the plan's estimates; training minutes come from
+        the measured trainer speed for <span id="tokens"></span> trained tokens per step.</p></div>
+    <div class="card wide scroll"><h2>Phases: inference only, training only, both together</h2><div id="table"></div>
+      <p class="note">Serving numbers exclude the first minute of each phase (warm-up). In the co-run phases, "with training" is
+        calls whose first token falls inside the trainer's busy window; the rest serve as the same-server baseline.
+        GPU activity is the DCGM mean over that window (fraction of time SMs / tensor cores / HBM are busy).</p></div>
+  </div>
+  <div class="grid">
+    <div class="card"><h2>Decode: ms per output token (p50; bar end p90)</h2><div id="decodeBars"></div>
+      <p class="note">Decode re-reads all weights every step, so ms/token tracks how much HBM bandwidth serving gets.</p></div>
+    <div class="card"><h2>Training: seconds per 48k-token micro-batch</h2><div id="trainBars"></div></div>
+    <div class="card"><h2>GPU memory: peak used vs total</h2><div id="memBars"></div>
+      <p class="note">Dashed line: total minus the required headroom.</p></div>
+    <div class="card"><h2>Checks per co-run phase</h2><div id="checks"></div></div>
+  </div>
+  <div class="grid">
+    <div class="card wide"><h2>Timeline of one phase <select id="phasePick"></select></h2>
+      <div id="timeline"></div>
+      <p class="note">x: seconds since the phase started. Shaded: the trainer's busy window (first to last micro-batch).
+        Purple lines: adapter hot-loads.</p></div>
+    <div class="card"><h2>ms/token distribution in this phase</h2><div id="hist"></div></div>
+    <div class="card"><h2>Concurrency in this phase</h2><div id="conc"></div></div>
+  </div>
+  <div class="grid">
+    <div class="card wide"><h2>Real terminus-2 trials on EC2 through the tunnel (whole run)</h2><div id="ec2"></div></div>
+  </div>
+</div>
+<script>
+const EMBEDDED = null;            // proto/report.py puts the report here
+const $ = id => document.getElementById(id);
+const C = {alone: "var(--s1)", co: "var(--s3)", train: "var(--s2)", gpu: "var(--s4)", mem: "var(--s5)"};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const fmt = (v, d = 2) => typeof v === "boolean" ? (v ? "yes" : "no") : v == null || isNaN(v) ? "–" : v === 0 ? "0" : Math.abs(v) >= 100 ? v.toFixed(0)
+  : String(+v.toPrecision(d + 1));
+const sum = a => a.reduce((x, y) => x + y, 0);
+const quantile = (a, q) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y);
+                             return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
+const group = p => p.meta.co ? "together" : p.meta.serve ? "inference" : "training";
+const GROUPS = [["inference", "Inference only"], ["training", "Training only"], ["together", "Training and inference together"]];
+const settings = m => [m.serve ? m.serve.toUpperCase() + " weights" : null, m.mps ? (m.mps_pct ? `MPS, trainer ≤${m.mps_pct}% SMs` : "MPS")
+  : m.serve && m.train ? "time-slicing" : null, m.agents ? `${m.agents} agents` : null,
+  m.train ? (m.train.offload ? "activation offload" : "no offload") : null].filter(Boolean).join(", ");
+const ratio = (a, b) => a != null && b ? a / b : null;
+const window_ = tl => tl.train.length ? [Math.min(...tl.train.map(([t, s]) => t - s)), Math.max(...tl.train.map(([t]) => t))] : null;
+const mid = c => (c[1] + c[2]) / 2, perTok = c => c[3] >= 16 ? 1000 * (c[2] - c[1]) / (c[3] - 1) : null;
+
+function openFile(file) { file.text().then(t => render(JSON.parse(t))); }
+
+// ---- horizontal bars and Gantt rows (HTML), line/dot charts (SVG) ----
+function hbars(el, rows, {unit = "", ref = null, max = null} = {}) {   // rows: {label, bars: [{v, hi?, color, name}]}
+  const top = max ?? Math.max(1e-9, ...rows.flatMap(r => r.bars.map(b => b.hi ?? b.v ?? 0)), ref ?? 0) * 1.05;
+  const pct = v => `${100 * v / top}%`;
+  el.innerHTML = rows.length ? `<div class="hbar">` + rows.map(r => `<div>${esc(r.label)}</div><div>` + r.bars.map(b =>
+    `<div class="track" title="${esc(b.name)}: ${fmt(b.v)}${unit}${b.hi != null ? ` (p90 ${fmt(b.hi)})` : ""}">`
+    + (b.hi != null ? `<div class="seg" style="left:0;width:${pct(b.hi)};background:${b.color};opacity:.3"></div>` : "")
+    + `<div class="seg" style="left:0;width:${pct(b.v ?? 0)};background:${b.color}">${fmt(b.v)}${unit}</div>`
+    + (ref != null ? `<div class="refline" style="left:${pct(ref)}"></div>` : "") + `</div>`).join("") + `</div>`).join("")
+    + `</div>` : `<div class="muted">no data</div>`;
+}
+const W = 640, L = 48, R = 10, T = 8, B = 22;
+function chart(el, title, {x0, x1, series, y0 = 0, y1 = null, bands = [], vlines = [], h = 150, xLabel = "s"}) {
+  const pts = series.flatMap(s => s.points).filter(p => p[1] != null);
+  const box = document.createElement("div"); el.appendChild(box);
+  box.innerHTML = `<h3>${esc(title)}</h3>`;
+  if (!pts.length) { box.innerHTML += `<div class="muted">no data</div>`; return; }
+  const top = (y1 ?? Math.max(...pts.map(p => p[1])) * 1.05) || 1;
+  const X = x => L + (x - x0) / (x1 - x0 || 1) * (W - L - R), Y = y => h - B - (Math.min(y, top) - y0) / (top - y0 || 1) * (h - T - B);
+  let g = "";
+  for (const [a, b] of bands) g += `<rect x="${X(a)}" y="${T}" width="${Math.max(1, X(b) - X(a))}" height="${h - T - B}" fill="var(--band)"/>`;
+  for (const v of [y0, (y0 + top) / 2, top])
+    g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-dasharray="2 3"/>`
+       + `<text x="${L - 4}" y="${Y(v) + 4}" font-size="10" text-anchor="end" fill="var(--muted)">${fmt(v)}</text>`;
+  for (const v of [x0, (x0 + x1) / 2, x1])
+    g += `<text x="${X(v)}" y="${h - 6}" font-size="10" text-anchor="middle" fill="var(--muted)">${fmt(v, 3)}${xLabel}</text>`;
+  for (const x of vlines) g += `<line x1="${X(x)}" x2="${X(x)}" y1="${T}" y2="${h - B}" stroke="var(--s4)" stroke-width="1.5"/>`;
+  for (const s of series) {
+    const p = s.points.filter(q => q[1] != null);
+    if (s.dots) g += p.map(q => `<circle cx="${X(q[0])}" cy="${Y(q[1])}" r="${s.r ?? 1.8}" fill="${s.color}" opacity=".55"/>`).join("");
+    else g += `<polyline fill="none" stroke="${s.color}" stroke-width="1.8" points="${p.map(q => `${X(q[0])},${Y(q[1])}`).join(" ")}"/>`;
+  }
+  box.innerHTML += `<svg viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" style="height:${h}px">${g}</svg><div class="legend">`
+    + series.map(s => `<span style="color:${s.color}">${s.dots ? "●" : "━"}</span> ${esc(s.name)}`).join(" &nbsp; ") + `</div>`;
+}
+function bins(x0, x1, width, f) {          // [[bin centre, f(lo, hi)]]
+  const out = [];
+  for (let lo = x0; lo < x1; lo += width) out.push([lo + width / 2, f(lo, lo + width)]);
+  return out;
+}
+
+// ---- header ----
+function header(rep) {
+  $("title").textContent = `Overlap Prototype: ${rep.run}`;
+  $("pills").innerHTML = Object.entries(rep.verdicts).map(([n, v]) =>
+    `<span class="pill" style="background:${v.pass ? "var(--ok)" : "var(--bad)"}">${esc(n)}: ${v.pass ? "PASS" : "FAIL"}</span>`).join(" ");
+  const span = Math.max(...Object.values(rep.phases).map(p => p.meta.t1)) - rep.t0;
+  $("summary").innerHTML = `generation share of trial time <b>${fmt(rep.gen_share)}</b> (${esc(rep.gen_share_source)})`
+    + ` · PCIe ${fmt(rep.pcie?.h2d_gbps)} GB/s to GPU, ${fmt(rep.pcie?.d2h_gbps)} back · run ${fmt(span / 60, 2)} min`;
+  $("tokens").textContent = `${(rep.constants.tokens_per_step / 1e6).toFixed(1)}M`;
+}
+
+// ---- step-time Gantt per co-run phase and rollout scenario ----
+function gantt(rep) {
+  const sw = rep.constants.switch_min, items = Object.entries(rep.verdicts).filter(([, v]) => v.projection);
+  if (!items.length) { $("gantt").innerHTML = `<div class="muted">needs a co-run phase with both slowdowns measured</div>`; return; }
+  const top = Math.max(...items.flatMap(([, v]) => Object.values(v.projection).map(p => Math.max(p.alternating_min, p.overlapped_min))));
+  const pct = v => `${100 * v / top}%`, seg = (l, w, color, text) =>
+    `<div class="seg" style="left:${pct(l)};width:${pct(w)};background:${color}" title="${esc(text)}">${esc(text)}</div>`;
+  let html = "";
+  for (const [name, v] of items) {
+    html += `<h3>${esc(name)}: ${esc(settings(rep.phases[name].meta))} · decode ×${fmt(v.checks.decode_slowdown?.value)},`
+      + ` training ×${fmt(v.checks.train_slowdown?.value)}</h3><div class="hbar">`;
+    for (const [sc, p] of Object.entries(v.projection)) {
+      const t = v.train_min_alone, r = p.rollout_min, ext = p.overlapped_min - r;
+      html += `<div><b>${esc(sc)}</b><br><span class="muted">alternating ${fmt(p.alternating_min)} min</span></div><div class="track" style="height:20px">`
+        + seg(0, r, C.alone, `rollout ${fmt(r)}`) + seg(r, t, C.train, `train ${fmt(t)}`) + seg(r + t, sw, "var(--muted)", `switch ${sw}`) + `</div>`
+        + `<div><span class="${p.saving > 0 ? "good" : "bad"}">overlapped ${fmt(p.overlapped_min)} min (${fmt(100 * p.saving, 2)}% saved)</span></div>`
+        + `<div><div class="track">` + seg(0, r, C.alone, `rollout ${fmt(r)}`) + (ext > 0 ? seg(r, ext, C.co, `+${fmt(ext)}`) : "") + `</div>`
+        + `<div class="track" style="margin-top:2px">` + seg(0, p.train_min_overlapped, C.train, `train ${fmt(p.train_min_overlapped)} (previous step's data)`) + `</div></div>`;
+    }
+    html += `</div>`;
+  }
+  $("gantt").innerHTML = html;
+}
+
+// ---- phase table ----
+function table(rep) {
+  const ph = Object.entries(rep.phases);
+  const head = ["phase", "settings", "ms/token p50", "decode ×", "out tok/s", "TTFT p99 s", "stall p99 s", "calls / errors",
+                "train s/micro-batch", "train ×", "train tok/s", "TFLOPS", "peak train GB", "GPU mem max GB", "SM / tensor / DRAM", "verdict"];
+  let html = `<table><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>`;
+  for (const [g, label] of GROUPS) {
+    const rows = ph.filter(([, p]) => group(p) === g);
+    if (!rows.length) continue;
+    html += `<tr class="group"><td colspan="${head.length}">${label}</td></tr>`;
+    for (const [n, p] of rows) {
+      const a = p.alone || {}, w = p.with_train, tr = p.train || {}, gp = p.gpu, v = rep.verdicts[n], c = v?.checks || {};
+      const dec = w ? `${fmt(a.per_tok_ms_p50)} → <b>${fmt(w.per_tok_ms_p50)}</b>` : fmt(a.per_tok_ms_p50);
+      const val = (k, x) => c[k] ? `<span class="${c[k].pass ? "" : "bad"}">${fmt(c[k].value)}</span>` : fmt(x);
+      html += `<tr><td>${esc(n)}</td><td class="muted">${esc(settings(p.meta))}</td><td>${dec}</td><td>${val("decode_slowdown")}</td>`
+        + `<td>${w ? `${fmt(a.out_tok_s)} → ${fmt(w.out_tok_s)}` : fmt(a.out_tok_s)}</td><td>${fmt((w || a).ttft_s_p99)}</td>`
+        + `<td>${val("stall_p99_s", (w || a).stall_s_p99)}</td><td>${p.alone ? `${(a.calls || 0) + (w?.calls || 0)} / ${(a.errors || 0) + (w?.errors || 0)}` : ""}</td>`
+        + `<td>${fmt(tr.seconds)}${tr.oom ? ` <span class="bad">OOM</span>` : ""}${tr.seq && tr.seq !== 49152 ? ` <span class="muted">(${tr.seq / 1024}k)</span>` : ""}</td>`
+        + `<td>${val("train_slowdown")}</td><td>${fmt(tr.tok_s)}</td><td>${fmt(tr.tflops)}</td><td>${fmt(tr.peak_gb)}</td>`
+        + `<td>${fmt(gp.mem_max_gb, 3)}${c.headroom_gb ? ` <span class="${c.headroom_gb.pass ? "muted" : "bad"}">(${fmt(c.headroom_gb.value)} free)</span>` : ""}</td>`
+        + `<td>${fmt(gp.sm_active)} / ${fmt(gp.tensor_active)} / ${fmt(gp.dram_active)}</td>`
+        + `<td>${v ? `<span class="${v.pass ? "good" : "bad"}">${v.pass ? "PASS" : "FAIL"}</span>` : ""}</td></tr>`;
+      if (p.hotload) html += `<tr><td class="muted" colspan="${head.length}">&nbsp;&nbsp;adapter hot-load during ${esc(n)}: `
+        + `${p.hotload.ok}/${p.hotload.tries} ok, p50 ${fmt(p.hotload.load_s_p50)} s, max ${fmt(p.hotload.load_s_max)} s</td></tr>`;
+    }
+  }
+  $("table").innerHTML = html + `</table>`;
+}
+
+// ---- comparison bars ----
+function bars(rep) {
+  const ph = Object.entries(rep.phases), crit = rep.constants.criteria;
+  hbars($("decodeBars"), ph.filter(([, p]) => p.alone).map(([n, p]) => ({label: n, bars: [
+    {v: p.alone.per_tok_ms_p50, hi: p.alone.per_tok_ms_p90, color: C.alone, name: p.meta.co ? "same server, trainer idle" : "alone"},
+    ...(p.with_train ? [{v: p.with_train.per_tok_ms_p50, hi: p.with_train.per_tok_ms_p90, color: C.co, name: "with training"}] : [])]})), {unit: " ms"});
+  $("decodeBars").innerHTML += `<div class="legend"><span style="color:${C.alone}">■</span> alone (or trainer idle)
+    &nbsp; <span style="color:${C.co}">■</span> with training</div>`;
+  hbars($("trainBars"), ph.filter(([, p]) => p.train?.seconds).map(([n, p]) => ({label: n, bars: [
+    {v: p.train.seconds, color: p.meta.co ? C.co : C.train, name: n}]})), {unit: " s"});
+  const total = Math.max(0, ...ph.map(([, p]) => p.gpu.mem_total_gb || 0));
+  hbars($("memBars"), ph.filter(([, p]) => p.gpu.mem_max_gb != null).map(([n, p]) => ({label: n, bars: [
+    {v: +p.gpu.mem_max_gb.toFixed(1), color: p.meta.co ? C.co : p.meta.serve ? C.alone : C.train, name: n}]})),
+    {unit: " GB", max: total || null, ref: total ? total - crit.headroom_gb : null});
+  const v = Object.entries(rep.verdicts);
+  $("checks").innerHTML = v.length ? `<table><tr><th>phase</th><th>check</th><th>value</th><th>limit</th><th></th></tr>`
+    + v.flatMap(([n, x]) => Object.entries(x.checks).map(([k, c], i) => `<tr><td>${i ? "" : esc(n)}</td><td>${esc(k)}</td>`
+      + `<td>${fmt(c.value)}</td><td class="muted">${c.limit == null ? "" : (k === "headroom_gb" || k === "saving" ? "≥ " : "≤ ") + fmt(c.limit)}</td>`
+      + `<td class="${c.pass ? "good" : "bad"}">${c.pass ? "ok" : "FAIL"}</td></tr>`)).join("") + `</table>`
+    + `<p class="note">Baselines: ${v.map(([n, x]) => `${esc(n)}: serving ${esc(x.serve_baseline ?? "none")}, training ${esc(x.train_baseline ?? "none")}`).join("; ")}</p>`
+    : `<div class="muted">no co-run phase</div>`;
+}
+
+// ---- one phase over time ----
+function timeline(rep, name) {
+  const p = rep.phases[name], tl = p.timeline, dur = p.meta.t1 - p.meta.t0, win = window_(tl);
+  const opts = {x0: 0, x1: dur, bands: win ? [win] : [], vlines: tl.hot.map(h => h[0])};
+  const el = $("timeline"); el.innerHTML = "";
+  const tok = tl.calls.map(c => [mid(c), perTok(c)]).filter(q => q[1] != null);
+  chart(el, "Decode ms per output token, each call (dots) and 15 s median", {...opts, series: [
+    {name: "call", color: C.alone, dots: true, points: tok},
+    {name: "median", color: C.co, points: bins(0, dur, 15, (lo, hi) => quantile(tok.filter(q => q[0] >= lo && q[0] < hi).map(q => q[1]), .5))}]});
+  chart(el, "Training: seconds per micro-batch (at its end)", {...opts, series: [
+    {name: "micro-batch", color: C.train, dots: true, r: 3.5, points: tl.train}]});
+  chart(el, "GPU busy fraction", {...opts, y1: 1, series: [
+    {name: "nvidia-smi util", color: "var(--muted)", points: tl.gpu.map(g => [g[0], g[1] / 100])},
+    {name: "SM active", color: C.alone, points: tl.dcgm.map(d => [d[0], d[1]])},
+    {name: "tensor active", color: C.train, points: tl.dcgm.map(d => [d[0], d[2]])},
+    {name: "DRAM (HBM) active", color: C.co, points: tl.dcgm.map(d => [d[0], d[3]])}]});
+  chart(el, "GPU memory used (GB)", {...opts, y1: p.gpu.mem_total_gb || null, series: [
+    {name: "used", color: C.mem, points: tl.gpu.map(g => [g[0], g[2]])}]});
+  chart(el, "Longest pause between streamed chunks, each call (s)", {...opts, series: [
+    {name: "stall", color: "var(--bad)", dots: true, points: tl.calls.map(c => [mid(c), c[4]])},
+    {name: "error (at 0)", color: "var(--s4)", dots: true, r: 3, points: tl.errors.map(t => [t, 0])}]});
+  // distribution: inside vs outside the training window
+  const inWin = c => win && c[1] >= win[0] && c[1] <= win[1], warm = rep.constants.warmup_s;
+  const a = tl.calls.filter(c => !inWin(c) && c[0] >= warm).map(perTok).filter(x => x != null);
+  const b = tl.calls.filter(inWin).map(perTok).filter(x => x != null);
+  const all = [...a, ...b], hi = quantile(all, .99) || 1, step = hi / 30;
+  const hist = xs => bins(0, hi, step, (lo, h2) => xs.length ? xs.filter(x => x >= lo && (x < h2 || h2 >= hi)).length / xs.length : null);
+  $("hist").innerHTML = "";
+  chart($("hist"), "", {x0: 0, x1: hi, xLabel: " ms", series: [
+    {name: `trainer idle (${a.length} calls)`, color: C.alone, points: hist(a)},
+    ...(b.length ? [{name: `with training (${b.length} calls)`, color: C.co, points: hist(b)}] : [])]});
+  // concurrency: requests in flight and output tokens per second
+  const flight = bins(0, dur, 5, (lo, h2) => tl.calls.filter(c => c[0] < h2 && c[2] > lo).length);
+  const rate = bins(0, dur, 10, (lo, h2) => sum(tl.calls.map(c => {
+    const s = Math.max(lo, c[1]), e = Math.min(h2, c[2]);
+    return e > s ? c[3] * (e - s) / Math.max(c[2] - c[1], 1e-9) : 0; })) / 10);
+  $("conc").innerHTML = "";
+  chart($("conc"), "Requests in flight (5 s bins)", {...opts, h: 120, series: [{name: "in flight", color: C.alone, points: flight}]});
+  chart($("conc"), "Output tokens per second, all agents (10 s bins)", {...opts, h: 120, series: [{name: "tok/s", color: C.co, points: rate}]});
+}
+
+// ---- EC2 real trials ----
+function ec2(rep) {
+  const calls = rep.ec2_calls || [], ph = Object.entries(rep.phases);
+  if (!calls.length) { $("ec2").innerHTML = `<div class="muted">no EC2 calls logged (proto/ec2_trials.sh not run, or not fetched)</div>`; return; }
+  const end = Math.max(...ph.map(([, p]) => p.meta.t1 - rep.t0), ...calls.map(c => c[0] + c[1])) / 60;
+  const co = ph.filter(([, p]) => p.meta.co).map(([, p]) => [(p.meta.t0 - rep.t0) / 60, (p.meta.t1 - rep.t0) / 60]);
+  $("ec2").innerHTML = "";
+  chart($("ec2"), "Model latency per call (s); shaded: co-run phases", {x0: 0, x1: end, xLabel: " min", bands: co, series: [
+    {name: "ok", color: C.alone, dots: true, points: calls.filter(c => c[2] === 200).map(c => [c[0] / 60, c[1]])},
+    {name: "error", color: "var(--bad)", dots: true, r: 3, points: calls.filter(c => c[2] !== 200).map(c => [c[0] / 60, c[1]])}]});
+  const rows = ph.filter(([, p]) => p.ec2?.calls);
+  $("ec2").innerHTML += `<table><tr><th>phase</th><th>settings</th><th>calls</th><th>errors</th><th>trials</th><th>latency p50 s</th>`
+    + `<th>p99 s</th><th>generation share</th></tr>` + rows.map(([n, p]) => `<tr><td>${esc(n)}</td><td class="muted">${esc(settings(p.meta))}</td>`
+      + `<td>${p.ec2.calls}</td><td class="${p.ec2.errors ? "bad" : ""}">${p.ec2.errors}</td><td>${p.ec2.trials}</td>`
+      + `<td>${fmt(p.ec2.latency_s_p50)}</td><td>${fmt(p.ec2.latency_s_p99)}</td><td>${fmt(p.ec2.gen_share)}</td></tr>`).join("") + `</table>`
+    + `<p class="note">Generation share: model time ÷ (model + environment time) between consecutive turns of the same trial. `
+    + `The step-time projection uses the median over the alone phases.</p>`;
+}
+
+function render(rep) {
+  $("empty").hidden = true; $("main").hidden = false;
+  header(rep); gantt(rep); table(rep); bars(rep); ec2(rep);
+  const names = Object.keys(rep.phases), first = names.find(n => rep.phases[n].meta.co) || names[0];
+  $("phasePick").innerHTML = names.map(n => `<option ${n === first ? "selected" : ""}>${esc(n)}</option>`).join("");
+  $("phasePick").onchange = e => timeline(rep, e.target.value);
+  if (first) timeline(rep, first);
+}
+if (EMBEDDED) render(EMBEDDED);
+</script>
+</body>
+</html>

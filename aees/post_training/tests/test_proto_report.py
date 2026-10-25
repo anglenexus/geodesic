@@ -105,7 +105,8 @@ def test_slowdowns_projection_and_verdict(run):
     for name, r in rp.ROLLOUT_MIN.items():
         alt, co_min = r + t_min + rp.SWITCH_MIN, max(r + g * 0.5 * t_min * 1.3, t_min * 1.3 + 1)
         assert v["projection"][name] == {"alternating_min": round(alt, 1), "overlapped_min": round(co_min, 1),
-                                         "saving": round(1 - co_min / alt, 3)}
+                                         "saving": round(1 - co_min / alt, 3), "rollout_min": r,
+                                         "train_min_overlapped": round(t_min * 1.3, 1)}
     assert c["saving"] == v["projection"]["EC2 sandboxes, 32 at once"]["saving"] > 0.15
     assert v["pass"] is True
 
@@ -131,6 +132,35 @@ def test_real_trials_set_the_generation_share(run):
     assert e["gen_share"] == 0.3 and rep["gen_share"] == 0.3 and rep["gen_share_source"] == "real trials"
 
 
+def test_timelines_for_the_dashboard(run):
+    rep = rp.build(run)
+    assert list(rep["phases"]) == ["train_alone", "train_alone_offload", "serve_fp8", "co_timeslice", "co_mps"]   # run order
+    assert rep["t0"] == T0 and rep["ec2_calls"] == [] and rep["constants"]["criteria"] == rp.CRITERIA
+    tl = rep["phases"]["co_timeslice"]["timeline"]
+    c0 = T0 + 2000
+    assert tl["calls"][0] == [0.0, 0.2, round(0.2 + 499 * 0.014, 2), 500, 0.05]           # seconds from the phase start
+    assert len(tl["calls"]) == sum(1 for r in jsonl_rows(run / "co_timeslice" / "agents.jsonl"))
+    assert tl["train"][0] == [60 + 26.0, 26.0] and len(tl["train"]) == 12
+    assert tl["gpu"][5] == [5.0, 50.0, round(130000 / 1024, 1)] and tl["dcgm"][0] == [70.0, 0.95, 0.4, 0.9]
+    assert tl["hot"] == [[90.0, 1.5, True], [150.0, 2.5, True]] and tl["errors"] == []
+    assert rep["phases"]["serve_fp8"]["timeline"]["train"] == [] and c0 > T0
+
+
+def jsonl_rows(path):
+    return [json.loads(line) for line in path.read_text().splitlines() if line.endswith("}")]
+
+
+def test_dashboard_embeds_the_report(run):
+    rep = rp.build(run)
+    rep["run"] = "x</script><b>"                                           # cannot end the script tag
+    page = rp.dashboard(rep)
+    head = (HERE / "proto" / "dashboard.html").read_text()
+    assert page.count("const EMBEDDED = ") == 1 and "const EMBEDDED = null;" in head and "const EMBEDDED = null;" not in page
+    data, end = json.JSONDecoder().raw_decode(page.split("const EMBEDDED = ", 1)[1])
+    raw = page.split("const EMBEDDED = ", 1)[1][:end]
+    assert "</script>" not in raw and data == rep                         # JSON reads <\\/ back as </
+
+
 def test_markdown_and_cli(run):
     md = rp.markdown(rp.build(run))
     assert "## co_timeslice: PASS" in md and "## co_mps: FAIL" in md and "OOM" in md and "hot-load" in md
@@ -139,6 +169,7 @@ def test_markdown_and_cli(run):
     out = subprocess.run(["python", "-m", "proto.report", str(run)], cwd=HERE, capture_output=True, text=True)
     assert out.returncode == 0 and (run / "report.md").exists()
     assert json.loads((run / "report.json").read_text())["verdicts"]["co_timeslice"]["pass"] is True
+    assert "const EMBEDDED = {" in (run / "dashboard.html").read_text()
 
 
 def test_parsers_skip_bad_lines(tmp_path):

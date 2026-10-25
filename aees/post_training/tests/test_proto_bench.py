@@ -45,6 +45,9 @@ case "$1" in
         for k in 1 2 3; do
           echo "{\"t\": $((t + k)), \"type\": \"step\", \"step\": $k, \"seconds\": 1.0, \"tokens\": $seq, \"tflops\": 400, \"peak_gb\": 80}" >> "$out"
         done ;;
+      *--hot-load*)
+        mkdir -p "$(dirname "$out")"
+        echo "{\"type\": \"hotload\", \"t\": $(date +%s), \"load_s\": 1.0, \"unload_s\": 0.1, \"ok\": true}" >> "$out" ;;
       *proto.agent_load*)
         mkdir -p "$(dirname "$out")"; t=$(date +%s)
         echo "{\"agent\": 0, \"t_send\": $t, \"t_first\": $t, \"t_end\": $t, \"out\": 1, \"sleep\": 0, \"error\": null}" >> "$out" ;;

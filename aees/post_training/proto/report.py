@@ -4,7 +4,8 @@
 Input: <run>/<phase>/phase.json + agents.jsonl, train.jsonl, gpu.csv, dcgm.txt, hotload.jsonl (bench.sh),
 and optionally <run>/ec2/calls.jsonl (llm_log_proxy.py on EC2: real Harbor trials).
 Output: per-phase serving/training/GPU numbers; for each co-run phase, the slowdowns against the matching
-alone phases, projected step times (alternating vs overlapped) and pass/fail against CRITERIA.
+alone phases, projected step times (alternating vs overlapped) and pass/fail against CRITERIA; and
+dashboard.html, proto/dashboard.html with report.json embedded (charts, opens offline).
 """
 import json
 import statistics
@@ -72,7 +73,7 @@ def load_run(run: Path) -> dict:
         phases[d.name] = {"meta": json.loads(meta.read_text()), "agents": jsonl(d / "agents.jsonl"),
                           "train": jsonl(d / "train.jsonl"), "hot": jsonl(d / "hotload.jsonl"),
                           "gpu": gpu_rows(d / "gpu.csv"), "dcgm": dcgm_rows(d / "dcgm.txt")}
-    return phases
+    return dict(sorted(phases.items(), key=lambda kv: kv[1]["meta"]["t0"]))          # in the order they ran
 
 
 def train_window(train: list[dict]):
@@ -123,12 +124,27 @@ def decode_weight_bytes(s: Shapes, weights: str) -> float:
     return (s.matmul_params() - head) * (1 if weights == "fp8" else 2) + head * 2
 
 
+def timeline(p: dict) -> dict:
+    """Raw series for dashboard.html, in seconds from the phase start: calls [sent, first token, end, output
+    tokens, longest stall s], errors [sent], training steps [end, seconds], GPU [t, util %, used GB],
+    DCGM [t, SM, tensor, DRAM active], adapter hot-loads [t, load s, ok]."""
+    t0 = p["meta"]["t0"]
+    r = lambda t: round(t - t0, 2)
+    return {"calls": [[r(c["t_send"]), r(c["t_first"]), r(c["t_end"]), c["out"], c.get("max_gap")]
+                      for c in p["agents"] if c.get("t_first") and not c.get("error")],
+            "errors": [r(c["t_send"]) for c in p["agents"] if c.get("error")],
+            "train": [[r(x["t"]), x["seconds"]] for x in p["train"] if x.get("type") == "step"],
+            "gpu": [[r(g["t"]), g["util"], round(g["used_gb"], 1)] for g in p["gpu"]],
+            "dcgm": [[r(d["t"]), d["sm_active"], d["tensor_active"], d["dram_active"]] for d in p["dcgm"]],
+            "hot": [[r(h["t"]), h.get("load_s"), h.get("ok")] for h in p["hot"]]}
+
+
 def phase_summary(p: dict, s: Shapes) -> dict:
     m = p["meta"]
     t0, t1 = m["t0"] + WARMUP_S, m["t1"]
     win = train_window(p["train"])
     wb = decode_weight_bytes(s, m.get("serve") or "bf16")
-    out = {"meta": m, "train": train_stats(p["train"]) if p["train"] else None}
+    out = {"meta": m, "train": train_stats(p["train"]) if p["train"] else None, "timeline": timeline(p)}
     if p["agents"]:
         lo, hi = win or (t1, t1)
         out["alone"] = agent_stats([r for r in p["agents"] if r["t_send"] >= t0], lo, hi, False, wb)
@@ -186,7 +202,8 @@ def project(train_min: float, f_train: float, f_decode: float, gen_share: float)
         t_co = train_min * f_train
         alt = r + train_min + SWITCH_MIN
         co = max(r + gen_share * (f_decode - 1) * t_co, t_co + 1)
-        out[name] = {"alternating_min": round(alt, 1), "overlapped_min": round(co, 1), "saving": round(1 - co / alt, 3)}
+        out[name] = {"alternating_min": round(alt, 1), "overlapped_min": round(co, 1), "saving": round(1 - co / alt, 3),
+                     "rollout_min": r, "train_min_overlapped": round(t_co, 1)}
     return out
 
 
@@ -235,8 +252,13 @@ def build(run: Path) -> dict:
     gen_share = statistics.median(real) if real else statistics.median(synth) if synth else 0.4
     pcie = next((r for r in jsonl(run / "pcie" / "train.jsonl") if r.get("type") == "pcie"), None)
     co = [n for n in summ if summ[n]["meta"].get("co")]
+    t0 = min((p["meta"]["t0"] for p in phases.values()), default=0.0)
     return {"run": run.name, "gen_share": gen_share, "gen_share_source": "real trials" if real else "synthetic agents",
-            "pcie": pcie, "phases": summ, "verdicts": {n: verdict(summ, n, gen_share) for n in co}}
+            "pcie": pcie, "phases": summ, "verdicts": {n: verdict(summ, n, gen_share) for n in co},
+            "constants": {"criteria": CRITERIA, "tokens_per_step": TOKENS_PER_STEP, "switch_min": SWITCH_MIN,
+                          "warmup_s": WARMUP_S}, "t0": t0,
+            "ec2_calls": [[round(c["t_send"] - t0, 2), round(c["t_end"] - c["t_send"], 2), c.get("status")]
+                          for c in calls]}          # real trials over the whole run: [sent, latency s, HTTP status]
 
 
 def fmt(v) -> str:
@@ -275,9 +297,17 @@ def markdown(rep: dict) -> str:
     return "\n".join(L) + "\n"
 
 
+def dashboard(rep: dict) -> str:
+    """proto/dashboard.html with the report embedded, so the saved page opens offline."""
+    page = Path(__file__).with_name("dashboard.html").read_text()
+    return page.replace("const EMBEDDED = null;", "const EMBEDDED = " + json.dumps(rep).replace("</", "<\\/") + ";", 1)
+
+
 if __name__ == "__main__":
     run = Path(sys.argv[1])
     rep = build(run)
     (run / "report.json").write_text(json.dumps(rep, indent=1))
     (run / "report.md").write_text(markdown(rep))
+    (run / "dashboard.html").write_text(dashboard(rep))
     print(markdown(rep))
+    print(f"dashboard: {run / 'dashboard.html'}")
