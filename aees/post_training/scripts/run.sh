@@ -37,11 +37,14 @@ cp /root/post_training/configs/{pins,common,$MODE}.sh "$SAVE_DIR/"     # the run
 
 ray start --head --node-ip-address 127.0.0.1 --num-gpus 1 --disable-usage-stats
 HARBOR_EXAMPLE=/root/miles/examples/swe-agent-harbor-docker     # swe_agent_function.py, generate.py (GRPO)
-# AGENT_TRIAL_TIMEOUT 12 h: counts queue time behind the 16 running trials; Harbor's own timeouts fire first
+# AGENT_TRIAL_TIMEOUT 12 h: counts queue time behind the 16 running trials; Harbor's own timeouts fire first.
+# PYTORCH_CUDA_ALLOC_CONF as Miles' Harbor LoRA recipe: variable-length agent batches fragment the pool (step 2 OOMed
+# on the 24 GB logits with 44 GB reserved but free); expandable_segments breaks torch_memory_saver under colocate.
 ENV='{"env_vars": {"PYTHONPATH": "/root/miles:/root/Megatron-LM:/root/post_training:'"$HARBOR_EXAMPLE"'",
       "CUDA_DEVICE_MAX_CONNECTIONS": "1", "PYTHONUNBUFFERED": "1", "NCCL_NVLS_ENABLE": "0",
       "AGENT_SERVER_URL": "'"${AGENT_SERVER_URL:-http://127.0.0.1:11000}"'",
-      "AGENT_TRIAL_TIMEOUT": "43200"}}'
+      "AGENT_TRIAL_TIMEOUT": "43200",
+      "PYTORCH_CUDA_ALLOC_CONF": "garbage_collection_threshold:0.8,max_split_size_mb:512"}}'
 ray job submit --address http://127.0.0.1:8265 --runtime-env-json "$ENV" -- \
   python3 "/root/miles/$SCRIPT" "${MODEL_ARGS[@]}" "${CKPT_ARGS[@]}" "${LORA_ARGS[@]}" "${PERF_ARGS[@]}" \
   "${CLUSTER_ARGS[@]}" "${MODE_ARGS[@]}" 2>&1 | tee -a "$SAVE_DIR/train.log"

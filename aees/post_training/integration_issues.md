@@ -147,3 +147,34 @@ Found on the laptop by the L tests and by review, before any machine was rented 
 - Left: the 1800 s agent limits (mailman, crack-7z-hash, dna-insert, large-scale-text-editing) still set the floor.
   A shorter agent cap for training would change what is learned (opt-in).
 - Status: fixed for the verifier.
+
+### 2026-10-27 training step 2: CUDA out of memory in the old-log-prob pass
+- Seen (06:41 UTC): `torch.OutOfMemoryError: Tried to allocate 22.73 GiB ... 10.21 GiB is free ... 79.43 GiB is
+  allocated by PyTorch, and 44.03 GiB is reserved by PyTorch but unallocated`, in `_compute_log_prob` →
+  `forward_only` (the bf16 logits of one ~48k-token micro-batch). Step 1 had passed with the same settings.
+- Cause: allocator fragmentation from variable-length agent micro-batches. Miles' own Harbor LoRA recipe
+  (examples/swe-agent-harbor-docker/run_glm52_lora_tb2_daytona.py) documents the same failure and sets
+  `PYTORCH_CUDA_ALLOC_CONF=garbage_collection_threshold:0.8,max_split_size_mb:512` (expandable_segments breaks
+  torch_memory_saver under colocate).
+- Fix: that setting in scripts/run.sh's Ray runtime env. Resumed at 06:43:51 with
+  `RESUME_FROM=/root/ckpt/grpo10h_1026_1924/iter_0000000/adapter` (first GPU use of RESUME_FROM). The teardown job
+  was paused at 06:42 (it would have deleted the H200 after the crash) and re-armed after the restart.
+- Time lost: step 2's 43-min rollout + ~7 min restart. Status: fix applied, being verified.
+
+### 2026-10-27 resume after the OOM: two failed restarts before a clean one
+- Attempt 2 (06:43): `RESUME_FROM` was ignored. Only scripts/run.sh had been copied to the H200, not the updated
+  configs/common.sh and configs/grpo.sh, so it trained from scratch (`lora_adapter_path None`,
+  `max|lora_B| = 0`). Caught 15 min in, before it could overwrite step 1's checkpoint. Fix: rsync the whole tree
+  and compare checksums before any (re)start.
+- Attempt 3 (07:00): with the configs, Miles restored the adapter and Adam ("Restored optimizer state from LoRA
+  checkpoint"). Then `RolloutExecutor.load` asserted: it looks for rollout-side state under `--load` (the base
+  torch_dist folder), but saves it under `--save`. So for native LoRA, RESUME_FROM with a step count can't
+  restore the rollout side as configured.
+- Attempt 4 (07:08, run `grpo10h_r2`): `INIT_ADAPTER` (step 1's adapter weights, fresh Adam). Miles starts at
+  rollout 0 and loads no rollout state (placement_group.py loads it only when start_rollout_id > 0). Verified:
+  `Loaded 512 adapter tensors`, served weights `max|lora_B| = 1.001e-05` (step 1's), rollout running.
+- Cost: step 2's rollout run ~1.5 times, ~70 min in all. One Adam step of moment history lost (negligible).
+- Dashboard: aborted attempts appeared as extra rollouts. The tracker now takes `PRIOR_RUN`: the earlier run's
+  trained steps first, this run's steps after them, aborted trials left out.
+- RESUME_FROM status: adapter + optimizer restore works; the rollout-side restore needs the state under --load.
+  Until fixed, continue runs with INIT_ADAPTER.

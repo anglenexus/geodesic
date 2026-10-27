@@ -220,3 +220,34 @@ def test_event_log_reads_miles_top_level_rollout_id(tmp_path):
     steps = srv.EventLog(folder).refresh()
     assert sorted(steps) == [0, 1] and steps[0]["rollout/raw_reward"] == 0.2375 and steps[0]["train/loss"] == 0.01
     assert "t_rollout" in steps[0] and "train/loss" not in steps[1]
+
+
+def test_prior_run_steps_come_first_and_aborted_attempts_are_left_out(tmp_path, monkeypatch):
+    """r1 trained step 0, then crashed after step 1's rollout; r2 restarted from r1's adapter."""
+    monkeypatch.setattr(srv, "_run", lambda cmd: None)
+    monkeypatch.setattr(srv, "dispatcher_status", lambda: None)
+
+    def events(folder, rows):
+        folder.mkdir(parents=True)
+        with (folder / "actor.jsonl").open("w") as f:
+            for t, k, m in rows:
+                f.write(json.dumps({"timestamp": iso(t), "type": "metric", "rollout_id": k, "metrics": m},
+                                   separators=(",", ":")) + "\n")
+    events(tmp_path / "ckpt" / "r1" / ".trash_x", [(T0 + 100, 0, {"rollout/raw_reward": 0.24}),
+                                                    (T0 + 200, 0, {"train/loss": 0.02}),
+                                                    (T0 + 400, 1, {"rollout/raw_reward": 0.3})])   # never trained
+    (tmp_path / "ckpt" / "r1" / "iter_0000000" / "adapter").mkdir(parents=True)
+    for i, end in enumerate([T0 + 50, T0 + 90, T0 + 300, T0 + 390, T0 + 450]):          # 2 in step 0, 3 aborted
+        write_trial(tmp_path / "trials" / "r1" / f"a__{i}", "a", "passed", end - 10, end)
+    events(tmp_path / "ckpt" / "r2" / "events", [(T0 + 900, 0, {"rollout/raw_reward": 0.35}),
+                                                  (T0 + 1000, 0, {"train/loss": 0.01})])
+    (tmp_path / "ckpt" / "r2" / "iter_0000000" / "adapter").mkdir(parents=True)
+    for i, end in enumerate([T0 + 800, T0 + 850, T0 + 1100]):                           # 2 in step 0, 1 running
+        write_trial(tmp_path / "trials" / "r2" / f"b__{i}", "a", "failed", end - 10, end)
+    tracker = srv.Tracker("r2", tmp_path, num_rollout=8, prior_run="r1")
+    tracker.refresh()
+    tracker.refresh()                                                    # offsets must not accumulate
+    s = json.loads(tracker.body)
+    assert [(r["step"], r.get("rollout/raw_reward")) for r in s["steps"]] == [(0, 0.24), (1, 0.35)]
+    assert sorted(t["step"] for t in s["trials"]) == [0, 0, 1, 1, 2]
+    assert [c["step"] for c in s["checkpoints"]] == [0, 1]

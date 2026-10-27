@@ -197,15 +197,33 @@ def _run(cmd: list[str]) -> str | None:
         return None
 
 
+class PriorRun:
+    """The trained steps of an earlier run that this one continues (restarted from its adapter after a crash):
+    its events (including the .trash_* folders Miles moves aside on restart) and their trials. Steps that never
+    finished training, and the trials of aborted attempts, are left out."""
+
+    def __init__(self, run: str, data: Path):
+        self.save_dir = data / "ckpt" / run
+        self.events = EventLog(self.save_dir)
+        self.trials = Trials(data / "trials" / run, "*/result.json")
+
+    def refresh(self) -> tuple[dict[int, dict], list[dict]]:
+        steps, trials = self.events.refresh(), self.trials.refresh()
+        assign_steps(trials, steps)
+        trained = {k: v for k, v in steps.items() if any(m.startswith("train/") for m in v)}
+        return trained, [t for t in trials if t["step"] in trained]
+
+
 class Tracker:
     """Everything the page shows, rebuilt each refresh. `body` is the /status.json reply:
     {"run", "generated", "num_rollout", "steps": [{"step", "t_rollout", "t_end", <metric>: ...}],
      "trials": [block 3 row + "step"], "evals": [block 3 row + "checkpoint", "set"],
      "checkpoints": [{"step", "time"}], "host": [block 5 sample], "sets": {"train"|"val"|"test": [task]},
      "baseline": baseline.json or null, "disk_alert_gb", "preflight": [row], "dispatch": [row],
-     "sandboxes": dispatcher /health or null}. Aggregates (rates, ETA, stall) are the page's job."""
+     "sandboxes": dispatcher /health or null}. Aggregates (rates, ETA, stall) are the page's job.
+    With `prior_run`, that run's trained steps come first and this run's steps are numbered after them."""
 
-    def __init__(self, run: str, data: Path, num_rollout: int):
+    def __init__(self, run: str, data: Path, num_rollout: int, prior_run: str | None = None):
         self.run, self.num_rollout, self.save_dir = run, num_rollout, data / "ckpt" / run
         self.events = EventLog(self.save_dir / "events")
         self.train = Trials(data / "trials" / run, "*/result.json")
@@ -213,6 +231,7 @@ class Tracker:
         self.host = Host(data / "monitor" / run / "host.jsonl", data)
         self.preflight = data / "monitor" / run / "preflight.jsonl"
         self.dispatch = data / "trials" / run / "dispatch.jsonl"
+        self.prior = PriorRun(prior_run, data) if prior_run else None
         self.sets = {name: read_list(STATE / file) for name, file in LISTS.items()}
         baseline = HERE / "baseline.json"                  # Phase 0 numbers, optional
         self.baseline = json.loads(baseline.read_text()) if baseline.exists() else None
@@ -222,10 +241,20 @@ class Tracker:
         steps, train, evals = self.events.refresh(), self.train.refresh(), self.evals.refresh()
         assign_steps(train, steps)
         label_evals(evals)
+        ckpts = checkpoints(self.save_dir)
+        if self.prior:
+            prior_steps, prior_trials = self.prior.refresh()
+            off = len(prior_steps)
+            steps = {**prior_steps, **{k + off: v for k, v in steps.items()}}
+            for t in train:
+                t["step"] += off
+            train = prior_trials + train
+            ckpts = [c for c in checkpoints(self.prior.save_dir) if c["step"] < off] + \
+                    [{**c, "step": c["step"] + off} for c in ckpts]
         body = json.dumps({
             "run": self.run, "generated": time.time(), "num_rollout": self.num_rollout,
             "steps": [{"step": k, **v} for k, v in sorted(steps.items())], "trials": train, "evals": evals,
-            "checkpoints": checkpoints(self.save_dir), "host": self.host.sample(), "sets": self.sets,
+            "checkpoints": ckpts, "host": self.host.sample(), "sets": self.sets,
             "baseline": self.baseline, "disk_alert_gb": DISK_ALERT_GB, "preflight": jsonl_rows(self.preflight),
             "dispatch": jsonl_rows(self.dispatch), "sandboxes": dispatcher_status()}).encode()
         with self.lock:
@@ -265,10 +294,12 @@ def main():
     ap.add_argument("--data", type=Path, default=Path(os.environ.get("DATA", "/data")))
     ap.add_argument("--num-rollout", type=int, default=int(os.environ.get("NUM_ROLLOUT", 50)))   # as configs/grpo.sh
     ap.add_argument("--port", type=int, default=PORT)
+    ap.add_argument("--prior-run", default=os.environ.get("PRIOR_RUN"),
+                    help="earlier run this one continues: its trained steps are shown first (env PRIOR_RUN)")
     args = ap.parse_args()
     if not args.run:
         ap.error("set --run or RUN, e.g. RUN=grpo_pilot1")
-    tracker = Tracker(args.run, args.data, args.num_rollout)
+    tracker = Tracker(args.run, args.data, args.num_rollout, args.prior_run)
     tracker.refresh()                                  # first reply ready before serving
 
     def loop():
