@@ -125,21 +125,29 @@ word-split. Ask the user for anything marked **(user)**.
   - **(user)** Checks AWS Budgets headroom: the account is auto-stopped at its spend limit.
 - `uv run --python 3.12 pytest tests -q` must pass before kick-off.
 
-### 1. Kick-off: about 11 min to "ready for tests"
+### 0b. Create the H200 (Nebius CLI on the laptop)
+
+```
+bash scripts/nebius_up.sh        # us-central1 H200, driver-580 image, 1.5 TB; prints the IP and writes state/nebius.env
+```
+
+It needs the one-time `nebius profile create aees ...` shown in the script header (service account, key file,
+tenant, project).
+
+### 1. Kick-off: about 11 min to "ready to train"
 
 ```
 mkdir -p state/old && mv state/run.env state/boxes.env state/old/ 2>/dev/null   # else the old run name and dead boxes are reused
 bash scripts/kickoff.sh <h200-ip> <user> > state/kickoff.log 2>&1
 ```
 
-- It creates `state/run.env` (`RUN_T3`, `RUN`, `H200`, `H200_USER`), launches 3 boxes (`state/boxes.env`), copies
+- It moves a previous run's `state/run.env` and `state/boxes.env` aside, creates `state/run.env` (`RUN_T3`, `RUN`, `H200`, `H200_USER`), launches 3 boxes (`state/boxes.env`), copies
   the code, and runs `h200_setup.sh` in tmux `setup`.
-- It then lets the H200 into the boxes, starts the agent servers in T3 mode, and starts `links` and `tracker`.
+- It then lets the H200 into the boxes, writes `~/aees_box_ids` there, starts the agent servers, and starts
+  `links` and `tracker`.
 - Wait for `SETUP_DONE` in `~/setup.log` on the H200.
-- If tmux sessions were started before setup added the user to the docker group, run `tmux kill-server` and
-  restart them.
 
-### 2. Integration tests: about 20 min
+### 2. Integration tests: not re-run (passed 2026-10-27; kept for reference)
 
 Run on the H200 in `~/geodesic/aees/post_training`, with values from `state/run.env`:
 
@@ -197,8 +205,15 @@ bash -c 'bash scripts/ec2_sandboxes.sh serve <RUN>'
 
 This applies `HARBOR_VERIFIER_TIMEOUT_SEC=600` and 32 slots per server.
 
-Then on the H200, in `~/geodesic/aees/post_training`. **First rsync the whole tree from the laptop and compare
-checksums;** a partial copy cost a restart.
+Then on the H200, in `~/geodesic/aees/post_training`. One command does all of it:
+
+```
+RUN=<RUN> STEPS=4 INIT_ADAPTER=/root/ckpt/grpo10h_r2/iter_0000004/adapter \
+  NEBIUS_INSTANCE_ID=<computeinstance-...> DEADLINE_H=8 bash scripts/launch.sh
+```
+
+What `launch.sh` runs, for reference. If the code changed after kick-off, rsync the whole tree from the laptop and
+compare checksums first; a partial copy cost a restart.
 
 ```
 R=<RUN>; B=s3://aees-grpo-backups-611728564241; mkdir -p /data/monitor/$R

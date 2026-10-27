@@ -178,3 +178,53 @@ Found on the laptop by the L tests and by review, before any machine was rented 
   trained steps first, this run's steps after them, aborted trials left out.
 - RESUME_FROM status: adapter + optimizer restore works; the rollout-side restore needs the state under --load.
   Until fixed, continue runs with INIT_ADAPTER.
+
+## Continuation run (2026-10-27, H200 in us-central1)
+
+Setup took 11.2 min, and T0 passed 11/11. Integration tests aren't re-run from here on (user decision): the fixes
+below are in the scripts, and a new failure becomes a new entry.
+
+### 2026-10-27 H200 creation: no CLI path, wrong project, cloud-init rejected
+- Seen: the laptop had no `nebius` CLI. The profile's default project (us-north1) has no H200 platform.
+  `--cloud-init-user-data: YAML is invalid: line 9`.
+- Cause: H200s exist only in the us-central1 project. `~/.ssh/id_rsa.pub` holds two keys, and the second line
+  broke the YAML list.
+- Fix: `scripts/nebius_up.sh`: the us-central1 project and subnet, image family `ubuntu24.04-cuda13.0` (driver 580),
+  the first key only. It writes `state/nebius.env`. Status: fixed.
+
+### 2026-10-27 kickoff: tmux sessions without the docker group (again)
+- Cause: kickoff's `tmux new -s setup` started the tmux server before setup step 2 added the user to the docker
+  group, so every later session (links, tracker, tests, train) inherited the old groups.
+- Fix: `h200_setup.sh` has `PHASE=pre` (folders, firewall, steps 1-4, ~35 s). kickoff runs it over plain ssh
+  before any tmux, then `PHASE=main` in tmux. Status: fixed.
+
+### 2026-10-27 kickoff reused the previous run's state
+- Cause: `state/run.env` (old run names) and `state/boxes.env` (terminated boxes) were still there.
+- Fix: kickoff moves them to `state/old_<stamp>/` when the H200 IP differs or none of the boxes is running
+  (test added). Status: fixed.
+
+### 2026-10-27 probe: rows sent to `ubuntu@<h200>`
+- Fix: `ec2_sandboxes.sh probe` takes `H200_USER` from `state/run.env`. Status: fixed.
+
+### 2026-10-27 teardown prerequisites missing on a fresh H200
+- Seen: the Nebius image ships `nebius` but not `aws`. `~/aees_box_ids` was written by hand.
+- Fix: `h200_setup.sh` installs the AWS CLI (snap), and kickoff writes `~/aees_box_ids`. `aws configure` and
+  `nebius profile create` stay manual (user credentials); `launch.sh` warns when either is missing.
+  Status: fixed.
+
+### 2026-10-27 T3: two checks failed on its 15-min cap
+- Seen: "2 steps trained and saved: 15 min; iter_0000000", "trials synced: 11".
+- Cause: a cold SGLang JIT cache on the new disk (4 min start vs ~1.5 min). Step 2's rollout had finished, served
+  by the updated weights; the sync caught up to 16/16 a minute later. Not a fault.
+- Status: no change (T3 isn't re-run).
+
+### 2026-10-27 noise, not errors
+- `ConnectionRefusedError ... :20001` tracebacks and `post-warmup freeze_gc failed`: SGLang's own warm-up poll
+  before uvicorn listens. Harmless.
+- `tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'`: macOS metadata. kickoff now uses
+  `COPYFILE_DISABLE=1 tar --no-xattrs`.
+
+### 2026-10-27 manual training launch
+- The training launch was a hand-typed chain of six tmux sessions; one partial copy had already cost a restart.
+- Fix: `scripts/launch.sh` (H200) starts links, tracker, train, deadline, hourly and finish. It refuses to start
+  over a running train and checks that the adapter exists. kickoff now serves the agent servers in normal mode.

@@ -23,12 +23,14 @@ The reverse tunnel makes that same address work on the box, so Miles needs no ch
 
 | Where | Script | Does |
 |---|---|---|
+| laptop | `scripts/nebius_up.sh` | create the H200 (us-central1, driver-580 image); prints the IP |
 | laptop | `scripts/kickoff.sh <h200-ip>` | probe → EC2 boxes (background) → code to H200 → `h200_setup.sh` → allow + T3 agent servers → links + tracker |
 | laptop | `scripts/ec2_sandboxes.sh up / allow / serve / probe / status / down` | the boxes (spot m7a.8xlarge, self-terminate after 15 h) |
 | laptop | `scripts/rehearse.sh` | EC2-only rehearsal with a stand-in H200 and `scripts/stub_model.py` (integration_tests.md, R) |
 | box | `scripts/ec2_box.sh prepare / serve <run> [t3]` | `setup.sh` steps 2 3 5 8 (training tasks only), restricted H200 keys, agent server (32 at once) |
 | H200 | `scripts/h200_setup.sh` | `setup.sh` 1–4, then 6 ∥ 7, then 9; times → `$DATA/monitor/setup_times.txt` |
 | H200 | `scripts/links.sh start / stop / status` | tunnels, trial sync, dispatcher in tmux "links" |
+| H200 | `scripts/launch.sh` | start a run: links, tracker, train, deadline, hourly backup, finish (teardown) |
 | H200 | `scripts/preflight.sh t0 / t2 / t3` | integration tests → `$DATA/monitor/$RUN/preflight.jsonl` (tracker card) |
 
 Keys: the laptop makes `state/tunnel_key` and `state/sync_key` and copies them to the H200 (`~/.ssh/aees_tunnel`,

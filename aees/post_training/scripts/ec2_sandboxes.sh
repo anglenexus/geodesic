@@ -102,6 +102,7 @@ probe)                # each box: 16 reverse-tunnel listeners, and the H200's T0
       "$(date +%s)" "$i" "$ip" "$([ $ok = 1 ] && echo true || echo false)" "$n" "${got:-none}")$'\n'
   done
   if [ -n "${2:-}" ]; then
+    [ -n "${H200_USER:-}" ] || H200_USER=$(sed -n 's/^H200_USER=//p' "$STATE/run.env" 2>/dev/null || true)   # kickoff.sh's
     printf '%s' "$rows" | ssh ${H200_KEY:+-i "$H200_KEY"} "${H200_USER:-ubuntu}@$2" \
       "cat >> ${DATA:-/data}/monitor/\$(cat ~/aees_run)/preflight.jsonl"
   fi ;;

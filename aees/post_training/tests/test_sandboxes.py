@@ -278,6 +278,19 @@ def test_kickoff_stops_on_an_old_driver(tmp_path):
     assert not calls(tmp_path, "aws")                                  # no EC2 launched for a box we can't use
 
 
+def test_kickoff_moves_a_previous_runs_state_aside(tmp_path):
+    state = tmp_path / "state"; state.mkdir()
+    (state / "run.env").write_text("RUN_T3=t3_old\nRUN=grpo_old\nH200=1.1.1.1\nH200_USER=u\n")
+    (state / "boxes.env").write_text('REGION=us-east-2\nBOX_IDS="i-1 i-2"\nBOX_IPS="2.2.2.2 3.3.3.3"\n')
+    env = stubs(tmp_path, {"ssh": 'for a in "$@"; do last="$a"; done; case "$last" in *driver_version*) echo 550.163.01 ;; *) echo 16 ;; esac',
+                           "aws": 'echo 0'})                         # the old boxes are gone
+    r = sh("scripts/kickoff.sh", "9.9.9.9", env={**env, "STATE": str(state)})
+    assert "moved to state/old_" in r.stdout
+    old = next(state.glob("old_*"))
+    assert (old / "run.env").exists() and (old / "boxes.env").exists()
+    assert "H200=9.9.9.9" in (state / "run.env").read_text()        # fresh run names for the new H200
+
+
 def test_stub_model_runs_ls_then_completes():
     import importlib.util
     import threading
