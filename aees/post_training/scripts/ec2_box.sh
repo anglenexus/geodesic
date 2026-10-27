@@ -30,7 +30,10 @@ prepare)
   echo "prepared: $(nproc) vCPU, $(free -g | awk '/Mem/{print $2}') GB RAM, disk free $(df -h ~ | tail -1 | awk '{print $4}')" ;;
 serve)
   RUN=${2:?usage: ec2_box.sh serve <run> [t3]}
-  t3=""; [ "${3:-}" = t3 ] && t3="HARBOR_AGENT_MAX_ITERATIONS=2 HARBOR_VERIFIER_TIMEOUT_SEC=60"   # integration test T3
+  # Verifier cap: no passing trial in the ledger (6,394 trials on these tasks) needed over 4.5 min; mailman's
+  # verifier hangs to its 30-min limit on failures, which held a whole step (integration_issues.md).
+  t3="HARBOR_VERIFIER_TIMEOUT_SEC=${VERIFIER_TIMEOUT_SEC:-600}"
+  [ "${3:-}" = t3 ] && t3="HARBOR_AGENT_MAX_ITERATIONS=2 HARBOR_VERIFIER_TIMEOUT_SEC=60"   # integration test T3
   tmux kill-session -t agent 2>/dev/null || true
   sudo fuser -k -TERM 11000/tcp >/dev/null 2>&1 || true     # the server outlives its tmux session (sg docker child)
   for _ in $(seq 30); do curl -sf 127.0.0.1:11000/health >/dev/null 2>&1 || break; sleep 1; done

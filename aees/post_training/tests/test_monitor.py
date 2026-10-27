@@ -205,3 +205,18 @@ def test_no_dispatcher_no_preflight(tmp_path, monkeypatch):
     tracker.refresh()
     s = json.loads(tracker.body)
     assert s["preflight"] == [] and s["dispatch"] == [] and s["sandboxes"] is None
+
+
+def test_event_log_reads_miles_top_level_rollout_id(tmp_path):
+    """Current Miles writes the step as a top-level "rollout_id" (seen on the H200, 2026-10-27), not "rollout/step"."""
+    folder = tmp_path / "events"
+    folder.mkdir()
+    with (folder / "actor.jsonl").open("w") as f:
+        for k, metrics in [(0, {"rollout/raw_reward": 0.2375, "rollout/response_lengths": 15939.7}),
+                           (0, {"train/loss": 0.01, "train/grad_norm": 0.3}), (1, {"rollout/raw_reward": 0.3})]:
+            f.write(json.dumps({"timestamp": iso(T0 + 60 * len(metrics)), "source": {}, "type": "metric",
+                                "rollout_id": k, "attempt": 0, "metrics": metrics}, separators=(",", ":")) + "\n")
+        f.write(json.dumps({"timestamp": iso(T0), "type": "metric", "rollout_id": None, "metrics": {"x": 1}}) + "\n")
+    steps = srv.EventLog(folder).refresh()
+    assert sorted(steps) == [0, 1] and steps[0]["rollout/raw_reward"] == 0.2375 and steps[0]["train/loss"] == 0.01
+    assert "t_rollout" in steps[0] and "train/loss" not in steps[1]

@@ -44,7 +44,7 @@ DISPATCH_PORT = 11000                                  # grpo/dispatch.py, when 
 
 class EventLog:
     """Miles' event files -> {step: {"t_rollout", "t_end", metric: value, ...}}, read incrementally.
-    A metric line names its step in "rollout/step" (rollout and training logs both carry it); other
+    A metric line names its step in "rollout/step" or, in current Miles, a top-level "rollout_id"; other
     event types (audit records, often most of the file) are skipped without parsing."""
 
     def __init__(self, folder: Path):
@@ -64,7 +64,7 @@ class EventLog:
 
     def _add(self, event: dict):
         m, t = event["metrics"], _unix(event["timestamp"])
-        if (step := m.get("rollout/step")) is None:
+        if (step := m.get("rollout/step", event.get("rollout_id"))) is None:   # Miles: top-level rollout_id
             return
         row = self.steps.setdefault(int(step), {})
         row.update({k: v for k, v in m.items() if isinstance(v, (int, float))})

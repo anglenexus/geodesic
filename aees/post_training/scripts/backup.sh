@@ -20,7 +20,7 @@ RUN=$(basename "$RUN_DIR")
 # What goes up: adapter folders of every saved iteration (Miles: iter_*/adapter/), HF-format adapters
 # from --save-hf exports (*/adapter/ next to merged weights, whose *.safetensors shards stay behind),
 # top-level launch config/logs, and trial archives.
-include=("iter_*/adapter/*" "*/adapter/adapter_*" "*.sh" "*.json" "*.yaml" "*.log" "trials/*.tar.gz")
+include=("iter_*/adapter/*" "*/adapter/adapter_*" "*.sh" "*.json" "*.yaml" "*.log" "trials/*.tar.gz" "monitor/*")
 exclude=()
 [ "${WITH_OPTIMIZER:-0}" = 1 ] || exclude+=("*/training_state_rank*.pt")
 

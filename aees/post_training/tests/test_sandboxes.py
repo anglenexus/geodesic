@@ -152,6 +152,7 @@ def test_box_serve_t3_sets_the_short_trial_env(box, tmp_path):
     subprocess.run(["bash", str(root / "scripts/ec2_box.sh"), "serve", "real_run"], env=env, capture_output=True)
     new = [c for c in calls(tmp_path, "tmux") if c.startswith("new")][0]
     assert "HARBOR_AGENT_MAX_ITERATIONS" not in new and "RUN=real_run" in new
+    assert "HARBOR_VERIFIER_TIMEOUT_SEC=600" in new
 
 
 # ---- H200: scripts/links.sh ----

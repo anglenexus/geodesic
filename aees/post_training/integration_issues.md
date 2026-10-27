@@ -132,3 +132,18 @@ Found on the laptop by the L tests and by review, before any machine was rented 
 ### 2026-10-27 T2 rerun: adapter copy incomplete
 - Cause: the adapter written by the container is root-owned with mode 600, so `cp` as the user failed silently.
 - Fix: reuse the original T2 folder. Status: fixed.
+
+### 2026-10-27 training step 1: one trial held the rollout ~12 min after all others
+- Seen: 159/160 trials done by minute 48. `mailman` ran to minute ~60: agent stopped at its 1800 s limit (05:02:35),
+  then the verifier wrote output at 05:03:24 and hung until its own 1800 s limit (`[verifier] timeout_sec` in
+  task.toml).
+- Cause: agent and verifier limits add up; the worst case per trial is ~30 + 30 min plus setup.
+- Data (ledger, 6,394 trials on the 20 training tasks): verifier p99 3.5 min; **no passing trial needed over
+  4.5 min**; mailman's verifier p99 = 30.0 min (hangs on failures), crack-7z-hash max 15, large-scale-text-editing
+  max 10.7.
+- Fix: training trials get `HARBOR_VERIFIER_TIMEOUT_SEC=600` (ec2_box.sh serve; `VERIFIER_TIMEOUT_SEC` overrides).
+  It can't turn a recorded pass into a fail. Applied during step 1's training phase (no trials in flight); verified
+  in each server's environment. Worst case per trial is now ~41 min.
+- Left: the 1800 s agent limits (mailman, crack-7z-hash, dna-insert, large-scale-text-editing) still set the floor.
+  A shorter agent cap for training would change what is learned (opt-in).
+- Status: fixed for the verifier.
