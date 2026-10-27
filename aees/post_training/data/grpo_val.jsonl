@@ -1,0 +1,8 @@
+{"prompt": "kv-store-grpc", "metadata": {"instance_id": "kv-store-grpc", "agent_name": "terminus-2"}}
+{"prompt": "fix-code-vulnerability", "metadata": {"instance_id": "fix-code-vulnerability", "agent_name": "terminus-2"}}
+{"prompt": "custom-memory-heap-crash", "metadata": {"instance_id": "custom-memory-heap-crash", "agent_name": "terminus-2"}}
+{"prompt": "pytorch-model-cli", "metadata": {"instance_id": "pytorch-model-cli", "agent_name": "terminus-2"}}
+{"prompt": "path-tracing", "metadata": {"instance_id": "path-tracing", "agent_name": "terminus-2"}}
+{"prompt": "schemelike-metacircular-eval", "metadata": {"instance_id": "schemelike-metacircular-eval", "agent_name": "terminus-2"}}
+{"prompt": "distribution-search", "metadata": {"instance_id": "distribution-search", "agent_name": "terminus-2"}}
+{"prompt": "portfolio-optimization", "metadata": {"instance_id": "portfolio-optimization", "agent_name": "terminus-2"}}

@@ -1,5 +1,8 @@
 .venv/
-data/
+# GRPO prompt files (grpo/split_tasks.py) are kept: configs/grpo.sh reads them, kickoff.sh copies them to the H200
+data/*
+!data/grpo_train.jsonl
+!data/grpo_val.jsonl
 __pycache__/
 .pytest_cache/
 proto/state/
