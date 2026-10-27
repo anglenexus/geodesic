@@ -8,8 +8,13 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)                   # aees/post_training
 export DATA=${DATA:-/data} MODELS=${MODELS:-Qwen/Qwen3.6-27B}
 T0=$(date +%s)
 stamp() { echo "$(( $(date +%s) - T0 )) s  $1" | tee -a "$DATA/monitor/setup_times.txt"; }
-sudo mkdir -p "$DATA/monitor" "$DATA/cache" && sudo chown "$USER" "$DATA" "$DATA/monitor" "$DATA/cache"
+sudo mkdir -p "$DATA"/{monitor,cache,proto,ckpt,trials} && sudo chown "$USER" "$DATA" "$DATA"/{monitor,cache,proto,ckpt,trials}
 echo "== setup $(date -u +%FT%TZ)" >> "$DATA/monitor/setup_times.txt"
+# Miles binds its session servers, router and SGLang to the VM's address: drop new inbound TCP on the public
+# interface except ssh (local traffic goes over lo; the EC2 tunnels are outbound ssh).
+IFACE=$(ip route get 1.1.1.1 | grep -oP 'dev \K\S+')
+sudo iptables -C INPUT -i "$IFACE" -p tcp ! --dport 22 -m conntrack --ctstate NEW -j DROP 2>/dev/null \
+  || sudo iptables -I INPUT 1 -i "$IFACE" -p tcp ! --dport 22 -m conntrack --ctstate NEW -j DROP
 
 STEPS="1 2 3 4" bash "$HERE/setup.sh" > "$DATA/monitor/setup_1-4.log" 2>&1 || { tail -20 "$DATA/monitor/setup_1-4.log"; exit 1; }
 stamp "steps 1-4 (checks, packages, Docker, container toolkit)"

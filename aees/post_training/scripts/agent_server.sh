@@ -18,7 +18,8 @@ export AGENT_MAX_OUTPUT_TOKENS=8192                # = MAX_TURN_TOKENS in config
 export HARBOR_TIMEOUT_MULTIPLIER=1.0               # task.toml timeouts as written, as in the ledger (server default 2.0)
 export DOCKER_PRUNE_INTERVAL_SEC=1e9               # off: its `docker image prune -a` deletes the pre-pulled task images
 
-mkdir -p "$DATA/trials/$RUN"
+mkdir -p "$DATA/trials/$RUN" "$DATA/monitor/$RUN"
+export DASHBOARD_LOG_PATH=$DATA/monitor/$RUN/agent_requests.jsonl   # the server's request log (default: under /data)
 cd "$DATA/src/harbor"
 uv run python miles_agent_server.py --host 127.0.0.1 --port 11000 --max-concurrent "${CONCURRENCY:-16}" \
   --dashboard-port 0 --trials-dir "$DATA/trials/$RUN" 2>&1 | tee -a "$DATA/trials/$RUN/agent_server.log"

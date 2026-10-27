@@ -12,8 +12,9 @@ CKPT_ARGS=(
   --hf-checkpoint "/root/models/$MODEL"          # tokenizer, config, weights for SGLang
   --load "/root/models/${MODEL}_torch_dist"      # base weights for Megatron (native LoRA needs torch_dist)
   --megatron-to-hf-mode raw                      # the native LoRA path
-  --no-load-optim --no-load-rng --finetune       # start from the base model at step 0
+  --no-load-rng --finetune                       # base weights only (no base step count or RNG)
 )
+[ -n "${RESUME_FROM:-}" ] || CKPT_ARGS+=(--no-load-optim)   # fresh Adam, unless resuming (configs/grpo.sh)
 LORA_ARGS=(
   --lora-rank 64 --lora-alpha 64 --lora-dropout 0.0                           # D5
   --target-modules q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj    # D6: 318.7M parameters

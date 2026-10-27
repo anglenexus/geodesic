@@ -206,7 +206,8 @@ def test_grpo_config_defaults_and_overrides():
 
 def test_run_sh_passes_the_overrides_and_the_jit_cache():
     run = (HERE / "scripts/run.sh").read_text()
-    for v in ["SAVE_INTERVAL", "ROLLOUT_BATCH", "N_SAMPLES", "GLOBAL_BATCH", "SGLANG_EXTRA", "PROMPT_DATA", "NUM_ROLLOUT"]:
+    for v in ["SAVE_INTERVAL", "ROLLOUT_BATCH", "N_SAMPLES", "GLOBAL_BATCH", "SGLANG_EXTRA", "PROMPT_DATA", "NUM_ROLLOUT",
+              "RESUME_FROM"]:
         assert f"-e {v}" in run
     assert '-v "$DATA/cache:/root/.cache"' in run
 
@@ -300,3 +301,23 @@ def test_stub_model_runs_ls_then_completes():
         assert later["task_complete"] and later["commands"] == []
     finally:
         srv.shutdown()
+
+
+def ckpt_and_grpo(**env) -> tuple[list[str], list[str]]:
+    out = subprocess.run(["bash", "-c", 'source configs/common.sh 2>/dev/null; source configs/grpo.sh; '
+                          'printf "%s\\n" "${CKPT_ARGS[@]}" | paste -sd"|" -; printf "%s\\n" "${GRPO_ARGS[@]}" | paste -sd"|" -'],
+                         env={**os.environ, "SAVE_DIR": "/tmp/s", **env}, cwd=HERE, capture_output=True, text=True)
+    ckpt, grpo = out.stdout.splitlines()[-2:]
+    return ckpt.split("|"), grpo.split("|")
+
+
+def test_resume_from_restores_the_optimizer_and_points_at_the_iteration():
+    ckpt, grpo = ckpt_and_grpo()
+    assert "--no-load-optim" in ckpt and "--finetune" in ckpt and "--lora-adapter-path" not in grpo
+    ckpt, grpo = ckpt_and_grpo(RESUME_FROM="/root/ckpt/r/iter_0000007/adapter")
+    assert "--no-load-optim" not in ckpt and "--finetune" in ckpt
+    assert grpo[grpo.index("--lora-adapter-path") + 1] == "/root/ckpt/r/iter_0000007/adapter"
+    r = subprocess.run(["bash", "-c", "source configs/common.sh 2>/dev/null; source configs/grpo.sh"], cwd=HERE,
+                       env={**os.environ, "SAVE_DIR": str(HERE / ".pytest_cache/s"), "RESUME_FROM": "/x", "INIT_ADAPTER": "/y"},
+                       capture_output=True, text=True)
+    assert r.returncode == 2 and "not both" in r.stdout

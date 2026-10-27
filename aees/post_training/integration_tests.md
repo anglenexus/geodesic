@@ -120,4 +120,8 @@ After T3, restart the agent servers without the two T3 variables (seconds).
 
 | Date | Test | Result | Time | Notes |
 |---|---|---|---|---|
-| | | | | |
+| 2026-10-26 | L | pass | – | 1253 passed, 2 skipped |
+| 2026-10-27 | R | stopped | 6 min | caught the agent server's Docker Hub guard; superseded by running the same path on the real boxes |
+| 2026-10-27 | T0 | pass, 11/11 | 1 min | after fixing tmux's docker group (see issues) |
+| 2026-10-27 | T2 at 96 | fail | 8 min | cap 39 (state slots), cache hit 0.355, TTFT p90 39 s, 42 ms/token, headroom 16 GB |
+| 2026-10-27 | T3 | pass | 14 min (Miles start ~4.5) | 2 steps trained + saved; 16 trials via dispatcher and 3 boxes; synced; tracker 2 steps / 16 trials; rewards 0 (2-turn trials); Miles' own cap 42 |

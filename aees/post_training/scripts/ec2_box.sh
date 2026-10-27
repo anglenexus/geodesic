@@ -14,6 +14,11 @@ prepare)
   mkdir -p "$DATA"/{tasks,src,trials,docker}
   DATA=$DATA STEPS="2 3 5 8" TASK_LISTS=tb21_selected_tasks.txt bash "$HERE/setup.sh"   # the 20 training tasks
   command -v rrsync >/dev/null || { echo "rrsync missing (rsync >= 3.2.4 ships it)"; exit 1; }
+  # The agent server refuses to start without a Docker Hub entry in ~/.docker/config.json. Trials never pull: the
+  # 20 images are pre-pulled, the prebuilt compose file has no pull policy, and `down --rmi local` keeps them. An
+  # anonymous entry passes the check without credentials (a real `docker login` also works).
+  mkdir -p ~/.docker
+  [ -f ~/.docker/config.json ] || echo '{"auths": {"https://index.docker.io/v1/": {}}}' > ~/.docker/config.json
   # The H200's two keys: one may only forward the agent server and session-server ports, one may only read trials.
   listen=$(for p in $FWD_PORTS; do printf 'permitlisten="127.0.0.1:%s",' "$p"; done)
   touch ~/.ssh/authorized_keys
@@ -27,7 +32,9 @@ serve)
   RUN=${2:?usage: ec2_box.sh serve <run> [t3]}
   t3=""; [ "${3:-}" = t3 ] && t3="HARBOR_AGENT_MAX_ITERATIONS=2 HARBOR_VERIFIER_TIMEOUT_SEC=60"   # integration test T3
   tmux kill-session -t agent 2>/dev/null || true
-  while curl -sf 127.0.0.1:11000/health >/dev/null 2>&1; do sleep 1; done     # the old server is gone
+  sudo fuser -k -TERM 11000/tcp >/dev/null 2>&1 || true     # the server outlives its tmux session (sg docker child)
+  for _ in $(seq 30); do curl -sf 127.0.0.1:11000/health >/dev/null 2>&1 || break; sleep 1; done
+  sudo fuser -k -KILL 11000/tcp >/dev/null 2>&1 || true
   tmux new -d -s agent "sg docker -c 'env $t3 DATA=$DATA RUN=$RUN CONCURRENCY=$SLOTS bash $HERE/scripts/agent_server.sh'"
   for _ in $(seq 120); do curl -sf 127.0.0.1:11000/health >/dev/null 2>&1 && { echo "agent server up ($RUN ${3:-normal})"; exit 0; }; sleep 1; done
   echo "agent server did not come up:"; tail -20 "$DATA/trials/$RUN/agent_server.log" 2>/dev/null; exit 1 ;;

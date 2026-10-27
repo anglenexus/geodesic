@@ -37,6 +37,13 @@ if [ -n "$INIT_ADAPTER" ]; then
   cp "$INIT_ADAPTER"/adapter_config.json "$INIT_ADAPTER"/adapter_megatron_rank*.pt "$SAVE_DIR/init_adapter/"
   GRPO_ARGS+=(--lora-adapter-path "$SAVE_DIR/init_adapter")   # same LoRA shape: both use common.sh
 fi
+# Continue a run from a saved iteration: adapter, Adam, scheduler and step count (Miles restore_lora_adapter).
+# NUM_ROLLOUT stays the total, so the run goes on from the saved step. common.sh drops --no-load-optim for it.
+RESUME_FROM=${RESUME_FROM:-}                               # e.g. /root/ckpt/grpo10h_1026_1924/iter_0000007/adapter
+if [ -n "$RESUME_FROM" ]; then
+  [ -z "$INIT_ADAPTER" ] || { echo "set RESUME_FROM or INIT_ADAPTER, not both"; exit 2; }
+  GRPO_ARGS+=(--lora-adapter-path "$RESUME_FROM")
+fi
 SGLANG_MEM=${SGLANG_MEM:-0.85}                   # GPU share for SGLang weights + KV pool; Phase 2 tunes it
 SGLANG_SERVER=(                                  # SGLang's own flags; Miles takes each as --sglang-<flag>, test T2 as is
   --mem-fraction-static "$SGLANG_MEM"             # 0.85 x 141 = 120 GB: 55 weights + adapter, ~65 KV pool
@@ -54,6 +61,8 @@ AGENT_ARGS=(
   --custom-reward-post-process-path grpo.infra_filter.post_process_rewards   # infra out per attempt (§8 item 6)
   --tito-model qwen36                                      # Qwen3.6 token stream with preserve_thinking (D9)
   --use-session-server --session-server-port 30000 --session-server-workers 16   # ports 30000-30015
+  --session-server-ip 0.0.0.0 --session-server-external-host 127.0.0.1   # agents on EC2 reach them through the
+                                                  #   H200's reverse tunnels; eth0 is firewalled (dist_setup.md)
   --sglang-router-port 31000
 )
 GRPO_ARGS+=("${SGLANG_ARGS[@]}" "${AGENT_ARGS[@]}")

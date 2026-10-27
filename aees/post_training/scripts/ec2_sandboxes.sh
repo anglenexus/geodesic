@@ -58,7 +58,7 @@ up)
       --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=aees-grpo-box},{Key=Project,Value=aees}]' \
       --query 'Instances[].InstanceId' --output text
   }
-  IDS=$(launch "${market[@]}") || { echo "spot launch failed; on-demand instead"; IDS=$(launch); }
+  IDS=$(launch "${market[@]}") || { echo "spot launch failed; on-demand instead"; MARKET=on-demand; IDS=$(launch); }
   printf 'REGION=%s\nBOX_IDS="%s"\nSG=%s\n' "$REGION" "$IDS" "$SG" > "$STATE/boxes.env"
   echo "launched $IDS ($N x $TYPE, $MARKET); they terminate themselves after $TTL_MIN min"
   aws ec2 wait instance-running --region "$REGION" --instance-ids $IDS
@@ -87,9 +87,10 @@ allow)
   echo "H200 $H200 may reach: $BOX_IPS (keys in ~/.ssh/aees_{tunnel,sync}, list in ~/aees_boxes)" ;;
 serve)
   RUN=${2:?usage: $0 serve <run> [t3]}; MODE=${3:-normal}
-  for ip in $(boxes); do ssh_box "$ip" "bash geodesic/aees/post_training/scripts/ec2_box.sh serve $RUN $MODE" & done
-  wait
-  echo "agent servers ($MODE) up on: $(boxes)" ;;
+  pids=(); for ip in $(boxes); do ssh_box "$ip" "bash geodesic/aees/post_training/scripts/ec2_box.sh serve $RUN $MODE" & pids+=($!); done
+  fail=0; for p in "${pids[@]}"; do wait "$p" || fail=1; done
+  [ "$fail" = 0 ] && echo "agent servers ($MODE) up on: $(boxes)" || echo "some agent servers did not start (see above)"
+  exit "$fail" ;;
 probe)                # each box: 16 reverse-tunnel listeners, and the H200's T0 stub answering through them
   rows=""; i=0
   for ip in $(boxes); do

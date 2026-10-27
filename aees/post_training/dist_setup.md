@@ -48,6 +48,10 @@ Keys: the laptop makes `state/tunnel_key` and `state/sync_key` and copies them t
 | 3 EC2 boxes: launch + setup_ec2 + agent server + 20 images | EC2 | ~6 min for 1 box, 8 images (2026-10-25) | the 3 boxes run in parallel; start at the same moment as the H200 steps |
 | Tunnels + dispatcher | H200 | – | seconds |
 
+**Measured 2026-10-27** (H200 204.12.188.130, Ubuntu 24.04, driver 580.173.02; 3 × m7a.8xlarge on-demand):
+steps 1–4 33 s · weights 194 s · Miles image + source 411 s (ready for T0) · torch_dist 669 s (**11 min** total);
+EC2 boxes ready (20 images each) in **3.5 min**.
+
 Critical path: weights or image (~4 min), then conversion. **If the IP is the same box as 2026-10-25
 (204.12.163.30), driver 580, weights and image are already there: ~3 min.**
 
@@ -78,8 +82,10 @@ Critical path: weights or image (~4 min), then conversion. **If the IP is the sa
   (`~/.ssh/aees-ec2.pem`). Nothing is copied to the instances. The profile can't read AWS Budgets, so the user
   checks headroom in the console before launch.
 - **AMI:** latest Canonical Ubuntu 24.04 amd64 (owner 099720109477). Root volume 200 GB gp3.
-- **Type:** m7a.8xlarge spot (~$0.61/h, 5–10% interruption band). Avoid m7i/c7i/m6i spot (>20% band).
-  On-demand fallback: m7i.8xlarge $1.61/h.
+- **Type:** m7a.8xlarge. **Spot is denied for `agent_aees`** by an organization service control policy
+  (2026-10-27: `UnauthorizedOperation ... explicit deny in a service control policy`), so `ec2_sandboxes.sh` falls
+  back to on-demand (~$1.85/h per box). If spot is ever allowed: m7a (5–10% interruption band); avoid m7i/c7i/m6i
+  spot (>20%).
 - **Concurrency:** ≤ ~50 trials per box (150 simultaneous starts on one box gave 41% tool-install timeouts).
   We run 32 per box.
 - **Self-terminate:** user-data `shutdown -h +TTL_MIN` and `--instance-initiated-shutdown-behavior terminate`.
@@ -95,6 +101,17 @@ Critical path: weights or image (~4 min), then conversion. **If the IP is the sa
 - **setup.sh on Ubuntu 24.04:** step 3 now restarts Docker itself. On the H200, step 4 used to apply `daemon.json`;
   EC2 skips step 4.
 - zsh on the laptop: write `${EC2_IP}`, not `$IP:...` (zsh reads `:g` as a modifier).
+
+## Miles on one node with remote agents (found in T3)
+
+- Miles places its session servers, router and SGLang on the VM's address (10.96.0.14), even with Ray at
+  127.0.0.1. Agents on the boxes can only use 127.0.0.1 (the tunnels), so `configs/grpo.sh` sets
+  `--session-server-ip 0.0.0.0 --session-server-external-host 127.0.0.1`. Miles' readiness check uses the placed
+  address, so binding 127.0.0.1 alone would fail.
+- Those ports answered from the internet (checked from the laptop: 30000 and 31000 → HTTP 404). `h200_setup.sh`
+  drops new inbound TCP on the public interface except ssh. Local traffic uses `lo`, and the tunnels are outbound ssh.
+- Files written by containers are root-owned (`/data/ckpt/<run>`, adapters with mode 600): use `sudo rm`.
+- Start long-lived tmux sessions only after setup.sh has added the user to the docker group.
 
 ## Teardown
 

@@ -80,6 +80,7 @@ t2() {
   local targets; targets=$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["target_modules"]))' \
     "$dir/adapter/adapter_config.json")
   docker rm -f t2 >/dev/null 2>&1
+  pkill -f "aees-stub" 2>/dev/null; sleep 1                # T0's stub holds port 30000
   local t_start; t_start=$(date +%s)
   miles -d --name t2 "$MILES_IMAGE" bash -c "python3 -m sglang.launch_server --model-path /root/models/Qwen3.6-27B \
     --served-model-name qwen3.6-27b --host 127.0.0.1 --port 30000 $(sglang_server_flags | tr '\n' ' ') \
@@ -87,8 +88,8 @@ t2() {
     --enable-cache-report --enable-metrics > /root/proto_out/t2_$RUN/sglang.log 2>&1" >/dev/null
   local up=0
   for _ in $(seq 120); do
-    curl -sf 127.0.0.1:30000/health_generate >/dev/null 2>&1 && { up=1; break; }
     docker ps -q -f name=t2 | grep -q . || break
+    curl -sf 127.0.0.1:30000/health_generate >/dev/null 2>&1 && { up=1; break; }
     sleep 3
   done
   record T2 "SGLang starts with our flags + adapter" "$up" "$(( $(date +%s) - t_start )) s"
@@ -147,7 +148,7 @@ open(sys.argv[2], "w").write("".join(json.dumps(row(t)) + "\n" for t in ["config
   record T3 "2 steps trained and saved" "$done" "$(( ($(date +%s) - t_start) / 60 )) min; $(ls -d "$save"/iter_* 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
   local rows; rows=$(wc -l < "$DATA/trials/$RUN/dispatch.jsonl" 2>/dev/null || echo 0)
   record T3 "16 trials through the dispatcher" "$([ "$rows" -ge 16 ] && echo 1 || echo 0)" "$rows rows"
-  local infra; infra=$(grep -c '"exit_status": "Error' "$DATA/trials/$RUN/dispatch.jsonl" 2>/dev/null || echo 0)
+  local infra; infra=$(cat "$DATA/trials/$RUN/dispatch.jsonl" 2>/dev/null | grep -c '"exit_status": "Error')
   record T3 "no infra errors" "$([ "$infra" = 0 ] && echo 1 || echo 0)" "$infra"
   local synced; synced=$(ls "$DATA"/trials/"$RUN"/*/result.json 2>/dev/null | wc -l)
   record T3 "trials synced to the H200" "$([ "$synced" -ge 16 ] && echo 1 || echo 0)" "$synced result.json"
