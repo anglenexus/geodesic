@@ -308,15 +308,19 @@ each run index of a scenario (task / model / agent / tool mode / settings) is us
 | Command | What it does |
 |---|---|
 | `uv run python -m aees_harbor.ingest ~/code/jobs/<job> --ledger state/ledger.sqlite` | Load a finished Harbor job into the ledger (indices by start time, raw facts, held for review). Idempotent |
-| `uv run python -m aees_harbor.browse --ledger state/ledger.sqlite --jobs-root ~/code/jobs` | **Trajectory browser** at http://127.0.0.1:8765: ledger by task → runs → step-by-step trajectory (model text, tool calls, observations, tokens, cost, verifier tests). Includes an ingest button |
-| `uv run python -m aees_harbor.status --jobs-root ~/code/jobs --ledger state/ledger.sqlite --schedule state/<plan>.json` | **Run status** at http://127.0.0.1:8766: live batches, per-task grid, throughput, ETA, cost vs. cap, Docker CPU/memory |
+| `uv run python -m aees_harbor.browse --ledger state/ledger.sqlite --jobs-root ~/code/jobs --remotes state/remotes.json` | **Trajectory browser** at http://127.0.0.1:8765: ledger by task → runs → step-by-step trajectory (model text and reasoning, tool calls, observations, tokens, cost, verifier tests). Ingest button, a **model** drop-down, and a **source** drop-down for EC2 mirrors |
+| `uv run python -m aees_harbor.status --jobs-root ~/code/jobs --ledger state/ledger.sqlite --schedule state/<plan>.json [--schedule state/<next plan>.json ...] --remotes state/remotes.json` | **Run tracker** at http://127.0.0.1:8766: active-runs overview (Mac plans + running EC2 runners, combined progress, cost vs. caps, projected finish), batch tables, job cards with per-task outcomes in start order and exception breakdowns, EC2 host stats and compute cost, model drop-down. Repeat `--schedule` to show several plans (oldest first; the last is current) |
+| `uv run python -m aees_harbor.remote sync --loop 300` | **Mirror EC2 runners** listed in `state/remotes.json` (not in git): rsync job folders, ledger snapshot, plan + log, host stats, EC2 state and compute cost (`prior_compute_usd` adds compute billed before a stop/start). A stopped or terminated instance keeps its last synced data |
 | `uv run python -m aees_harbor.schedule --plan state/<plan>.json` | **Scheduler**: runs planned batches back to back, ingests each, stops on STOP file / deadline / budget / API or disk problems. Aggregate-cost kill switch cancels a running batch at the cap |
 | `uv run python -m aees_harbor.merge --into state/ledger.sqlite i1.sqlite i2.sqlite --rewrite OLD=NEW` | **Merge ledgers** from several machines (shared seed + disjoint tasks). All-or-nothing; refuses any conflicting row |
 | `python scripts/make_ec2_plan.py --instance K --instances N` | Make instance K's schedule: its round-robin task share, budget share, `iK_` job names |
 | `python scripts/tb_task_stats.py ...` | Per-task stability statistics from the public TB 2.0 leaderboard (produced `state/tb21_task_ranking.csv`) |
 | `python scripts/task_images.py <tb21 dir> state/tb21_selected_tasks.txt` | List the selected tasks' Docker images (for pre-pulling) |
 
-Example plans: `ec2/schedule_ec2_10k.json` (EC2, 10,000 trajectories). For EC2 setup, see [ec2/EC2.md](ec2/EC2.md).
+Task lists in both web tools: **blue** = the 20 training tasks (`state/tb21_selected_tasks.txt`), **orange** = the post-training test set (`state/tb21_test20_tasks.txt`), **green** = the validation set (`state/tb21_val8_tasks.txt`); see `../post_training/PLAN.md` §2a.
+
+Example plans: `ec2/schedule_ec2_10k.json` (EC2, 10,000 trajectories), `ec2/schedule_ec2_192cpu.json`. For EC2 setup, see [ec2/EC2.md](ec2/EC2.md).
+EC2 lessons (2026-10): keep simultaneous trial starts per instance at ≤ ~50 (an m7i.48xlarge at `-n 150` lost 41% of its first wave to 120 s tool-install timeouts; `-n 48` on an m7i.8xlarge was clean). An AWS Budgets spend limit on the account stops running instances when AWS spend crosses it; check its headroom before long runs.
 Tests: `uv run --with pytest pytest -q tests/unit`.
 
 ## 8. Reference measurements (SWE-bench Verified, Apple Silicon, Docker + Rosetta)
