@@ -8,7 +8,9 @@
 #   tmux finish    when train ends: backup, size check, terminate the boxes, delete this H200 (finish.sh)
 #
 #   RUN=grpoc_1027_2058 STEPS=4 INIT_ADAPTER=/root/ckpt/grpo10h_r2/iter_0000004/adapter \
-#     NEBIUS_INSTANCE_ID=computeinstance-... bash scripts/launch.sh
+#     PRIOR_SNAPSHOT=/data/monitor/grpo10h_r2_status.json NEBIUS_INSTANCE_ID=computeinstance-... bash scripts/launch.sh
+# PRIOR_SNAPSHOT: the earlier run's final dashboard (S3 <run>/monitor/dashboard/<run>_status.json); the tracker
+# shows its trained steps first and numbers this run's steps after them.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)                   # aees/post_training
 export DATA=${DATA:-/data}
@@ -31,8 +33,11 @@ mkdir -p "$DATA/monitor/$RUN"
 sudo docker ps -q | xargs -r sudo docker rm -f >/dev/null   # leftovers of an earlier run
 cd "$HERE"
 RUN=$RUN SLOTS=$SLOTS bash scripts/links.sh start | tail -1 | cut -c1-120; echo
+PRIOR_SNAPSHOT=${PRIOR_SNAPSHOT:-}
+prior=0
+[ -z "$PRIOR_SNAPSHOT" ] || prior=$(python3 -c 'import json,sys; print(sum(any(k.startswith("train/") for k in r) for r in json.load(open(sys.argv[1]))["steps"]))' "$PRIOR_SNAPSHOT")
 tmux kill-session -t tracker 2>/dev/null || true
-tmux new -d -s tracker "RUN=$RUN NUM_ROLLOUT=$STEPS python3 monitor/server.py"
+tmux new -d -s tracker "RUN=$RUN NUM_ROLLOUT=$((prior + STEPS)) PRIOR_SNAPSHOT=$PRIOR_SNAPSHOT python3 monitor/server.py"
 tmux new -d -s train "SAVE_DIR=/root/ckpt/$RUN NUM_ROLLOUT=$STEPS SAVE_INTERVAL=1 INIT_ADAPTER=$INIT_ADAPTER \
   bash scripts/run.sh grpo > $DATA/monitor/$RUN/train_run.log 2>&1"
 tmux new -d -s deadline "sleep $((DEADLINE_H * 3600)); tmux kill-session -t train; sudo docker ps -q | xargs -r sudo docker rm -f; \

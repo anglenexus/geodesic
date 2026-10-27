@@ -68,10 +68,15 @@ bash "$HERE/scripts/ec2_sandboxes.sh" serve "$RUN"
 el "5/5 H200: links + tracker for $RUN"
 "${SSH_H[@]}" "cd geodesic/aees/post_training && RUN=$RUN SLOTS=21 bash scripts/links.sh start && \
   (tmux kill-session -t tracker 2>/dev/null; tmux new -d -s tracker 'RUN=$RUN python3 monitor/server.py')"
-el "ready. setup on the H200: ${SSH_H[*]} tail -3 setup.log   (wait for SETUP_DONE)"
+# The dashboard on this laptop: a background tunnel to the H200's tracker (replaces an older one on the port).
+pkill -f "ssh .*-L 8770:127.0.0.1:8770" 2>/dev/null || true
+lsof -ti tcp:8770 -sTCP:LISTEN 2>/dev/null | xargs -r kill 2>/dev/null || true
+ssh ${H200_KEY:+-i "$H200_KEY"} -fN -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 8770:127.0.0.1:8770 "$HU@$H200" \
+  && { command -v open >/dev/null && open http://127.0.0.1:8770/ || true; }
+el "ready. dashboard: http://127.0.0.1:8770/   setup on the H200: ${SSH_H[*]} tail -3 setup.log   (wait for SETUP_DONE)"
 cat <<NEXT
 Next, on the H200 (${SSH_H[*]}), once: aws configure; nebius profile create (summary.md, step 3). Then in
 geodesic/aees/post_training, after SETUP_DONE:
   RUN=$RUN STEPS=<n> [INIT_ADAPTER=/root/ckpt/<run>/iter_<N>/adapter] NEBIUS_INSTANCE_ID=<id> bash scripts/launch.sh
-Tracker: bash scripts/tunnel.sh $HU@$H200   then http://localhost:8770
+Dashboard: http://127.0.0.1:8770/ (tunnel opened above; reopen with: bash scripts/tunnel.sh $HU@$H200)
 NEXT

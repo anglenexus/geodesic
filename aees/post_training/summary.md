@@ -236,8 +236,10 @@ tmux new -d -s finish "RUN=$R DEST=$B WAIT_FOR=train NEBIUS_INSTANCE_ID=<compute
   `max|lora_B|`.
 - `PYTORCH_CUDA_ALLOC_CONF` is already set in `scripts/run.sh`, which prevents the step 2 OOM.
 - Tracker on the laptop: `bash scripts/tunnel.sh <user>@<ip>`, then http://localhost:8770.
-- `PRIOR_RUN=<earlier run>` makes the tracker show an earlier run's steps first, but only when that run's folder
-  is on the H200's disk.
+- To continue the dashboard of an earlier run on a new machine, copy its final snapshot
+  (S3 `<run>/monitor/dashboard/<run>_status.json`) to the H200 and pass `PRIOR_SNAPSHOT=<path>` to `launch.sh`;
+  its trained steps come first. `PRIOR_RUN=<run>` does the same from a run folder on the same disk.
+- kickoff.sh opens the dashboard on the laptop (background tunnel, http://127.0.0.1:8770/).
 - **If something crashes, don't restart in a hurry.** `finish` would back up and delete the H200 once `train` ends.
   To restart, `tmux kill-session -t finish` first, then re-arm it with the new run name.
 

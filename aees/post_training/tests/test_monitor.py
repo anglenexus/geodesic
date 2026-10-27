@@ -251,3 +251,29 @@ def test_prior_run_steps_come_first_and_aborted_attempts_are_left_out(tmp_path, 
     assert [(r["step"], r.get("rollout/raw_reward")) for r in s["steps"]] == [(0, 0.24), (1, 0.35)]
     assert sorted(t["step"] for t in s["trials"]) == [0, 0, 1, 1, 2]
     assert [c["step"] for c in s["checkpoints"]] == [0, 1]
+
+
+def test_prior_snapshot_steps_come_first(tmp_path, monkeypatch):
+    """A run continued on a new machine: the earlier steps come from the last run's saved status.json."""
+    monkeypatch.setattr(srv, "_run", lambda cmd: None)
+    monkeypatch.setattr(srv, "dispatcher_status", lambda: None)
+    snap = {"steps": [{"step": 0, "rollout/raw_reward": 0.24, "train/loss": 0.02},
+                      {"step": 1, "rollout/raw_reward": 0.3, "train/loss": 0.01},
+                      {"step": 2, "rollout/raw_reward": 0.1}],                 # cut by the deadline: never trained
+            "trials": [{"step": 0, "task": "a"}, {"step": 1, "task": "a"}, {"step": 2, "task": "a"}],
+            "checkpoints": [{"step": 0, "time": T0}, {"step": 1, "time": T0 + 1}]}
+    (tmp_path / "snap.json").write_text(json.dumps(snap))
+    folder = tmp_path / "ckpt" / "r3" / "events"; folder.mkdir(parents=True)
+    with (folder / "actor.jsonl").open("w") as f:
+        for t, m in [(T0 + 900, {"rollout/raw_reward": 0.35}), (T0 + 1000, {"train/loss": 0.0})]:
+            f.write(json.dumps({"timestamp": iso(t), "type": "metric", "rollout_id": 0, "metrics": m},
+                               separators=(",", ":")) + "\n")
+    (tmp_path / "ckpt" / "r3" / "iter_0000000" / "adapter").mkdir(parents=True)
+    write_trial(tmp_path / "trials" / "r3" / "b__0", "a", "passed", T0 + 800, T0 + 850)
+    tracker = srv.Tracker("r3", tmp_path, num_rollout=6, prior_snapshot=tmp_path / "snap.json")
+    tracker.refresh()
+    tracker.refresh()                                                    # offsets must not accumulate
+    s = json.loads(tracker.body)
+    assert [(r["step"], r.get("rollout/raw_reward")) for r in s["steps"]] == [(0, 0.24), (1, 0.3), (2, 0.35)]
+    assert sorted(t["step"] for t in s["trials"]) == [0, 1, 2]
+    assert [c["step"] for c in s["checkpoints"]] == [0, 1, 2]

@@ -213,6 +213,28 @@ class PriorRun:
         trained = {k: v for k, v in steps.items() if any(m.startswith("train/") for m in v)}
         return trained, [t for t in trials if t["step"] in trained]
 
+    def checkpoints(self, steps: int) -> list[dict]:
+        return [c for c in checkpoints(self.save_dir) if c["step"] < steps]
+
+
+class PriorSnapshot:
+    """The trained steps of earlier runs from a saved /status.json (finish.sh keeps the final one under
+    monitor/dashboard/), for a run continued on a new machine where their folders don't exist. The snapshot may
+    itself chain several runs."""
+
+    def __init__(self, path: Path):
+        s = json.loads(Path(path).read_text())
+        self.steps = {r["step"]: {k: v for k, v in r.items() if k != "step"} for r in s["steps"]
+                      if any(m.startswith("train/") for m in r)}
+        self.trials = [t for t in s["trials"] if t["step"] in self.steps]
+        self.ckpts = [c for c in s["checkpoints"] if c["step"] in self.steps]
+
+    def refresh(self) -> tuple[dict[int, dict], list[dict]]:
+        return dict(self.steps), [dict(t) for t in self.trials]
+
+    def checkpoints(self, steps: int) -> list[dict]:
+        return list(self.ckpts)
+
 
 class Tracker:
     """Everything the page shows, rebuilt each refresh. `body` is the /status.json reply:
@@ -221,9 +243,11 @@ class Tracker:
      "checkpoints": [{"step", "time"}], "host": [block 5 sample], "sets": {"train"|"val"|"test": [task]},
      "baseline": baseline.json or null, "disk_alert_gb", "preflight": [row], "dispatch": [row],
      "sandboxes": dispatcher /health or null}. Aggregates (rates, ETA, stall) are the page's job.
-    With `prior_run`, that run's trained steps come first and this run's steps are numbered after them."""
+    With `prior_run` (a run folder on this machine) or `prior_snapshot` (a saved /status.json), the earlier trained
+    steps come first and this run's steps are numbered after them."""
 
-    def __init__(self, run: str, data: Path, num_rollout: int, prior_run: str | None = None):
+    def __init__(self, run: str, data: Path, num_rollout: int, prior_run: str | None = None,
+                 prior_snapshot: Path | None = None):
         self.run, self.num_rollout, self.save_dir = run, num_rollout, data / "ckpt" / run
         self.events = EventLog(self.save_dir / "events")
         self.train = Trials(data / "trials" / run, "*/result.json")
@@ -231,7 +255,7 @@ class Tracker:
         self.host = Host(data / "monitor" / run / "host.jsonl", data)
         self.preflight = data / "monitor" / run / "preflight.jsonl"
         self.dispatch = data / "trials" / run / "dispatch.jsonl"
-        self.prior = PriorRun(prior_run, data) if prior_run else None
+        self.prior = PriorRun(prior_run, data) if prior_run else PriorSnapshot(prior_snapshot) if prior_snapshot else None
         self.sets = {name: read_list(STATE / file) for name, file in LISTS.items()}
         baseline = HERE / "baseline.json"                  # Phase 0 numbers, optional
         self.baseline = json.loads(baseline.read_text()) if baseline.exists() else None
@@ -249,7 +273,7 @@ class Tracker:
             for t in train:
                 t["step"] += off
             train = prior_trials + train
-            ckpts = [c for c in checkpoints(self.prior.save_dir) if c["step"] < off] + \
+            ckpts = self.prior.checkpoints(off) + \
                     [{**c, "step": c["step"] + off} for c in ckpts]
         body = json.dumps({
             "run": self.run, "generated": time.time(), "num_rollout": self.num_rollout,
@@ -296,10 +320,14 @@ def main():
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--prior-run", default=os.environ.get("PRIOR_RUN"),
                     help="earlier run this one continues: its trained steps are shown first (env PRIOR_RUN)")
+    ap.add_argument("--prior-snapshot", type=Path, default=os.environ.get("PRIOR_SNAPSHOT") or None,
+                    help="the same from a saved status.json, when the earlier run was on another machine (env PRIOR_SNAPSHOT)")
     args = ap.parse_args()
     if not args.run:
         ap.error("set --run or RUN, e.g. RUN=grpo_pilot1")
-    tracker = Tracker(args.run, args.data, args.num_rollout, args.prior_run)
+    if args.prior_run and args.prior_snapshot:
+        ap.error("set --prior-run or --prior-snapshot, not both")
+    tracker = Tracker(args.run, args.data, args.num_rollout, args.prior_run, args.prior_snapshot)
     tracker.refresh()                                  # first reply ready before serving
 
     def loop():
