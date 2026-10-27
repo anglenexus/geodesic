@@ -89,7 +89,7 @@ Critical path: weights or image (~4 min), then conversion. **If the IP is the sa
   back to on-demand (~$1.85/h per box). If spot is ever allowed: m7a (5–10% interruption band); avoid m7i/c7i/m6i
   spot (>20%).
 - **Concurrency:** ≤ ~50 trials per box (150 simultaneous starts on one box gave 41% tool-install timeouts).
-  We run 32 per box.
+  We run 32 per box on 2 boxes (was 21 on 3; measured load in `ec2_sizing.md`: CPU 2–6%, RAM 6–8 GB of 123).
 - **Self-terminate:** user-data `shutdown -h +TTL_MIN` and `--instance-initiated-shutdown-behavior terminate`.
 - **Security group `aees-proto`:** SSH from the laptop's IP, plus the H200's IP for the tunnels.
 - **Setup:** rsync `aees/harbor` and the few post_training files (create the remote folders first: rsync makes

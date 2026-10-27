@@ -66,7 +66,7 @@ bash "$HERE/scripts/ec2_sandboxes.sh" allow "$H200" "$HU"
 bash "$HERE/scripts/ec2_sandboxes.sh" serve "$RUN"
 
 el "5/5 H200: links + tracker for $RUN"
-"${SSH_H[@]}" "cd geodesic/aees/post_training && RUN=$RUN SLOTS=21 bash scripts/links.sh start && \
+"${SSH_H[@]}" "cd geodesic/aees/post_training && RUN=$RUN SLOTS=32 bash scripts/links.sh start && \
   (tmux kill-session -t tracker 2>/dev/null; tmux new -d -s tracker 'RUN=$RUN python3 monitor/server.py')"
 # The dashboard on this laptop: a background tunnel to the H200's tracker (replaces an older one on the port).
 pkill -f "ssh .*-L 8770:127.0.0.1:8770" 2>/dev/null || true

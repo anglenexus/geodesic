@@ -51,7 +51,7 @@ replicate it, and how to continue from the last checkpoint. The detailed records
    | Setting | Value |
    |---|---|
    | Samples per step | 20 tasks × 8 = 160 trials |
-   | Concurrency | 64 (21 per box) |
+   | Concurrency | 64 (21 per box on 3 boxes; from now on 32 per box on 2, `ec2_sizing.md`) |
    | Gradient steps per step | 1, global batch 160 |
    | Learning rate | 1e-5 |
    | Checkpoint | every step |
@@ -218,7 +218,7 @@ compare checksums first; a partial copy cost a restart.
 ```
 R=<RUN>; B=s3://aees-grpo-backups-611728564241; mkdir -p /data/monitor/$R
 sudo docker ps -q | xargs -r sudo docker rm -f
-RUN=$R SLOTS=21 bash scripts/links.sh start                       # 21 per box = 63 ~ the tested 64
+RUN=$R SLOTS=32 bash scripts/links.sh start                       # 2 boxes x 32 = the tested 64
 tmux new -d -s tracker "RUN=$R NUM_ROLLOUT=8 python3 monitor/server.py"
 tmux new -d -s train "SAVE_DIR=/root/ckpt/$R NUM_ROLLOUT=20 SAVE_INTERVAL=1 DATA=/data \
   INIT_ADAPTER=/root/ckpt/grpo10h_r2/iter_0000004/adapter \

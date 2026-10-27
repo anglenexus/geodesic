@@ -16,7 +16,7 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)                   # aees/post_training
 export DATA=${DATA:-/data}
 RUN=${RUN:?set RUN}
 STEPS=${STEPS:-20}                                       # rollout + training steps (Miles --num-rollout)
-SLOTS=${SLOTS:-21}                                       # per box: 3 x 21 = 63 ~ the 64 chosen in T2
+SLOTS=${SLOTS:-32}                                       # per box: 2 x 32 = 64, the concurrency chosen in T2 (ec2_sizing.md)
 DEADLINE_H=${DEADLINE_H:-10}
 DEST=${DEST:-s3://aees-grpo-backups-611728564241}
 INIT_ADAPTER=${INIT_ADAPTER:-}                           # container path; weights only, fresh Adam (summary.md, step 4)

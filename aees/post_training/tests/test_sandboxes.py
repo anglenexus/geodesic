@@ -60,7 +60,7 @@ def sh(script, *args, env, cwd=HERE):
 
 def test_up_launches_spot_boxes_and_prepares_each(tmp_path):
     env = {**stubs(tmp_path), "STATE": str(tmp_path / "state")}
-    r = sh("scripts/ec2_sandboxes.sh", "up", env=env)
+    r = sh("scripts/ec2_sandboxes.sh", "up", "3", env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     run = [c for c in calls(tmp_path, "aws") if "run-instances" in c]
     assert len(run) == 1 and "--count 3" in run[0] and "m7a.8xlarge" in run[0] and "MarketType=spot" in run[0]
@@ -74,6 +74,12 @@ def test_up_launches_spot_boxes_and_prepares_each(tmp_path):
         assert f in copied
     assert (tmp_path / "state" / "tunnel_key").exists() and (tmp_path / "state" / "sync_key").exists()
     assert sh("scripts/ec2_sandboxes.sh", "up", env=env).returncode == 1      # refuses a second set
+
+
+def test_up_defaults_to_two_boxes(tmp_path):                         # ec2_sizing.md: 2 x 32 trials
+    env = {**stubs(tmp_path), "STATE": str(tmp_path / "state")}
+    sh("scripts/ec2_sandboxes.sh", "up", env=env)
+    assert any("run-instances" in c and "--count 2" in c for c in calls(tmp_path, "aws"))
 
 
 def test_spot_failure_falls_back_to_on_demand(tmp_path):

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The GRPO run's sandbox boxes on EC2 (dist_setup.md). Runs on the laptop with its AWS CLI profile.
 #
-#   bash scripts/ec2_sandboxes.sh up [N]                   # launch N boxes (default 3) and prepare them in parallel
+#   bash scripts/ec2_sandboxes.sh up [N]                   # launch N boxes (default 2, ec2_sizing.md) and prepare them in parallel
 #   bash scripts/ec2_sandboxes.sh allow <h200-ip> [user]   # H200 may ssh in (tunnels, trial sync); copies its keys there
 #   bash scripts/ec2_sandboxes.sh serve <run> [t3]         # (re)start each box's agent server; t3: 2-turn trials
 #   bash scripts/ec2_sandboxes.sh probe [h200-ip]           # reverse tunnels (during preflight T0); rows -> H200
@@ -40,7 +40,7 @@ prepare_box() {       # prepare_box <i> <ip>: copy what the box needs, then scri
 
 case "${1:-}" in
 up)
-  N=${2:-3}
+  N=${2:-2}
   [ ! -f "$STATE/boxes.env" ] || { echo "boxes already up ($(boxes)); run: $0 down"; exit 1; }
   for k in tunnel_key sync_key; do
     [ -f "$STATE/$k" ] || ssh-keygen -q -t ed25519 -N '' -C "aees-grpo-$k" -f "$STATE/$k"
