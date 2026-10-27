@@ -30,6 +30,8 @@
 <div class="bar muted" id="health"></div>
 <div class="grid" id="charts"></div>
 <div class="grid" style="margin-top:12px">
+  <div class="card wide" id="preflightCard" hidden><h2>Preflight: integration tests (integration_tests.md)</h2><div id="preflight"></div></div>
+  <div class="card wide" id="sandboxCard" hidden><h2>Sandboxes on EC2 (dispatcher: longest task first)</h2><div id="sandboxes"></div></div>
   <div class="card wide"><h2>Per task: passes out of 8 per step</h2><div id="heatmap"></div></div>
   <div class="card wide"><h2>Checkpoints: validation and test</h2><div id="checkpoints"></div></div>
   <div class="card wide"><h2>Recent trials</h2><div id="trials"></div></div>
@@ -241,9 +243,36 @@ function trialsTable(s) {
       + `<td class="muted">${esc(t.dir)}</td></tr>`).join("") + `</table>` : `<div class="muted">no training trials yet</div>`;
 }
 
+function preflight(s) {                                   // latest result of each check, grouped by test
+  const rows = s.preflight || [], latest = {};
+  for (const r of rows) latest[`${r.test}|${r.check}`] = r;
+  $("preflightCard").hidden = !rows.length;
+  const items = Object.values(latest).sort((a, b) => a.test.localeCompare(b.test) || a.t - b.t);
+  $("preflight").innerHTML = `<table><tr><th>test</th><th>check</th><th>result</th><th>value</th><th>when</th></tr>`
+    + items.map(r => `<tr><td>${esc(r.test)}</td><td>${esc(r.check)}</td>`
+      + `<td style="color:${r.ok ? "var(--ok)" : "var(--bad)"};font-weight:600">${r.ok ? "pass" : "FAIL"}</td>`
+      + `<td class="muted" style="white-space:normal">${esc(r.value)}</td><td>${ago(r.t)}</td></tr>`).join("") + `</table>`;
+}
+function sandboxes(s) {                                   // live slots per box + this run's trials per box
+  const live = s.sandboxes, rows = s.dispatch || [];
+  $("sandboxCard").hidden = !live && !rows.length;
+  const perBox = by(rows, r => r.box), boxes = [...new Set([...Object.keys(live?.boxes || {}), ...Object.keys(perBox)])].sort();
+  const waits = rows.map(r => r.start - r.queued);
+  let html = live ? `<div class="muted">${live.status === "ok" ? "dispatcher up" : `<span class="bad">dispatcher: ${esc(live.status)}</span>`}`
+    + ` · waiting ${live.waiting} · finished ${live.done}</div>` : `<div class="bad">dispatcher not answering</div>`;
+  html += `<div class="muted">queue wait p50 ${dur(quantile(waits, .5))}, p90 ${dur(quantile(waits, .9))} (${rows.length} trials)</div>`;
+  html += `<table><tr><th>box</th><th>up</th><th>running</th><th>free</th><th>finished</th><th>infra errors</th><th>median trial</th></tr>`
+    + boxes.map(b => { const l = live?.boxes?.[b] || {}, rs = perBox[b] || [], up = live?.boxes_up?.[b];
+      return `<tr><td>${esc(b)}</td><td style="color:${up ? "var(--ok)" : "var(--bad)"}">${up == null ? "–" : up ? "yes" : "NO"}</td>`
+        + `<td>${l.running ?? "–"}</td><td>${l.free ?? "–"}</td><td>${rs.length}</td>`
+        + `<td class="${rs.some(r => String(r.exit_status).startsWith("Error")) ? "bad" : ""}">${rs.filter(r => String(r.exit_status).startsWith("Error")).length}</td>`
+        + `<td>${dur(quantile(rs.map(r => r.end - r.start), .5))}</td></tr>`; }).join("") + `</table>`;
+  $("sandboxes").innerHTML = html;
+}
+
 function render(s, snapshot = false) {
   $("run").textContent = `Training Tracker: ${s.run}`;
-  header(s, snapshot); health(s); charts(s); heatmap(s); checkpointsTable(s); trialsTable(s);
+  header(s, snapshot); health(s); charts(s); preflight(s); sandboxes(s); heatmap(s); checkpointsTable(s); trialsTable(s);
 }
 if (location.protocol !== "file:") { load(); timer = setInterval(load, 30000); }
 </script>

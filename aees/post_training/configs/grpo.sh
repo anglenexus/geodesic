@@ -10,8 +10,8 @@ MAX_TURN_TOKENS=8192                            # output cap per model call (Har
 GRPO_ARGS=(
   --prompt-data "$PROMPT_DATA" --input-key prompt --metadata-key metadata   # rows: {"prompt", "metadata"}
   --num-rollout "$NUM_ROLLOUT"
-  --rollout-batch-size 20 --n-samples-per-prompt 8   # all 20 tasks x G = 8 per step (§3f)
-  --global-batch-size 160                         # one optimizer update per step: fully on-policy
+  --rollout-batch-size "${ROLLOUT_BATCH:-20}" --n-samples-per-prompt "${N_SAMPLES:-8}"   # all 20 tasks x G = 8 (§3f)
+  --global-batch-size "${GLOBAL_BATCH:-160}"      # one optimizer update per step: fully on-policy
   --rollout-temperature 1.0 --rollout-top-p 1.0  # sample from the policy as-is (§3d)
   --max-seq-len "$MAX_LEN"                        # 48k per trajectory: Harbor ends the trial there and
                                                   #   the session server cuts the sample there (D10)
@@ -27,7 +27,7 @@ OPTIM_ARGS=(
   --clip-grad 0                                            # off (§3d); the grad norm is still logged
 )
 SAVE_ARGS=(
-  --save "$SAVE_DIR" --save-interval 10                    # adapter + optimizer state every 10 steps (Phase 3)
+  --save "$SAVE_DIR" --save-interval "${SAVE_INTERVAL:-10}"   # adapter + optimizer state every 10 steps (Phase 3)
 )
 # Optional warm start from an SFT adapter (D15): its weights only. The SFT folder also holds SFT's step
 # count, which Miles would restore and then skip that many GRPO steps; copying the weights avoids that.
@@ -38,12 +38,13 @@ if [ -n "$INIT_ADAPTER" ]; then
   GRPO_ARGS+=(--lora-adapter-path "$SAVE_DIR/init_adapter")   # same LoRA shape: both use common.sh
 fi
 SGLANG_MEM=${SGLANG_MEM:-0.85}                   # GPU share for SGLang weights + KV pool; Phase 2 tunes it
-SGLANG_ARGS=(
-  --rollout-num-gpus 1 --rollout-num-gpus-per-engine 1
-  --sglang-mem-fraction-static "$SGLANG_MEM"      # 0.85 x 141 = 120 GB: 55 weights + adapter, ~65 KV pool
-  --sglang-context-length $((MAX_LEN + MAX_TURN_TOKENS))   # 56k, so the turn that crosses 48k can finish
-  --sglang-dtype bfloat16 --sglang-lora-backend triton      # as Miles' native LoRA example; rank = --lora-rank
+SGLANG_SERVER=(                                  # SGLang's own flags; Miles takes each as --sglang-<flag>, test T2 as is
+  --mem-fraction-static "$SGLANG_MEM"             # 0.85 x 141 = 120 GB: 55 weights + adapter, ~65 KV pool
+  --context-length $((MAX_LEN + MAX_TURN_TOKENS)) # 56k, so the turn that crosses 48k can finish
+  --dtype bfloat16 --lora-backend triton          # as Miles' native LoRA example; rank = --lora-rank
+  ${SGLANG_EXTRA:-}                               # set from integration test T2 (integration_tests.md)
 )
+SGLANG_ARGS=(--rollout-num-gpus 1 --rollout-num-gpus-per-engine 1 "${SGLANG_SERVER[@]/#--/--sglang-}")
 AGENT_ARGS=(
   --custom-generate-function-path miles.rollout.generate_hub.agentic_tool_call.generate   # agent loop, TITO
   --custom-agent-function-path swe_agent_function.run      # POSTs each trial to $AGENT_SERVER_URL/run

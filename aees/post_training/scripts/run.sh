@@ -17,9 +17,9 @@ if [ "${2:-}" != inside ]; then
   exec docker run --rm --gpus all --ipc=host --network host --shm-size 32g \
     --ulimit memlock=-1 --ulimit stack=67108864 \
     -v "$DATA/models:/root/models" -v "$DATA/ckpt:/root/ckpt" -v "$DATA/src/miles:/root/miles" \
-    -v "$HERE:/root/post_training" \
+    -v "$HERE:/root/post_training" -v "$DATA/cache:/root/.cache" \
     -e SAVE_DIR -e SFT_DATA -e PROMPT_DATA -e NUM_ROLLOUT -e INIT_ADAPTER -e SGLANG_MEM -e AGENT_SERVER_URL \
-    -e MODEL -e MODEL_TYPE -e MAX_LEN \
+    -e MODEL -e MODEL_TYPE -e MAX_LEN -e SAVE_INTERVAL -e ROLLOUT_BATCH -e N_SAMPLES -e GLOBAL_BATCH -e SGLANG_EXTRA \
     "$MILES_IMAGE" bash /root/post_training/scripts/run.sh "$MODE" inside
 fi
 

@@ -17,23 +17,10 @@ TTL_MIN=${TTL_MIN:-240}
 mkdir -p "$STATE"
 [ ! -f "$STATE/ec2.env" ] || { echo "already up ($(tr '\n' ' ' < "$STATE/ec2.env")); run proto/ec2_down.sh first"; exit 1; }
 
-echo "AWS identity: $(aws sts get-caller-identity --query Arn --output text)"
-acct=$(aws sts get-caller-identity --query Account --output text)
-aws budgets describe-budgets --account-id "$acct" --output text \
-  --query 'Budgets[].[BudgetName,BudgetLimit.Amount,CalculatedSpend.ActualSpend.Amount]' 2>/dev/null \
-  | sed 's/^/budget (name, limit, spent): /' || echo "budgets: not readable with this profile; check headroom in the console"
-AMI=$(aws ec2 describe-images --region "$REGION" --owners 099720109477 --output text \
-  --filters "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" "Name=state,Values=available" \
-  --query 'sort_by(Images,&CreationDate)[-1].ImageId')
-MYIP=$(curl -s https://checkip.amazonaws.com)
-SG=$(aws ec2 describe-security-groups --region "$REGION" --filters Name=group-name,Values=aees-proto \
-  --query 'SecurityGroups[0].GroupId' --output text)
-if [ "$SG" = None ]; then
-  SG=$(aws ec2 create-security-group --region "$REGION" --group-name aees-proto \
-    --description "aees overlap prototype: SSH from the laptop only" --query GroupId --output text)
-fi
-aws ec2 authorize-security-group-ingress --region "$REGION" --group-id "$SG" --protocol tcp --port 22 \
-  --cidr "$MYIP/32" >/dev/null 2>&1 || true                # already allowed
+source "$HERE/../scripts/ec2_lib.sh"
+ec2_identity
+AMI=$(ec2_ami "$REGION")
+SG=$(ec2_sg "$REGION" aees-proto "aees overlap prototype: SSH from the laptop only")
 ID=$(aws ec2 run-instances --region "$REGION" --image-id "$AMI" --instance-type "$TYPE" --key-name "$KEY_NAME" \
   --security-group-ids "$SG" --instance-initiated-shutdown-behavior terminate \
   --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=200,VolumeType=gp3,DeleteOnTermination=true}' \
@@ -47,7 +34,7 @@ IP=$(aws ec2 describe-instances --region "$REGION" --instance-ids "$ID" \
   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 echo "EC2_IP=$IP" >> "$STATE/ec2.env"
 SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "ubuntu@$IP")
-until "${SSH[@]}" true 2>/dev/null; do sleep 5; done
+ec2_wait_ssh "$KEY" "$IP"
 
 echo "== copying aees/harbor + prototype scripts"
 "${SSH[@]}" 'mkdir -p geodesic/aees proto'          # rsync creates only the last folder

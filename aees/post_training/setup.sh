@@ -14,6 +14,7 @@ MIN_DRIVER=580                       # the Miles image is built on CUDA 13.0
 MIN_DISK_GB=400
 MODELS=${MODELS:-"Qwen/Qwen3.6-27B Qwen/Qwen3.5-4B"}   # policy + the Phase 1 smoke-test model
 STEPS=${STEPS:-"1 2 3 4 5 6 7 8 9"}  # a subset, e.g. "1 2 3 4 6 7" for the overlap prototype (proto/bench.sh)
+TASK_LISTS=${TASK_LISTS:-"tb21_selected_tasks.txt tb21_val8_tasks.txt tb21_test20_tasks.txt"}   # step 8: train, val, test
 want() { [[ " $STEPS " == *" $1 "* ]]; }
 
 HERE=$(cd "$(dirname "$0")" && pwd)          # aees/post_training
@@ -69,6 +70,7 @@ fs.inotify.max_user_watches = 1048576
 fs.file-max = 2097152
 CONF
 sudo sysctl --system >/dev/null
+sudo systemctl restart docker                         # apply daemon.json (step 4 restarts too, but EC2 skips it)
 fi
 
 if want 4; then
@@ -121,8 +123,7 @@ if want 8; then
 echo "== 8/9 TB 2.1 task definitions + image pre-pull (training, validation, test tasks)"
 [ -d "$DATA/tasks/terminal-bench-2-1" ] || \
   (cd "$DATA/src/harbor" && uv run harbor datasets download terminal-bench/terminal-bench-2-1 -o "$DATA/tasks")
-cat "$HARBOR_STATE"/tb21_selected_tasks.txt "$HARBOR_STATE"/tb21_val8_tasks.txt \
-    "$HARBOR_STATE"/tb21_test20_tasks.txt > "$DATA/tasks/all_used.txt"
+(cd "$HARBOR_STATE" && cat $TASK_LISTS) > "$DATA/tasks/all_used.txt"
 python3 "$HERE/../harbor/scripts/task_images.py" "$DATA/tasks/terminal-bench-2-1" "$DATA/tasks/all_used.txt" \
   | sort -u | xargs -r -P 8 -n 1 sudo docker pull -q
 fi

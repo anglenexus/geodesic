@@ -8,6 +8,8 @@ Every 30 s it re-reads (read-only; the run is never touched):
     $DATA/trials/$RUN/*/result.json                 Harbor trials of the training rollouts
     $DATA/ckpt/$RUN/iter_*/adapter                  saved checkpoints
     $DATA/trials/eval/$RUN/iter_N/{val,test}/*/result.json   evaluation of checkpoint N (Phase 4)
+    $DATA/monitor/$RUN/preflight.jsonl              integration tests T0/T2/T3 (scripts/preflight.sh)
+    $DATA/trials/$RUN/dispatch.jsonl, :11000/status EC2 sandboxes: one row per trial, live slots (grpo/dispatch.py)
     nvidia-smi, free, df, docker ps                 host health, appended to $DATA/monitor/$RUN/host.jsonl
 and serves monitor/index.html with the result at /status.json, on 127.0.0.1 only. Standard library
 only, so it runs with the host's python3 (3.10 or later), outside the Miles container.
@@ -23,6 +25,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,6 +39,7 @@ from sft.export_trajectories import PARSE_ERROR_PREFIX  # noqa: E402  terminus-2
 PORT = 8770
 REFRESH_SEC = 30
 DISK_ALERT_GB = 20                                     # shown red below this much free on $DATA
+DISPATCH_PORT = 11000                                  # grpo/dispatch.py, when sandboxes run on EC2
 
 
 class EventLog:
@@ -169,6 +173,22 @@ class Host:
         return self.samples
 
 
+def jsonl_rows(path: Path) -> list[dict]:
+    """Whole lines of a JSONL file that's still being appended to; [] if it doesn't exist."""
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip().endswith("}")]
+
+
+def dispatcher_status(port: int = DISPATCH_PORT) -> dict | None:
+    """The dispatcher's live slots per box, or None when it isn't running (single-box runs)."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=10) as r:
+            return json.loads(r.read())
+    except (OSError, ValueError):
+        return None
+
+
 def _run(cmd: list[str]) -> str | None:
     """A command's stdout, or None if it's missing, fails or takes over 10 s."""
     try:
@@ -182,7 +202,8 @@ class Tracker:
     {"run", "generated", "num_rollout", "steps": [{"step", "t_rollout", "t_end", <metric>: ...}],
      "trials": [block 3 row + "step"], "evals": [block 3 row + "checkpoint", "set"],
      "checkpoints": [{"step", "time"}], "host": [block 5 sample], "sets": {"train"|"val"|"test": [task]},
-     "baseline": baseline.json or null, "disk_alert_gb"}. Aggregates (rates, ETA, stall) are the page's job."""
+     "baseline": baseline.json or null, "disk_alert_gb", "preflight": [row], "dispatch": [row],
+     "sandboxes": dispatcher /health or null}. Aggregates (rates, ETA, stall) are the page's job."""
 
     def __init__(self, run: str, data: Path, num_rollout: int):
         self.run, self.num_rollout, self.save_dir = run, num_rollout, data / "ckpt" / run
@@ -190,6 +211,8 @@ class Tracker:
         self.train = Trials(data / "trials" / run, "*/result.json")
         self.evals = Trials(data / "trials" / "eval" / run, "iter_*/*/*/result.json")
         self.host = Host(data / "monitor" / run / "host.jsonl", data)
+        self.preflight = data / "monitor" / run / "preflight.jsonl"
+        self.dispatch = data / "trials" / run / "dispatch.jsonl"
         self.sets = {name: read_list(STATE / file) for name, file in LISTS.items()}
         baseline = HERE / "baseline.json"                  # Phase 0 numbers, optional
         self.baseline = json.loads(baseline.read_text()) if baseline.exists() else None
@@ -203,7 +226,8 @@ class Tracker:
             "run": self.run, "generated": time.time(), "num_rollout": self.num_rollout,
             "steps": [{"step": k, **v} for k, v in sorted(steps.items())], "trials": train, "evals": evals,
             "checkpoints": checkpoints(self.save_dir), "host": self.host.sample(), "sets": self.sets,
-            "baseline": self.baseline, "disk_alert_gb": DISK_ALERT_GB}).encode()
+            "baseline": self.baseline, "disk_alert_gb": DISK_ALERT_GB, "preflight": jsonl_rows(self.preflight),
+            "dispatch": jsonl_rows(self.dispatch), "sandboxes": dispatcher_status()}).encode()
         with self.lock:
             self.body = body
 

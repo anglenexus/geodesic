@@ -169,3 +169,39 @@ def test_tracker_status_and_http(tmp_path, monkeypatch):
             urllib.request.urlopen(url + "/etc/passwd")
     finally:
         httpd.shutdown()
+
+
+def test_preflight_and_sandboxes_in_status(tmp_path, monkeypatch):
+    monkeypatch.setattr(srv, "_run", lambda cmd: None)
+    make_run(tmp_path, random.Random(3), run="grpo_x")
+    mon, trials = tmp_path / "monitor" / "grpo_x", tmp_path / "trials" / "grpo_x"
+    mon.mkdir(parents=True, exist_ok=True)
+    (mon / "preflight.jsonl").write_text(
+        json.dumps({"t": T0, "test": "T0", "check": "driver >= 580", "ok": True, "value": "580.1"}) + "\n"
+        + '{"t": 1, "test": "T2", "check": "half-writ')                  # being appended: skipped
+    (trials / "dispatch.jsonl").write_text(json.dumps({"task": "a", "box": "127.0.0.1:11001", "queued": T0,
+        "start": T0 + 5, "end": T0 + 60, "reward": 1.0, "exit_status": "Submitted"}) + "\n")
+    live = {"status": "ok", "boxes_up": {"127.0.0.1:11001": True}, "boxes": {"127.0.0.1:11001": {"running": 3, "free": 29}},
+            "waiting": 0, "done": 1}
+    monkeypatch.setattr(srv, "dispatcher_status", lambda: live)
+    tracker = srv.Tracker("grpo_x", tmp_path, num_rollout=50)
+    tracker.refresh()
+    s = json.loads(tracker.body)
+    assert [r["check"] for r in s["preflight"]] == ["driver >= 580"] and s["preflight"][0]["ok"] is True
+    assert s["dispatch"][0]["box"] == "127.0.0.1:11001" and s["sandboxes"] == live
+    assert len(s["trials"]) == 48                                       # dispatch.jsonl isn't a trial
+
+
+def test_no_dispatcher_no_preflight(tmp_path, monkeypatch):
+    import socket
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    assert srv.dispatcher_status(port) is None
+    monkeypatch.setattr(srv, "_run", lambda cmd: None)
+    monkeypatch.setattr(srv, "dispatcher_status", lambda: None)
+    make_run(tmp_path, random.Random(4), run="grpo_y")
+    tracker = srv.Tracker("grpo_y", tmp_path, num_rollout=50)
+    tracker.refresh()
+    s = json.loads(tracker.body)
+    assert s["preflight"] == [] and s["dispatch"] == [] and s["sandboxes"] is None
