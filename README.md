@@ -27,11 +27,17 @@
 
 Agentic LLMs — models that plan, call tools and act in a terminal or codebase over many steps — are where the big labs, the research community and enterprises are putting their effort. Training them is a reinforcement learning problem: an agent acts in an environment, a verifier scores the outcome, and the trajectories become training data. Geodesic is an RL-native framework for that loop.
 
-Rather than being built around a training loop, Geodesic formalizes the orchestration, agent, model, environment and replay dataset components as stable abstractions. The same components that train robot policies on MetaWorld now run LLM agents in sandboxed environments, which makes it simple to build algorithms with multiple models (actor, advantage, critic, reward), speed them up with backends (JAX, torch inductor, Triton), and scale them with distributed systems (Ray, streaming data, DDP/FSDP). The agentic stack lives in [`aees/`](aees/) and covers the whole loop: environments and trajectory collection on [Harbor](https://github.com/harbor-framework/harbor), self-hosted model serving on SGLang + FlashInfer, and post-training.
+Rather than being built around a training loop, Geodesic formalizes the orchestration, agent, model, environment and replay dataset components as stable abstractions. The same components that train robot policies on MetaWorld now run LLM agents in sandboxed environments, which makes it simple to build algorithms with multiple models (actor, advantage, critic, reward), speed them up with backends (JAX, torch inductor, Triton), and scale them with distributed systems (Ray, streaming data, DDP/FSDP).
 
-- **Agentic environments with verifiable rewards.** Terminal-Bench 2.1 tasks run as Docker sandboxes through Harbor; the `terminus-2` agent drives a tmux terminal, and each task's tests produce the reward. Hosted APIs (e.g. GPT-5.6 Luna) and self-hosted open models (Qwen3 on our own GPUs) plug into the same pipeline.
+**The agentic RL stack** lives in [`aees/`](aees/) and covers the whole loop, from environment to trained model:
+
+- **Agentic environments with verifiable rewards.** Terminal-Bench 2.1 tasks run as Docker sandboxes through [Harbor](https://github.com/harbor-framework/harbor); the `terminus-2` agent drives a tmux terminal, and each task's tests produce the reward. Hosted APIs (e.g. GPT-5.6 Luna) and self-hosted open models (Qwen3 on our own GPUs) plug into the same pipeline.
 - **Trajectory collection you can trust at scale.** A SQLite ledger gives every (task, model, agent, settings) scenario exactly-once run indices, records raw facts per trial, and holds each result for review; a scheduler runs batches unattended with an aggregate-cost kill switch, and ledgers from several machines merge all-or-nothing.
-- **Production-grade serving of open agent models on GPUs you can rent.** Qwen3.5-27B, a capable open agent model, is served from a single A100-40GB or H200 with SGLang and FlashInfer: a prefix-aware paged KV cache, JIT-compiled attention kernels, continuous batching, tool-call and reasoning parsing, and metrics. Two scripts take a GPU machine to an OpenAI-compatible endpoint, and every setting is benchmarked for latency, throughput, concurrency, weight precision and stress before it serves agents.
+- **Production-grade serving of open agent models on GPUs you can rent.** Qwen3.5-27B is served from a single A100-40GB or H200 with SGLang and FlashInfer: a prefix-aware paged KV cache, JIT-compiled attention kernels, continuous batching, tool-call and reasoning parsing, and metrics. Two scripts take a GPU machine to an OpenAI-compatible endpoint in under 10 minutes, and every setting is benchmarked for latency, throughput, concurrency, weight precision and stress before it serves agents. On the H200, agent traffic costs $0.74 per million output tokens.
+- **Agentic RL post-training on a small budget.** GRPO trains a LoRA adapter on Qwen3.6-27B with one rented H200 that alternates between serving rollouts and training, while sandboxes run as a service on two CPU boxes on EC2, for $10–12 an hour all-in. Every design choice was measured first, including a rejected serve-while-training prototype. Over 10 steps the rollout success rate rose from 24.2% to 27.7% (average of the last 5 steps), a 14% relative gain. The GPU exists only while a run is live, and runs resume from S3 checkpoints on a fresh machine.
+
+**The RL-native core** underneath is shared with robotics:
+
 - **Dual backend, one interface.** `SACAgent` (PyTorch) and `JAXSACAgent` (JAX/Flax/Optax) implement the same `Agent` abstraction. The JAX path inherits directly from the PyTorch agent and overrides only the numerical core, so the orchestrator, dataset, and environment code are shared.
 - **Distributed by design.** Experience collection runs in parallel `Ray` actors that push transitions through a `Ray Queue` into a replay buffer, while training stays centralized on the learner. Data-collection throughput scales independently of training compute.
 - **Robotics + foundation models in the same stack.** Classic control and offline RL live next to OpenVLA-7B fine-tuning on LIBERO, behind one orchestrator pattern.
@@ -56,6 +62,7 @@ orc.start_online()
 | **Agentic environments** | Terminal-Bench 2.1 via Harbor (Docker sandboxes, tmux terminal agent, test-based rewards); a 20-task training set chosen for a 10–90% pass band plus a 20-task test set and 8-task validation set |
 | **Trajectory data** | ~7.5k agent trajectories collected so far (GPT-5.6 Luna, Qwen3-4B, Qwen3.5-27B), stored with full model text, reasoning, tool calls, observations, tokens, cost and verifier output |
 | **Model serving** | Qwen3.5-27B on one A100-40GB or H200 with SGLang + FlashInfer: AWQ 4-bit, FP8 and BF16 weights, MTP speculative decoding, benchmarked for TTFT, ITL, throughput, concurrency and stress, with cost per million tokens; Qwen3-4B on A100-40GB and A10 |
+| **Post-training** | GRPO + LoRA (r = 64) on Qwen3.6-27B with Miles (Megatron + SGLang colocated on one H200) and 64 Harbor sandboxes on EC2; per-step checkpoints to S3, resume on a fresh GPU, automatic size-verified teardown; integration tests T0–T3 gate every run |
 | **Collection tooling** | Exactly-once ledger, unattended scheduler with a budget kill switch, EC2 runners with mirror sync and ledger merge, a trajectory browser and a live run tracker (web UIs) |
 | **Algorithms** | DQN / double-Q (binary & multinomial-discrete action spaces), SAC (continuous), multi-task SAC, OpenVLA imitation learning |
 | **Backends** | PyTorch and JAX (`@jax.jit`, `optax`, `flax`, `distrax`), selectable per agent |
@@ -76,7 +83,8 @@ flowchart LR
   J --> I["Ingest"] --> L[("Ledger<br/>exactly-once run indices")]
   L --> B["Trajectory browser :8765"]
   J --> R["Run tracker :8766"]
-  L --> P["Post-training<br/>(SFT / RL)"]
+  L --> P["Post-training<br/>GRPO + LoRA on 1× H200"]
+  P -- "new adapter" --> M
 ```
 
 ### Environments and trajectory collection — [`aees/harbor`](aees/harbor)
@@ -126,7 +134,7 @@ What we learned:
 - **Keep the BF16 KV cache for this model.** With only 16 attention layers and 4 KV heads, KV reads are a small share of decode time, so FP8 KV made decode attention ~1.35× slower on the H200 and 2–12× slower on the A100 (no FP8 hardware). Paging layout and page size changed decode time by under ~10%.
 - **Ship a warm JIT cache.** Most attention variants compile in 6–18 s on first use (prefill kernels up to 69 s on the H200), which is the bulk of a cold start.
 
-The earlier **Qwen3-4B** study (A100-40GB and A10) built the same pipeline at a smaller scale and found the prefix cache to be the biggest lever for agent traffic (turning it off cut throughput 59%), with FlashInfer beating Triton attention by 17% in throughput. Start here: [`aees/serving/README.md`](aees/serving/README.md).
+The earlier **Qwen3-4B** study (A100-40GB and A10) built the same pipeline at a smaller scale and found the prefix cache to be the biggest lever for agent traffic (turning it off cut throughput 59%), with FlashInfer beating Triton attention by 17% in throughput. Start here: [`aees/serving/README.md`](aees/serving/README.md). The full set of A100 and H200 numbers, tables and figures is collected in [`aees/serving/bench_results/blog_source.md`](aees/serving/bench_results/blog_source.md).
 
 ```bash
 cd aees/serving
@@ -136,10 +144,45 @@ python run_bench.py --model qwen3.5-27b                     # Phase 3 benchmarks
 MODEL=qwen3.5-27b ./run_phase4.sh                           # Phase 4 FlashInfer kernels, 30-minute cap
 ```
 
-### Post-training — `aees/post_training` (in progress)
+### Post-training — [`aees/post_training`](aees/post_training)
 
-<!-- post-training agent: summarize GRPO (+ optional LoRA SFT) of Qwen3.6-27B on TB 2.1 here once PR #23 lands. -->
-GRPO post-training of an open model on the training tasks, evaluated on the held-out test and validation sets (PR #23).
+`aees/post_training` runs GRPO on **Qwen3.6-27B** as a terminal agent, using the 20 Terminal-Bench 2.1 training tasks and the same Harbor environments. It runs on a startup budget: **one rented H200 ($6.56/h) and two CPU boxes on EC2 ($3.71/h)**. The policy is a LoRA adapter (r = 64, 318.7M trainable parameters) on a frozen bf16 base. [Miles](https://github.com/radixark/miles) drives the loop, with the Megatron trainer and SGLang colocated on the GPU.
+
+```mermaid
+flowchart LR
+  subgraph G["H200 (created per run)"]
+    TR["Miles trainer<br/>LoRA, 1 Adam step / batch"] <-->|"take turns"| SG["SGLang<br/>bf16, 39–42 running requests"]
+    D["Dispatcher<br/>64 slots, longest first"]
+  end
+  subgraph E["EC2 environment fleet"]
+    B1["Box 1: 32 sandboxes"]
+    B2["Box 2: 32 sandboxes"]
+  end
+  D -- "episodes (ssh tunnel)" --> B1 & B2
+  B1 & B2 -- "model calls (reverse tunnel)" --> SG
+  B1 & B2 -- "rewards + trajectories" --> TR
+  TR -- "checkpoint every step" --> S3[("S3")]
+```
+
+Design decisions, each settled by a measurement:
+
+- **Rollouts, not the GPU, set the pace.** One step is 160 episodes (20 tasks × 8). Episodes average 15.5 min and are capped near 41 min, so rollouts take 70–80% of a ~75-minute step. Training takes 18–21 min at 2,800–3,000 tok/s.
+- **One GPU that alternates beats overlapping.** Serving and training on the same GPU at once (time-slicing or MPS) slowed decode 1.9–6.3× and made steps no shorter, so that prototype was rejected after one 85-minute test. A second, serving-only H200 would be ~27% faster per step but ~20% more expensive per trajectory, and it doesn't lift the serving cap.
+- **Concurrency is matched to the serving cap.** Agents wait on the model ~80% of the time, so 64 agents keep ~51 requests in flight against a cap of 39–42. The cap comes from the hybrid model's DeltaNet state slots, not its KV cache. 96 agents failed the serving test (TTFT p90 39 s, cache hit 0.36). 64 passed (12 s, 0.66, 585 tok/s) and sits where a rollout can't finish faster than its longest trial.
+- **Environments as a service, sized by container starts.** Boxes are bound by simultaneous container starts (≤ ~50 per instance), not CPU (2–6% used). So 64 slots = 2 × m7a.8xlarge at 32 each. That is one box fewer than the first run, which cut the sandbox bill by a third with no change in step time.
+- **A disposable GPU.** The H200 is created from the CLI, set up in 11 min and gated by integration tests T0 (infrastructure), T2 (serving under load) and T3 (2-step mini GRPO). At the end the run uploads to S3, verifies every file's size, and only then terminates the boxes and deletes the GPU. Steps 7–10 resumed on a new H200 from the step-6 checkpoint.
+
+**Results (10 GRPO steps, 1,678 scored episodes):**
+
+| Metric | Step 1 (baseline) | Average, steps 6–10 | Relative change |
+|---|---|---|---|
+| Success rate, all episodes | 24.2% | 27.7% | **+14.4%** |
+| Success rate, mean over the 20 tasks | 23.9% | 26.6% | **+11.3%** (10 tasks up, 6 down, 4 flat) |
+| Rollout reward | 0.238 | 0.273 | **+14.7%** |
+
+The gains are concentrated in mid-difficulty tasks (e.g. count-dataset-tokens 13% → 50%). The trend is encouraging but within about 1.4 standard errors. The learning rate (1e-5, one update per batch) moved the adapter very little, so the next runs raise it toward 1e-4 and replace the 7 tasks that give no gradient. Training stayed stable: trainer–sampler log-prob gap 0.0085–0.009, clip fraction 0.
+
+Start here: [`aees/post_training/summary.md`](aees/post_training/summary.md) (what was built, how to replicate or continue from a checkpoint, issues and fixes) and [`aees/post_training/PLAN.md`](aees/post_training/PLAN.md) (design and recipe research).
 
 ---
 
@@ -323,7 +366,7 @@ geodesic/
 └── aees/                # Agentic RL
     ├── harbor/          # Environments + trajectory collection: ledger, scheduler, EC2 kit, web tools
     ├── serving/         # Self-hosted model serving (SGLang + FlashInfer), benchmarks, bench_results/
-    └── post_training/   # Post-training on collected trajectories (in progress)
+    └── post_training/   # GRPO + LoRA post-training (Miles), EaaS dispatcher, cloud scripts, run tracker
 ```
 
 ---
@@ -332,7 +375,7 @@ geodesic/
 
 - **Prioritized replay** — promote the sum-tree `PrioritySampler` from sketch to a tested, production prioritized-replay path.
 - **Atari / EfficientZero** — DQN on Atari via a dedicated env stack and parallel replay (see [`mds/atari_env_efficient_zero_investigation.md`](mds/atari_env_efficient_zero_investigation.md)).
-- **Agentic RL post-training** — GRPO on the Terminal-Bench training tasks with an open model, evaluated on the held-out test and validation sets; native tool-calling agents alongside `terminus-2`.
+- **Agentic RL post-training** — tune the learning signal (learning rate toward 1e-4, replace tasks that never or always pass, then group size 16); evaluate base vs trained adapters on the held-out validation and test sets; an SFT warm start from collected passing trajectories; full resume with optimizer state; native tool-calling agents alongside `terminus-2`.
 - **More agentic environments** — extend collection beyond Terminal-Bench (e.g. SWE-bench / SWE-bench Pro) through the same Harbor pipeline.
 - **Trajectory quality** — classify harness errors from collected data, then add an LLM judge for uncategorized failures with a human-review bucket.
 - **VLA post-training** — GRPO/PPO for VLA policies, replay-buffer construction, and contextual inference management.
@@ -373,8 +416,11 @@ Apache License 2.0 — see [`LICENSE`](LICENSE). © 2026 AngleNexus.
 
 ## Changelog
 
-<!-- post-training agent: add PR23 when merged. -->
+- **Oct 28, 2026** — Post-training continued to 10 GRPO steps from the step-6 checkpoint on a fresh H200. The H200 is now created from the CLI, and the sandbox fleet was right-sized to 2 boxes × 32. Rollout success rose from 24.2% at step 1 to 27.7% averaged over the last 5 steps, +14% relative ([PR23](https://github.com/anglenexus/geodesic/pull/23)).
+- **Oct 27, 2026** — First distributed GRPO run of Qwen3.6-27B: one H200 (Miles: Megatron + SGLang colocated) with 64 Harbor sandboxes on EC2 behind a dispatcher. Integration tests T0–T3 gated the run, with a live tracker, hourly S3 backups and automatic size-verified teardown; 6 steps in 10 hours ([PR23](https://github.com/anglenexus/geodesic/pull/23)).
 - **Oct 27, 2026** — Run tracker: multi-plan view, active-runs overview and cost split, outcomes in start order; scheduler waits for running Harbor jobs on Linux; Qwen run scripts ([PR24](https://github.com/anglenexus/geodesic/pull/24)).
+- **Oct 25, 2026** — Serving-while-training prototype on one H200 (time-slicing and MPS, real agent traffic): decode slowed 1.9–6.3× with no shorter steps, so the design alternates serving and training instead ([PR23](https://github.com/anglenexus/geodesic/pull/23)).
+- **Oct 24, 2026** — Post-training plan and code: GRPO (with optional LoRA SFT) of Qwen3.6-27B on Terminal-Bench 2.1 with Miles + Harbor, covering the memory budget, recipe research and task splits ([PR23](https://github.com/anglenexus/geodesic/pull/23)).
 - **Oct 24, 2026** — Practical Qwen3.5-27B serving on one A100-40GB or H200 with SGLang + FlashInfer: AWQ 4-bit / FP8 / BF16 weights, MTP speculative decoding and DeltaNet state-cache sizing; 30-minute benchmark and FlashInfer kernel runs with results committed to `bench_results/` ([PR22](https://github.com/anglenexus/geodesic/pull/22)).
 - **Oct 22, 2026** — Agentic RL environments: trajectory collection on Harbor / Terminal-Bench 2.1 with an exactly-once ledger, unattended scheduler with budget kill switch, EC2 runners with ledger merge, trajectory browser and run tracker ([PR21](https://github.com/anglenexus/geodesic/pull/21)).
 - **Oct 11, 2026** — Self-hosted model serving: Qwen3-4B on SGLang + FlashInfer, from a blank GPU host to a running server, a benchmark matrix (latency, throughput, QPS, p99.9 tails, burst, cold start, tool-call quality) with an HTML dashboard, and a FlashInfer deep dive on paged KV, JIT compilation and load balancing ([PR19](https://github.com/anglenexus/geodesic/pull/19)).
