@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Tracker</title>
+<!-- Served by monitor/server.py (reads /status.json every 30 s), or opened from a saved snapshot. -->
+<style>
+  :root { --bg:#fff; --fg:#1d1d1f; --muted:#6e6e73; --line:#e5e5ea; --card:#f7f7f9;
+          --ok:#1a7f37; --warn:#b26b00; --bad:#c62828; --s1:#2563eb; --s2:#16a34a; --s3:#d97706; --s4:#9333ea; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111214; --fg:#ececf0; --muted:#9a9aa3; --line:#2a2b30;
+          --card:#1a1b1f; --s1:#60a5fa; --s2:#4ade80; --s3:#fbbf24; --s4:#c084fc; } }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 8px 0 0; } h2 { font-size:14px; margin:0 0 6px; color:var(--muted); }
+  .bar { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; margin-bottom:12px; }
+  .pill { padding:2px 8px; border-radius:10px; color:#fff; font-weight:600; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px; min-width:0; }
+  .wide { grid-column:1 / -1; overflow-x:auto; }
+  svg { width:100%; height:180px; display:block; } .legend { font-size:12px; color:var(--muted); }
+  table { border-collapse:collapse; font-size:12px; width:100%; } td, th { padding:2px 6px; text-align:left;
+          border-bottom:1px solid var(--line); white-space:nowrap; }
+  .muted { color:var(--muted); } .bad { color:var(--bad); font-weight:600; }
+  button, select, label.file { font:inherit; padding:2px 8px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="bar"><h1 id="run">Training Tracker</h1><span id="state" class="pill"></span><span id="summary"></span>
+  <span style="flex:1"></span><button onclick="location.href='/download'">Download snapshot</button>
+  <label class="file">Open snapshot <input type="file" accept=".json" hidden onchange="openSnapshot(this.files[0])"></label></div>
+<div class="bar muted" id="health"></div>
+<div class="grid" id="charts"></div>
+<div class="grid" style="margin-top:12px">
+  <div class="card wide" id="preflightCard" hidden><h2>Preflight: integration tests (integration_tests.md)</h2><div id="preflight"></div></div>
+  <div class="card wide" id="sandboxCard" hidden><h2>Sandboxes on EC2 (dispatcher: longest task first)</h2><div id="sandboxes"></div></div>
+  <div class="card wide"><h2>Per task: passes out of 8 per step</h2><div id="heatmap"></div></div>
+  <div class="card wide"><h2>Checkpoints: validation and test</h2><div id="checkpoints"></div></div>
+  <div class="card wide"><h2>Recent trials</h2><div id="trials"></div></div>
+</div>
+<script>
+// ---- data: live from /status.json every 30 s, or a saved snapshot (Open snapshot) ----
+let timer = null, picked = null;
+const $ = id => document.getElementById(id);
+const OUTCOMES = [["passed", "var(--ok)"], ["failed", "var(--muted)"], ["timeout", "var(--warn)"],
+                  ["context_limit", "var(--s4)"], ["error", "var(--bad)"], ["infra", "var(--s1)"]];
+const LOSS = ["train/loss", "train/pg_loss"];                       // first name found is used
+const HEALTH = [["Gradient norm", ["train/grad_norm"]], ["Entropy", ["train/entropy_loss", "rollout/entropy"]],
+                ["Trainer vs SGLang log-prob |diff| (~1e-2)", ["train/train_rollout_logprob_abs_diff"]],
+                ["Policy change per step (KL)", ["train/ppo_kl"]], ["Clip fraction (~0)", ["train/pg_clipfrac"]]];
+const by = (a, f) => a.reduce((m, x) => ((m[f(x)] ??= []).push(x), m), {});
+const pick = (row, names) => { for (const n of names) if (row[n] != null) return row[n]; return null; };
+const sum = a => a.reduce((x, y) => x + y, 0);
+const mean = a => a.length ? sum(a) / a.length : null;
+const quantile = (a, q) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y);
+                             return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
+const fmt = (v, d = 2) => v == null || isNaN(v) ? "–" : v === 0 ? "0" : Math.abs(v) >= 100 ? v.toFixed(0)
+  : Math.abs(v) < 0.01 ? v.toExponential(1) : String(+v.toPrecision(d + 1));
+const dur = s => s == null ? "–" : s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+const ago = t => t == null ? "–" : dur(Date.now() / 1000 - t) + " ago";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const valid = ts => ts.filter(t => t.outcome !== "infra");          // excluded attempts don't count
+const passRate = ts => { const v = valid(ts); return v.length ? v.filter(t => t.outcome === "passed").length / v.length : null; };
+
+async function load() {
+  try { render(await (await fetch("/status.json", {cache: "no-store"})).json()); }
+  catch (e) { $("summary").innerHTML = `<span class="bad">cannot read /status.json (${esc(e)})</span>`; }
+}
+function openSnapshot(file) {
+  clearInterval(timer); timer = null;
+  file.text().then(t => render(JSON.parse(t), true));
+}
+
+// ---- SVG charts: lines (several series, dashed reference lines) and stacked bars (fractions) ----
+const W = 400, H = 180, L = 42, R = 8, T = 8, B = 20;
+function frame(xs, y0, y1) {
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), dx = x1 - x0 || 1, dy = y1 - y0 || 1;
+  const X = x => L + (x - x0) / dx * (W - L - R), Y = y => H - B - (y - y0) / dy * (H - T - B);
+  let g = `<line x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}" stroke="var(--line)"/>`;
+  for (const v of [y0, (y0 + y1) / 2, y1])
+    g += `<text x="${L - 4}" y="${Y(v) + 4}" font-size="10" text-anchor="end" fill="var(--muted)">${fmt(v)}</text>`
+       + `<line x1="${L}" y1="${Y(v)}" x2="${W - R}" y2="${Y(v)}" stroke="var(--line)" stroke-dasharray="2 3"/>`;
+  g += `<text x="${L}" y="${H - 5}" font-size="10" fill="var(--muted)">${fmt(x0)}</text>`
+     + `<text x="${W - R}" y="${H - 5}" font-size="10" text-anchor="end" fill="var(--muted)">${fmt(x1)}</text>`;
+  return {X, Y, g};
+}
+function lineChart(title, series, {y0 = null, y1 = null, refs = [], xLabel = "step"} = {}) {
+  series = series.filter(s => s.points.length);
+  const pts = series.flatMap(s => s.points), card = addCard(title);
+  if (!pts.length) { card.innerHTML += `<div class="muted">not logged yet</div>`; return; }
+  const ys = [...pts.map(p => p[1]), ...refs.map(r => r.y)];
+  const lo = y0 ?? Math.min(...ys), hi = y1 ?? Math.max(...ys);
+  const {X, Y, g} = frame(pts.map(p => p[0]), lo, hi === lo ? lo + 1 : hi);
+  let svg = g;
+  for (const r of refs)
+    svg += `<line x1="${L}" x2="${W - R}" y1="${Y(r.y)}" y2="${Y(r.y)}" stroke="${r.color}" stroke-dasharray="6 4"/>`;
+  for (const s of series) {
+    svg += `<polyline fill="none" stroke="${s.color}" stroke-width="1.8" points="${s.points.map(p => `${X(p[0])},${Y(p[1])}`).join(" ")}"/>`;
+    if (s.points.length < 60) svg += s.points.map(p => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="2.2" fill="${s.color}"/>`).join("");
+  }
+  const legend = [...series.map(s => `<span style="color:${s.color}">●</span> ${esc(s.name)}`),
+                  ...refs.map(r => `<span style="color:${r.color}">- -</span> ${esc(r.name)}`)].join(" &nbsp; ");
+  card.innerHTML += `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${svg}</svg><div class="legend">${legend} · x: ${xLabel}</div>`;
+}
+function stackedBars(title, columns, keys) {               // columns: [[x, {key: count}]], drawn as fractions
+  const card = addCard(title);
+  if (!columns.length) { card.innerHTML += `<div class="muted">not logged yet</div>`; return; }
+  const {X, Y, g} = frame(columns.map(c => c[0]), 0, 1), w = Math.max(2, (W - L - R) / columns.length - 1);
+  let svg = g;
+  for (const [x, counts] of columns) {
+    const n = sum(Object.values(counts)) || 1; let acc = 0;
+    for (const [k, color] of keys) {
+      const f = (counts[k] || 0) / n;
+      if (f) svg += `<rect x="${X(x) - w / 2}" y="${Y(acc + f)}" width="${w}" height="${Y(acc) - Y(acc + f)}" fill="${color}"><title>${k}: ${counts[k]}</title></rect>`;
+      acc += f;
+    }
+  }
+  card.innerHTML += `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${svg}</svg><div class="legend">`
+    + keys.map(([k, c]) => `<span style="color:${c}">■</span> ${k}`).join(" &nbsp; ") + `</div>`;
+}
+function addCard(title) {
+  const card = document.createElement("div");
+  card.className = "card"; card.innerHTML = `<h2>${esc(title)}</h2>`;
+  $("charts").appendChild(card);
+  return card;
+}
+
+// ---- header and health strip ----
+function header(s, snapshot) {
+  const done = s.steps.filter(r => Object.keys(r).some(k => k.startsWith("train/")));
+  const ends = done.map(r => r.t_end), stepTimes = ends.slice(1).map((t, i) => t - ends[i]);
+  const medStep = quantile(stepTimes, 0.5);
+  const starts = s.trials.map(t => t.start), now = snapshot ? s.generated : Date.now() / 1000;
+  const begin = starts.length ? Math.min(...starts) : null;
+  const last = Math.max(0, ...s.steps.map(r => r.t_end || 0), ...s.trials.map(t => t.end));
+  const stallAfter = Math.max(2 * (medStep || 1800), 1200);
+  const [label, color] = done.length >= s.num_rollout ? ["finished", "var(--s1)"]
+    : !last ? ["waiting", "var(--muted)"] : now - last > stallAfter ? ["stalled?", "var(--bad)"] : ["running", "var(--ok)"];
+  $("state").textContent = label; $("state").style.background = color;
+  const age = Date.now() / 1000 - s.generated;
+  $("summary").innerHTML = `step <b>${done.length}</b>/${s.num_rollout} <span class="muted">(= epochs: all 20 tasks every step)</span>`
+    + ` · elapsed ${dur(begin && now - begin)} · step ${dur(medStep)} · ETA ${dur(medStep && (s.num_rollout - done.length) * medStep)}`
+    + ` · last activity ${ago(last || null)} · <span class="${!snapshot && age > 90 ? "bad" : "muted"}">`
+    + (snapshot ? `snapshot of ${new Date(s.generated * 1000).toLocaleString()}` : `data ${Math.round(age)} s old`) + `</span>`;
+}
+function health(s) {
+  const h = s.host.at(-1) || {}, ck = s.checkpoints.at(-1);
+  const low = h.disk_free_gb != null && h.disk_free_gb < s.disk_alert_gb;
+  $("health").innerHTML = [`GPU ${fmt(h.gpu_mem_gb, 1)} GB, ${fmt(h.gpu_util, 1)}%`, `RAM ${fmt(h.ram_used_gb, 1)} GB used`,
+    `<span class="${low ? "bad" : ""}">disk ${fmt(h.disk_free_gb, 1)} GB free</span>`, `containers ${h.containers ?? "–"}`,
+    ck ? `last checkpoint: step ${ck.step + 1}, ${ago(ck.time)}` : "no checkpoint yet"].join(" · ");
+}
+
+// ---- charts ----
+function charts(s) {
+  $("charts").innerHTML = "";
+  const perStep = by(s.trials, t => t.step), stepIds = Object.keys(perStep).map(Number).sort((a, b) => a - b);
+  const series = (f, steps = stepIds) => steps.map(k => [k + 1, f(perStep[k], k)]).filter(p => p[1] != null);
+  const evalRate = set => Object.entries(by(s.evals.filter(e => e.set === set), e => e.checkpoint))
+    .map(([c, ts]) => [+c + 1, passRate(ts)]).filter(p => p[1] != null).sort((a, b) => a[0] - b[0]);
+  const base = s.baseline || {}, refs = [["train", "var(--s1)"], ["val", "var(--s2)"], ["test", "var(--s3)"]]
+    .filter(([k]) => base[k] != null).map(([k, color]) => ({name: `base ${k}`, y: base[k], color}));
+  lineChart("Success rate (excluded infra attempts don't count)", [
+    {name: "train (per step)", color: "var(--s1)", points: series(passRate)},
+    {name: "validation (per checkpoint)", color: "var(--s2)", points: evalRate("val")},
+    {name: "test (per checkpoint)", color: "var(--s3)", points: evalRate("test")}], {y0: 0, y1: 1, refs});
+  stackedBars("How attempts ended", stepIds.map(k => [k + 1, Object.fromEntries(OUTCOMES.map(([o]) =>
+    [o, perStep[k].filter(t => t.outcome === o).length]))]), OUTCOMES);
+  const steps = s.steps.map(r => [r.step + 1, r]);
+  const metric = names => steps.map(([x, r]) => [x, pick(r, names)]).filter(p => p[1] != null);
+  lineChart("Training loss", [{name: "loss", color: "var(--s1)", points: metric(LOSS)}]);
+  lineChart("Tasks with a learning signal (0 < passes < 8)", [{name: "tasks", color: "var(--s2)", points: series(ts =>
+    Object.values(by(valid(ts), t => t.task)).filter(g => { const p = g.filter(t => t.outcome === "passed").length;
+      return p > 0 && p < g.length; }).length)}], {y0: 0, y1: 20});
+  for (const [title, names] of HEALTH) lineChart(title, [{name: names[0], color: "var(--s4)", points: metric(names)}]);
+  const perTurn = ts => ts.filter(t => t.turns).map(t => t.tokens_out / t.turns);
+  lineChart("Output tokens per turn", [
+    {name: "mean", color: "var(--s1)", points: series(ts => mean(perTurn(ts)))},
+    {name: "p90", color: "var(--s3)", points: series(ts => quantile(perTurn(ts), 0.9))}], {y0: 0});
+  const turns = ts => ts.filter(t => t.turns != null).map(t => t.turns);
+  lineChart("Turns per trajectory", [
+    {name: "mean", color: "var(--s1)", points: series(ts => mean(turns(ts)))},
+    {name: "p90", color: "var(--s3)", points: series(ts => quantile(turns(ts), 0.9))}], {y0: 0});
+  lineChart("Parse errors per turn", [{name: "rate", color: "var(--bad)", points: series(ts =>
+    sum(turns(ts)) ? sum(ts.map(t => t.parse_errors || 0)) / sum(turns(ts)) : null)}], {y0: 0});
+  const byStep = Object.fromEntries(s.steps.map(r => [r.step, r]));
+  const rolloutMin = (ts, k) => byStep[k]?.t_rollout && (byStep[k].t_rollout - (byStep[k - 1]?.t_end ?? Math.min(...ts.map(t => t.start)))) / 60;
+  lineChart("Time per step (minutes)", [
+    {name: "rollout", color: "var(--s1)", points: series(rolloutMin)},
+    {name: "training", color: "var(--s2)", points: series((ts, k) => byStep[k]?.t_rollout && (byStep[k].t_end - byStep[k].t_rollout) / 60)},
+    {name: "slowest trial", color: "var(--s3)", points: series(ts => Math.max(...ts.map(t => t.end - t.start)) / 60)}], {y0: 0});
+  lineChart("Trials per hour (rollout phase)", [{name: "trials/h", color: "var(--s1)",
+    points: series((ts, k) => { const m = rolloutMin(ts, k); return m ? ts.length / (m / 60) : null; })}], {y0: 0});
+  const host = s.host.filter((_, i) => i % Math.ceil(s.host.length / 400 || 1) === 0), t0 = host[0]?.t;
+  const hostLine = key => host.filter(h => h[key] != null).map(h => [(h.t - t0) / 3600, h[key]]);
+  lineChart("Host memory (GB)", [{name: "GPU", color: "var(--s4)", points: hostLine("gpu_mem_gb")},
+    {name: "RAM", color: "var(--s1)", points: hostLine("ram_used_gb")}], {y0: 0, xLabel: "hours (sampled every 30 s)"});
+  const keys = [...new Set(s.steps.flatMap(Object.keys))].filter(k => !["step", "t_rollout", "t_end"].includes(k)).sort();
+  picked = keys.includes(picked) ? picked : keys.find(k => LOSS.includes(k)) || keys[0];
+  lineChart("Any logged metric", [{name: picked || "–", color: "var(--s1)", points: picked ? metric([picked]) : []}]);
+  const select = document.createElement("select");
+  select.innerHTML = keys.map(k => `<option ${k === picked ? "selected" : ""}>${esc(k)}</option>`).join("");
+  select.onchange = () => { picked = select.value; charts(s); };
+  $("charts").lastChild.querySelector("h2").append(" ", select);
+}
+
+// ---- tables ----
+function heatmap(s) {
+  const perStep = by(s.trials, t => t.step), stepIds = Object.keys(perStep).map(Number).sort((a, b) => a - b);
+  const tasks = s.sets.train, base = (s.baseline || {}).tasks || {};
+  let html = `<table><tr><th>task</th><th class="muted">base</th>${stepIds.map(k => `<th>${k + 1}</th>`).join("")}</tr>`;
+  for (const task of tasks) {
+    html += `<tr><td>${esc(task)}</td><td class="muted">${base[task] != null ? fmt(base[task] * 8, 1) : ""}</td>`;
+    for (const k of stepIds) {
+      const ts = valid(perStep[k].filter(t => t.task === task)), p = ts.filter(t => t.outcome === "passed").length;
+      const f = ts.length ? p / ts.length : 0;
+      html += `<td title="${p}/${ts.length}" style="background:color-mix(in srgb, var(--ok) ${Math.round(f * 85)}%, transparent)">${ts.length ? p : ""}</td>`;
+    }
+    html += "</tr>";
+  }
+  $("heatmap").innerHTML = stepIds.length ? html + "</table>" : `<div class="muted">no training trials yet</div>`;
+}
+function checkpointsTable(s) {
+  const evals = by(s.evals, e => e.checkpoint), rate = (ts, set) => { const v = valid((ts || []).filter(e => e.set === set));
+    return v.length ? `${fmt(passRate(v) * 100, 1)}% (${v.filter(e => e.outcome === "passed").length}/${v.length})` : "–"; };
+  const ids = [...new Set([...s.checkpoints.map(c => c.step), ...Object.keys(evals).map(Number)])].sort((a, b) => a - b);
+  const valOf = id => passRate(valid((evals[id] || []).filter(e => e.set === "val"))) ?? -1;
+  const best = ids.length ? ids.reduce((a, b) => valOf(b) > valOf(a) ? b : a) : null;
+  const saved = Object.fromEntries(s.checkpoints.map(c => [c.step, c.time])), base = s.baseline || {};
+  let html = `<table><tr><th>step</th><th>saved</th><th>validation</th><th>test</th></tr>`;
+  if (base.val != null || base.test != null)
+    html += `<tr class="muted"><td>base (Phase 0)</td><td></td><td>${fmt(base.val * 100, 1)}%</td><td>${fmt(base.test * 100, 1)}%</td></tr>`;
+  for (const id of ids)
+    html += `<tr><td>${id + 1}${id === best && valOf(id) >= 0 ? " ★ best val" : ""}</td><td>${ago(saved[id])}</td>`
+          + `<td>${rate(evals[id], "val")}</td><td>${rate(evals[id], "test")}</td></tr>`;
+  $("checkpoints").innerHTML = ids.length ? html + "</table>" : `<div class="muted">no checkpoints yet</div>`;
+}
+function trialsTable(s) {
+  const color = Object.fromEntries(OUTCOMES), rows = [...s.trials].sort((a, b) => b.end - a.end).slice(0, 50);
+  $("trials").innerHTML = rows.length ? `<table><tr><th>ended</th><th>step</th><th>task</th><th>outcome</th><th>reward</th>`
+    + `<th>turns</th><th>tokens out</th><th>parse errors</th><th>duration</th><th>trial folder</th></tr>` + rows.map(t =>
+      `<tr><td>${new Date(t.end * 1000).toLocaleTimeString()}</td><td>${t.step + 1}</td><td>${esc(t.task)}</td>`
+      + `<td style="color:${color[t.outcome]}">${t.outcome}</td><td>${t.reward ?? "–"}</td><td>${t.turns ?? "–"}</td>`
+      + `<td>${t.tokens_out ?? "–"}</td><td>${t.parse_errors}</td><td>${dur(t.end - t.start)}</td>`
+      + `<td class="muted">${esc(t.dir)}</td></tr>`).join("") + `</table>` : `<div class="muted">no training trials yet</div>`;
+}
+
+function preflight(s) {                                   // latest result of each check, grouped by test
+  const rows = s.preflight || [], latest = {};
+  for (const r of rows) latest[`${r.test}|${r.check}`] = r;
+  $("preflightCard").hidden = !rows.length;
+  const items = Object.values(latest).sort((a, b) => a.test.localeCompare(b.test) || a.t - b.t);
+  $("preflight").innerHTML = `<table><tr><th>test</th><th>check</th><th>result</th><th>value</th><th>when</th></tr>`
+    + items.map(r => `<tr><td>${esc(r.test)}</td><td>${esc(r.check)}</td>`
+      + `<td style="color:${r.ok ? "var(--ok)" : "var(--bad)"};font-weight:600">${r.ok ? "pass" : "FAIL"}</td>`
+      + `<td class="muted" style="white-space:normal">${esc(r.value)}</td><td>${ago(r.t)}</td></tr>`).join("") + `</table>`;
+}
+function sandboxes(s) {                                   // live slots per box + this run's trials per box
+  const live = s.sandboxes, rows = s.dispatch || [];
+  $("sandboxCard").hidden = !live && !rows.length;
+  const perBox = by(rows, r => r.box), boxes = [...new Set([...Object.keys(live?.boxes || {}), ...Object.keys(perBox)])].sort();
+  const waits = rows.map(r => r.start - r.queued);
+  let html = live ? `<div class="muted">${live.status === "ok" ? "dispatcher up" : `<span class="bad">dispatcher: ${esc(live.status)}</span>`}`
+    + ` · waiting ${live.waiting} · finished ${live.done}</div>` : `<div class="bad">dispatcher not answering</div>`;
+  html += `<div class="muted">queue wait p50 ${dur(quantile(waits, .5))}, p90 ${dur(quantile(waits, .9))} (${rows.length} trials)</div>`;
+  html += `<table><tr><th>box</th><th>up</th><th>running</th><th>free</th><th>finished</th><th>infra errors</th><th>median trial</th></tr>`
+    + boxes.map(b => { const l = live?.boxes?.[b] || {}, rs = perBox[b] || [], up = live?.boxes_up?.[b];
+      return `<tr><td>${esc(b)}</td><td style="color:${up ? "var(--ok)" : "var(--bad)"}">${up == null ? "–" : up ? "yes" : "NO"}</td>`
+        + `<td>${l.running ?? "–"}</td><td>${l.free ?? "–"}</td><td>${rs.length}</td>`
+        + `<td class="${rs.some(r => String(r.exit_status).startsWith("Error")) ? "bad" : ""}">${rs.filter(r => String(r.exit_status).startsWith("Error")).length}</td>`
+        + `<td>${dur(quantile(rs.map(r => r.end - r.start), .5))}</td></tr>`; }).join("") + `</table>`;
+  $("sandboxes").innerHTML = html;
+}
+
+function render(s, snapshot = false) {
+  $("run").textContent = `Training Tracker: ${s.run}`;
+  header(s, snapshot); health(s); charts(s); preflight(s); sandboxes(s); heatmap(s); checkpointsTable(s); trialsTable(s);
+}
+if (location.protocol !== "file:") { load(); timer = setInterval(load, 30000); }
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+ "password-recovery": 15.7,
+ "crack-7z-hash": 25.6,
+ "large-scale-text-editing": 21.2,
+ "count-dataset-tokens": 10.7,
+ "financial-document-processor": 17.3,
+ "sparql-university": 13.6,
+ "mailman": 29.9,
+ "cancel-async-tasks": 7.8,
+ "configure-git-webserver": 3.3,
+ "sqlite-with-gcov": 7.3,
+ "write-compressor": 16.1,
+ "sanitize-git-repo": 15.5,
+ "polyglot-c-py": 11.7,
+ "largest-eigenval": 11.9,
+ "overfull-hbox": 14.2,
+ "db-wal-recovery": 15.6,
+ "dna-insert": 29.7,
+ "mteb-retrieve": 7.2,
+ "adaptive-rejection-sampler": 16.6,
+ "polyglot-rust-c": 16.1
+}

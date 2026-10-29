@@ -1,0 +1,20 @@
+[project]
+name = "aees-post-training"
+version = "0.1.0"
+description = "Host-side tools for LoRA SFT + GRPO of Qwen3.6-27B with Miles (see PLAN.md)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "transformers==5.19.0",   # same version as the Miles image, so tokenization matches the trainer
+    "jinja2>=3.1",            # chat templates
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "torch>=2.5",            # proto/ tests run the training load on CPU
+    "safetensors>=0.4",      # proto/adapter.py
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]           # tests import sft.* and grpo.* from this folder
