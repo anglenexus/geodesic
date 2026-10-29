@@ -1,0 +1,13 @@
+password-recovery
+crack-7z-hash
+large-scale-text-editing
+count-dataset-tokens
+financial-document-processor
+sparql-university
+mailman
+cancel-async-tasks
+configure-git-webserver
+write-compressor
+polyglot-c-py
+dna-insert
+adaptive-rejection-sampler

@@ -90,9 +90,10 @@ def ec2_status(r: dict) -> tuple[dict, str | None]:
             end = stopped_at
         hours = max(0.0, (end - dt.datetime.fromisoformat(launched)).total_seconds() / 3600)
         known = st == "running" or stopped_at is not None
-        ec2.update(state=st, launch_time=launched, hours=round(hours, 3),
+        prior = r.get("prior_compute_usd", 0)  # compute billed before a stop/start (uptime restarts at each start)
+        ec2.update(state=st, launch_time=launched, hours=round(hours, 3), prior_compute_usd=prior,
                    stopped_at=stopped_at.isoformat() if stopped_at else None,
-                   cost_usd=round(hours * r["hourly_usd"], 2) if known and r.get("hourly_usd") else None)
+                   cost_usd=round(hours * r["hourly_usd"] + prior, 2) if known and r.get("hourly_usd") else None)
     else:
         return ec2, f"aws: {aws.stderr.strip()[:200]}"
     return ec2, None

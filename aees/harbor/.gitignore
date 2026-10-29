@@ -31,3 +31,7 @@ state/remotes.json
 state/remote/
 state/remote_sync.log
 state/ec2_checks_local.md
+# per-run plan copies, check logs and scheduler output (the templates live in ec2/)
+state/schedule_*.json
+state/*_checks.md
+state/scheduler_*.stdout
