@@ -70,7 +70,12 @@ def _ssh(r: dict) -> list[str]:
 
 
 def _run(cmd: list[str], timeout: int = 600, **kw) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    """Run a step; a timeout becomes a failed step (returncode 124) instead of aborting the whole sync.
+    (A host under heavy disk load can take minutes to answer `docker stats`; the job mirror must still sync.)"""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, stdout="", stderr=f"timed out after {timeout}s")
 
 
 def ec2_status(r: dict) -> tuple[dict, str | None]:
