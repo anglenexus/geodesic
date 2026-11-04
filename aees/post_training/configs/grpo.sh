@@ -21,6 +21,14 @@ GRPO_ARGS=(
   --eps-clip 0.2 --loss-type policy_loss          # no --eps-clip-high (§3d)
   --kl-loss-coef 0 --kl-coef 0 --entropy-coef 0   # no extras (D7)
 )
+# Auxiliary reward (aees/reward/auxiliary_reward_first_run_plan.md): every generated token's advantage gets
+# + β·(Q(s,x) − Σ_a π(a|s)·Q(s,a)), Q = the Q-function's raw logits: the base + its PEFT adapter (setup.sh step 10),
+# swapped into the policy's LoRA for the teacher pass; exact baseline V(s) under π, no entropy term
+# (grpo/aux_reward.patch: --opd-teacher-lora-path, --opd-baseline exact). β from aq_report.py. Off by default.
+if [ "${AUX:-0}" = 1 ]; then
+  GRPO_ARGS+=(--use-opd --opd-type megatron --opd-teacher-lora-path "/root/models/${Q_TEACHER:-qfunc_adapter}"
+              --opd-kl-coef "${AUX_BETA:?set AUX_BETA (aq_report.py beta_b1)}" --opd-baseline exact)
+fi
 OPTIM_ARGS=(
   --optimizer adam --lr 1e-5 --lr-decay-style constant     # §3a
   --adam-beta1 0.9 --adam-beta2 0.98 --adam-eps 1e-8 --weight-decay 0
@@ -58,6 +66,7 @@ AGENT_ARGS=(
   --custom-rm-path generate.reward_func                    # reward = the verifier's, from the agent server
   --rollout-function-path generate.RolloutFn               # Miles' rollout + agent timing metrics
   --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted
+  --resubmit-dropped-groups 3                              # a dropped group reruns its own task (resubmit_group.patch)
   --custom-reward-post-process-path grpo.infra_filter.post_process_rewards   # infra out per attempt (§8 item 6)
   --tito-model qwen36                                      # Qwen3.6 token stream with preserve_thinking (D9)
   --use-session-server --session-server-port 30000 --session-server-workers 16   # ports 30000-30015

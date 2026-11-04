@@ -1,0 +1,332 @@
+diff --git a/miles/backends/megatron_utils/actor.py b/miles/backends/megatron_utils/actor.py
+index bc1eb7fb1e..6d48467296 100644
+--- a/miles/backends/megatron_utils/actor.py
++++ b/miles/backends/megatron_utils/actor.py
+@@ -734,6 +734,21 @@ class MegatronTrainRayActor(TrainRayActor):
+                             store_prefix="teacher_",
+                         )
+                     )
++                # Teacher = the same base + an HF/PEFT LoRA (--opd-teacher-lora-path): only the adapter tensors are
++                # swapped in and back, so no full-model teacher or actor copies are kept in host memory.
++                if self.args.opd_teacher_lora_path:
++                    from miles.backends.megatron_utils.aux_q import teacher_lora
++
++                    self._set_replay_stage("fallthrough")
++                    with teacher_lora(self.model, self.args.opd_teacher_lora_path):
++                        rollout_data.update(
++                            self._compute_log_prob(
++                                data_iterator,
++                                num_microbatches,
++                                rollout_id=rollout_id,
++                                store_prefix="teacher_",
++                            )
++                        )
+                 self._switch_model("old_actor" if self.args.keep_old_actor else "actor")
+                 if not skip_actor_forward_only and (
+                     not self.args.use_rollout_logprobs or self.args.get_mismatch_metrics
+diff --git a/miles/backends/megatron_utils/aux_q.py b/miles/backends/megatron_utils/aux_q.py
+new file mode 100644
+index 0000000000..49486e6eef
+--- /dev/null
++++ b/miles/backends/megatron_utils/aux_q.py
+@@ -0,0 +1,121 @@
++"""--opd-baseline exact (aees auxiliary reward): the teacher's per-token advantage against the policy,
++
++    A^Q(s, x) = Q(s, x) − Σ_a π(a|s)·Q(s, a)
++
++Q = the teacher's raw logits (the Q-function: no softmax), π = softmax(policy logits / rollout temperature), at the
++same position; Σ_a π·Q = V(s) under π, so the baseline is exact. The two logit vectors come from different passes over
++the same micro-batches in the same order (actor.py: the teacher pass, then the policy's old-log-prob pass). Full
++logits are too large to keep, so the teacher pass saves each micro-batch's final hidden states (the output layer's
++input) and the policy pass recomputes Q = W·h, W the weight the output layer is called with (Megatron passes the
++embedding there when the model ties them). The output layer is shared: LoRA doesn't adapt it and the teacher is the
++base with an adapter merged into the adapted projections. Tensor, context and pipeline parallel size 1 only.
++"""
++import os
++import shutil
++from contextlib import contextmanager
++from pathlib import Path
++
++import torch
++
++
++def aq_rows(z_pi: torch.Tensor, h_q: torch.Tensor, weight: torch.Tensor, targets: torch.Tensor,
++            temperature: float = 1.0, vocab: int | None = None, chunk: int = 1024) -> torch.Tensor:
++    """A^Q for R rows: z_pi (R, V) policy logits, h_q (R, H) teacher hidden states, weight (V, H), targets (R,).
++    fp32, in chunks of rows (one chunk's two (chunk, V) blocks at a time)."""
++    out = []
++    for i in range(0, targets.shape[0], chunk):
++        zp, zq = z_pi[i:i + chunk].float(), (h_q[i:i + chunk] @ weight.T).float()
++        if vocab is not None:
++            zp, zq = zp[:, :vocab], zq[:, :vocab]
++        pi = torch.softmax(zp / temperature, dim=-1)
++        out.append(zq.gather(-1, targets[i:i + chunk, None].long()).squeeze(-1) - (pi * zq).sum(-1))
++    return torch.cat(out) if out else z_pi.new_zeros(0, dtype=torch.float32)
++
++
++def per_sample(logits, aux_hidden, aux_weight, *, args, unconcat_tokens, total_lengths, response_lengths,
++               max_seq_lens=None) -> list[torch.Tensor]:
++    """A^Q on each sample's response rows, sliced exactly as the log-probs are (get_responses on both tensors)."""
++    from miles.backends.training_utils.loss.hub.logit_processors import get_responses
++
++    kw = dict(args=args, unconcat_tokens=unconcat_tokens, total_lengths=total_lengths,
++              response_lengths=response_lengths, max_seq_lens=max_seq_lens)
++    out = []
++    for (z_pi, x), (h_q, x_h) in zip(get_responses(logits, **kw), get_responses(aux_hidden, **kw), strict=True):
++        assert torch.equal(x, x_h) and z_pi.shape[0] == h_q.shape[0]
++        out.append(aq_rows(z_pi, h_q, aux_weight, x, args.rollout_temperature, getattr(args, "vocab_size", None)))
++    return out
++
++
++def _output_layer(model) -> torch.nn.Module:
++    found = [m for name, m in model[0].named_modules() if name.split(".")[-1] == "output_layer"]
++    assert len(found) == 1, f"expected one output_layer, found {len(found)}"
++    return found[0]
++
++
++class AuxQ:
++    """One forward_only pass: 'teacher' saves hidden states per micro-batch, 'policy' loads them in the same order."""
++
++    def __init__(self, model, mode: str, directory: Path):
++        self.mode, self.dir, self.k, self.captured = mode, directory, 0, []
++        self.layer = _output_layer(model)
++        self.hook = self.layer.register_forward_pre_hook(self._capture, with_kwargs=True)
++
++    def _capture(self, module, inputs, kwargs):
++        weight = kwargs.get("weight")
++        self.captured.append((inputs[0], module.weight if weight is None else weight))
++
++    def after_forward(self, output_tensor: torch.Tensor) -> dict:
++        """Called after each micro-batch's forward; returns extra callback kwargs (policy pass) or {}."""
++        assert self.captured, "the output layer didn't run"
++        h, weight = self.captured[0]                         # the main head's call (MTP heads would come after)
++        h = h.transpose(0, 1)                                # [S, 1, H] -> [1, S, H]
++        self.captured.clear()
++        assert h.shape[:2] == output_tensor.shape[:2], f"{h.shape} vs {output_tensor.shape}"
++        path, self.k = self.dir / f"{self.k}.pt", self.k + 1
++        if self.mode == "teacher":
++            torch.save(h.detach().to("cpu"), path)
++            return {}
++        h_q = torch.load(path).to(output_tensor.device)
++        assert h_q.shape == h.shape, f"micro-batch {self.k - 1}: teacher {tuple(h_q.shape)} vs policy {tuple(h.shape)}"
++        assert weight is not None, "the output layer has no weight"
++        return {"aux_hidden": h_q, "aux_weight": weight}
++
++    def end(self) -> None:
++        self.hook.remove()
++        if self.mode == "teacher":
++            (self.dir / "count").write_text(str(self.k))
++        else:
++            n = int((self.dir / "count").read_text())
++            assert self.k == n, f"policy pass ran {self.k} micro-batches, teacher pass {n}"
++            shutil.rmtree(self.dir, ignore_errors=True)
++
++
++def begin(args, model, store_prefix: str) -> AuxQ | None:
++    if getattr(args, "opd_baseline", None) != "exact" or store_prefix not in ("teacher_", ""):
++        return None
++    directory = Path(os.environ.get("MILES_AUX_Q_DIR", "/tmp/miles_aux_q"))
++    if store_prefix == "teacher_":
++        shutil.rmtree(directory, ignore_errors=True)
++        directory.mkdir(parents=True)
++        return AuxQ(model, "teacher", directory)
++    assert (directory / "count").exists(), "--opd-baseline exact: the policy pass needs the teacher pass first"
++    return AuxQ(model, "policy", directory)
++
++
++@contextmanager
++def teacher_lora(model, adapter_path: str):
++    """--opd-teacher-lora-path: the policy's adapter tensors are saved (on the GPU, ~0.6 GB at rank 64 on 27B), the
++    teacher's HF/PEFT adapter is loaded into the same modules, and the policy's tensors are copied back afterwards,
++    whatever happens in between."""
++    from miles.backends.megatron_utils.lora.native.hf_adapter import load_lora_adapter_hf
++    from miles.backends.megatron_utils.lora.utils import _adapter_shard_params
++
++    params = _adapter_shard_params(model)
++    saved = {name: p.detach().clone() for name, p in params.items()}
++    try:
++        load_lora_adapter_hf(model, adapter_path)
++        yield
++    finally:
++        with torch.no_grad():
++            for name, p in params.items():
++                p.copy_(saved[name])
+diff --git a/miles/backends/megatron_utils/model.py b/miles/backends/megatron_utils/model.py
+index 792f55b0bd..ebf03c0262 100644
+--- a/miles/backends/megatron_utils/model.py
++++ b/miles/backends/megatron_utils/model.py
+@@ -377,9 +377,15 @@ def forward_only(
+         )
+         if use_rollout_sampling_mask:
+             callback_kwargs["rollout_sampling_mask"] = rollout_sampling_mask
++        if aux is not None:
++            callback_kwargs.update(aux.after_forward(output_tensor))
+ 
+         return output_tensor, partial(f, **callback_kwargs)
+ 
++    from miles.backends.megatron_utils import aux_q
++
++    aux = aux_q.begin(args, model, store_prefix)   # --opd-baseline exact: teacher hidden states -> policy pass
++
+     # Turn on evaluation mode which disables dropout.
+     for model_module in model:
+         model_module.eval()
+@@ -411,6 +417,8 @@ def forward_only(
+     # Move model back to the train mode.
+     for model_module in model:
+         model_module.train()
++    if aux is not None:
++        aux.end()
+ 
+     dumper_phase_util.finalize(model)
+ 
+diff --git a/miles/backends/training_utils/loss/hub/logit_processors.py b/miles/backends/training_utils/loss/hub/logit_processors.py
+index c84d2fe1e6..67aec56a03 100644
+--- a/miles/backends/training_utils/loss/hub/logit_processors.py
++++ b/miles/backends/training_utils/loss/hub/logit_processors.py
+@@ -142,6 +142,8 @@ def get_log_probs_and_entropy(
+     non_loss_data: bool = True,
+     max_seq_lens: list[int] | None = None,
+     rollout_sampling_mask: Sequence[RolloutSamplingMask] | None = None,
++    aux_hidden: torch.Tensor | None = None,
++    aux_weight: torch.Tensor | None = None,
+ ) -> dict[str, list[torch.Tensor]]:
+     """Compute per-token log-probabilities (and optionally entropy) on responses.
+ 
+@@ -172,6 +174,12 @@ def get_log_probs_and_entropy(
+         a list of `[R]` tensors.
+     """
+     assert non_loss_data
++    aux_q = None
++    if aux_hidden is not None:   # --opd-baseline exact, policy pass (megatron_utils/aux_q.py); before the log-probs
++        from miles.backends.megatron_utils.aux_q import per_sample
++
++        aux_q = per_sample(logits, aux_hidden, aux_weight, args=args, unconcat_tokens=unconcat_tokens,
++                           total_lengths=total_lengths, response_lengths=response_lengths, max_seq_lens=max_seq_lens)
+     if rollout_sampling_mask is not None:
+         for sample_index, (sampling_mask, response_length) in enumerate(
+             zip(rollout_sampling_mask, response_lengths, strict=True)
+@@ -217,6 +225,8 @@ def get_log_probs_and_entropy(
+             max_seq_lens=max_seq_lens,
+         )
+ 
++    if aux_q is not None:
++        res["aux_q"] = aux_q
+     return res
+ 
+ 
+diff --git a/miles/backends/training_utils/loss/hub/opd.py b/miles/backends/training_utils/loss/hub/opd.py
+index 2635604bcc..e1ae1336a0 100644
+--- a/miles/backends/training_utils/loss/hub/opd.py
++++ b/miles/backends/training_utils/loss/hub/opd.py
+@@ -31,6 +31,9 @@ def apply_opd_kl_to_advantages(
+         return
+ 
+     precomputed_reverse_kls = rollout_data.get("opd_reverse_kl")
++    if getattr(args, "opd_baseline", "student_logp") == "exact":
++        apply_opd_exact_to_advantages(args, rollout_data, advantages, student_log_probs)
++        return
+     if precomputed_reverse_kls is not None:
+         if len(advantages) != len(precomputed_reverse_kls):
+             raise ValueError(
+@@ -92,3 +95,28 @@ def apply_opd_kl_to_advantages(
+ 
+     # Store reverse KL for logging.
+     rollout_data["opd_reverse_kl"] = reverse_kls
++
++
++def apply_opd_exact_to_advantages(
++    args: Namespace,
++    rollout_data: RolloutBatch,
++    advantages: list[torch.Tensor],
++    student_log_probs: list[torch.Tensor],
++) -> None:
++    """--opd-baseline exact: advantages += opd_kl_coef * A^Q per response token, A^Q = Q(s, x) − Σ_a π(a|s)·Q(s, a)
++    from the teacher's raw logits and the policy's distribution (megatron_utils/aux_q.py, rollout_data["aux_q"]).
++    No entropy term. The sampled-token reverse KL (student_logp − teacher_logp) is still stored for logging."""
++    aux_q = rollout_data.get("aux_q")
++    teacher_log_probs = rollout_data.get("teacher_log_probs")
++    if aux_q is None or teacher_log_probs is None:
++        raise ValueError("--opd-baseline exact needs aux_q and teacher_log_probs (teacher pass, then policy pass).")
++    if not (len(advantages) == len(aux_q) == len(student_log_probs) == len(teacher_log_probs)):
++        raise ValueError(f"OPD length mismatch: advantages={len(advantages)}, aux_q={len(aux_q)}.")
++    reverse_kls = []
++    for i, adv in enumerate(advantages):
++        a = aux_q[i].detach().to(device=adv.device, dtype=adv.dtype)
++        if a.shape != adv.shape:
++            raise ValueError(f"OPD shape mismatch at sample {i}: advantages={tuple(adv.shape)}, aux_q={tuple(a.shape)}.")
++        advantages[i] = adv + args.opd_kl_coef * a
++        reverse_kls.append(student_log_probs[i].detach() - teacher_log_probs[i].detach().to(adv.device))
++    rollout_data["opd_reverse_kl"] = reverse_kls
+diff --git a/miles/ray/specs/train.py b/miles/ray/specs/train.py
+index 53b23952f0..c1227e859f 100644
+--- a/miles/ray/specs/train.py
++++ b/miles/ray/specs/train.py
+@@ -59,7 +59,8 @@ def specs_trainer_controller(args) -> list[ServeWorkerSpec]:
+                 with_ref=(config.role != CRITIC_ROLE) and (trainer_args.kl_coef != 0 or trainer_args.use_kl_loss),
+                 with_opd_teacher=(config.role != CRITIC_ROLE)
+                 and trainer_args.use_opd
+-                and trainer_args.opd_type == "megatron",
++                and trainer_args.opd_type == "megatron"
++                and not trainer_args.opd_teacher_lora_path,   # a LoRA teacher is swapped in, not loaded as a model
+             )
+         )
+     return specs
+diff --git a/miles/utils/arguments.py b/miles/utils/arguments.py
+index 32860e8d78..9cc15c0900 100644
+--- a/miles/utils/arguments.py
++++ b/miles/utils/arguments.py
+@@ -1930,6 +1930,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
+                 default=1.0,
+                 help="On-policy distillation KL penalty coefficient. Default is 1.0.",
+             )
++            parser.add_argument(
++                "--opd-baseline",
++                type=str,
++                choices=["student_logp", "exact"],
++                default="student_logp",
++                help=(
++                    "'student_logp': default OPD, advantages -= coef * (log pi(x) - log p_teacher(x)). 'exact' (aees "
++                    "auxiliary reward): advantages += coef * (Q(s,x) - sum_a pi(a|s) Q(s,a)), Q = the teacher's raw "
++                    "logits; the baseline is V(s) under pi, no entropy term. Megatron teacher, TP = CP = PP = 1."
++                ),
++            )
+             parser.add_argument(
+                 "--opd-log-prob-top-k",
+                 type=int,
+@@ -2001,6 +2012,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
+             parser.add_argument(
+                 "--opd-teacher-ckpt-step", type=int, default=None, help="The checkpoint step for OPD teacher model."
+             )
++            parser.add_argument(
++                "--opd-teacher-lora-path",
++                type=str,
++                default=None,
++                help=(
++                    "OPD teacher = the policy's base + this HF/PEFT LoRA adapter (same rank and targets as the "
++                    "policy's). Its tensors are swapped into the policy's adapters for the teacher pass and back, "
++                    "instead of --opd-teacher-load's full model (no host copies of the model). Megatron, native LoRA."
++                ),
++            )
+             return parser
+ 
+         def add_router_arguments(parser):
+@@ -3645,7 +3666,17 @@ def miles_validate_args(args):
+ 
+             parse_teacher_urls(args.opd_teacher_urls)  # fail fast on malformed/duplicate entries
+ 
+-        if args.opd_type == "megatron":
++        if args.opd_baseline == "exact":
++            if args.opd_type != "megatron" or args.opd_log_prob_top_k > 0 or args.true_on_policy_mode:
++                raise ValueError("--opd-baseline exact needs --opd-type megatron, no top-k, no true-on-policy mode.")
++            if (args.tensor_model_parallel_size, args.context_parallel_size, args.pipeline_model_parallel_size) != (1, 1, 1):
++                raise ValueError("--opd-baseline exact supports TP = CP = PP = 1 only.")
++        if args.opd_teacher_lora_path is not None:
++            if args.opd_type != "megatron" or args.opd_teacher_load is not None:
++                raise ValueError("--opd-teacher-lora-path needs --opd-type megatron and no --opd-teacher-load.")
++            if not os.path.exists(os.path.join(args.opd_teacher_lora_path, "adapter_model.safetensors")):
++                raise FileNotFoundError(f"no adapter_model.safetensors under {args.opd_teacher_lora_path}")
++        elif args.opd_type == "megatron":
+             if args.opd_teacher_load is None:
+                 raise ValueError(
+                     "--opd-teacher-load is required when --opd-type=megatron. "

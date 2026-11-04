@@ -20,6 +20,7 @@ if [ "${2:-}" != inside ]; then
     -v "$HERE:/root/post_training" -v "$DATA/cache:/root/.cache" \
     -e SAVE_DIR -e SFT_DATA -e PROMPT_DATA -e NUM_ROLLOUT -e INIT_ADAPTER -e SGLANG_MEM -e AGENT_SERVER_URL \
     -e MODEL -e MODEL_TYPE -e MAX_LEN -e SAVE_INTERVAL -e ROLLOUT_BATCH -e N_SAMPLES -e GLOBAL_BATCH -e SGLANG_EXTRA -e RESUME_FROM \
+    -e AUX -e AUX_BETA -e Q_TEACHER \
     "$MILES_IMAGE" bash /root/post_training/scripts/run.sh "$MODE" inside
 fi
 

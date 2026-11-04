@@ -3,7 +3,8 @@
 # scripts/backup.sh (optimizer state included, for RESUME_FROM), and check every file's size in the destination.
 # Writes $DATA/monitor/$RUN/backup_status: BACKUP_OK, or BACKUP_INCOMPLETE with the missing files. On BACKUP_OK,
 # terminates the EC2 sandbox boxes listed in ~/aees_box_ids (their trials are in the backup), then, if
-# NEBIUS_INSTANCE_ID is set and the nebius CLI is authorized, deletes this H200 permanently.
+# NEBIUS_INSTANCE_ID is set and the nebius CLI is authorized, deletes this H200 permanently. The status always goes
+# to S3 (<run>/monitor/backup_status), where the laptop's scripts/teardown_watch.sh deletes the H200 on BACKUP_OK.
 #
 #   RUN=grpo10h_1026_1924 DEST=s3://aees-grpo-backups-611728564241 bash scripts/finish.sh          # now
 #   RUN=... DEST=... WAIT_FOR=train bash scripts/finish.sh     # first wait until tmux session "train" ends
@@ -54,6 +55,10 @@ print("\n".join(bad))
 PY
 mv "$STATUS.tmp" "$STATUS"
 cat "$STATUS"
+# The laptop's teardown watcher reads this from S3 and deletes the H200 on BACKUP_OK, so it goes up whatever happens
+# next (the H200's own delete below needs an authorized nebius CLI, which a run may not have).
+publish() { aws s3 cp "$STATUS" "$DEST/$RUN/monitor/backup_status" --only-show-errors || true; }
+publish
 if head -1 "$STATUS" | grep -qx BACKUP_OK && [ -s "${BOX_IDS_FILE:-$HOME/aees_box_ids}" ]; then
   aws ec2 terminate-instances --region "${REGION:-us-east-2}" --instance-ids $(cat "${BOX_IDS_FILE:-$HOME/aees_box_ids}") \
     --query 'TerminatingInstances[].CurrentState.Name' --output text | sed 's/^/EC2 boxes: /' | tee -a "$STATUS"
@@ -61,9 +66,9 @@ fi
 if head -1 "$STATUS" | grep -qx BACKUP_OK && [ -n "${NEBIUS_INSTANCE_ID:-}" ]; then
   if nebius compute instance get --id "$NEBIUS_INSTANCE_ID" >/dev/null 2>&1; then
     echo "deleting H200 $NEBIUS_INSTANCE_ID $(date -u +%FT%TZ)" | tee -a "$STATUS"
-    aws s3 cp "$STATUS" "$DEST/$RUN/monitor/backup_status" --only-show-errors || true   # last word, kept in S3
+    publish                                              # last word, kept in S3
     nebius compute instance delete --id "$NEBIUS_INSTANCE_ID" --async </dev/null 2>&1 | tail -2 | tee -a "$STATUS"   # also its managed disks
   else
-    echo "H200 not deleted: nebius CLI not authorized (nebius profile create)" | tee -a "$STATUS"
+    echo "H200 not deleted here: nebius CLI not authorized; the laptop's watcher deletes it" | tee -a "$STATUS"
   fi
 fi

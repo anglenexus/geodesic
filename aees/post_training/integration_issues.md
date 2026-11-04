@@ -6,6 +6,24 @@ write the state here, and decide with the user. Don't start the 10-hour run on a
 
 Once a fix is confirmed, move what works into `dist_setup.md`.
 
+## Read first: open reliability issues of the Harbor EC2 sandboxes (details in the dated entries below)
+
+1. **Cancelled trials leak their containers** on the boxes (agent server kills the worker before `compose down`).
+   Worked around: `scripts/ec2_sandboxes.sh reap <run> 120` from the laptop for the whole run. Proper fix is in
+   harbor-miles (register the compose project before the worker starts). Entry: 2026-11-03, containers.
+2. **terminus-2 installs tmux + asciinema from the internet in every trial** (p50 25 s, limit 120 s); over the limit
+   the trial aborts with no model call. Fixed: `setup.sh` step 8 runs `scripts/bake_tools.py` (tools baked into the
+   task images; setup 1.7 s). Check a new box's `prepare` log says "0 failed". Entry: 2026-11-03, agent setup.
+3. **One aborted trial makes Miles re-run a whole batch (20 tasks x 8 = 160 trials) to replace one group of 8**, and
+   the replacement is a different task. Miles requires `--over-sampling-batch-size >= --rollout-batch-size`, so a
+   flag can't fix it. Fixed: `grpo/resubmit_group.patch` + `--resubmit-dropped-groups 3` reruns the dropped task
+   only. Entry: 2026-11-03, refill.
+4. **The boxes shut themselves down `TTL_MIN` after launch (default 900 = 15 h), mid-run if the run outlives them**;
+   every running trial then aborts and Miles stops after the reruns. Fixed: `launch.sh` runs `scripts/box_check.sh`
+   after the tunnels are up and starts nothing unless every box answers through its tunnel and shuts down at least
+   (steps left x STEP_MIN + MARGIN_MIN) minutes later. Before a resume, also compare the boxes' launch time + TTL
+   with the projected finish. Entry: 2026-11-03, box shutdown.
+
 ## Format
 
 ```
@@ -228,3 +246,102 @@ below are in the scripts, and a new failure becomes a new entry.
 - The training launch was a hand-typed chain of six tmux sessions; one partial copy had already cost a restart.
 - Fix: `scripts/launch.sh` (H200) starts links, tracker, train, deadline, hourly and finish. It refuses to start
   over a running train and checks that the adapter exists. kickoff now serves the agent servers in normal mode.
+
+## Auxiliary-reward run auxr_1103_0033 (2026-11-03, H200 + 2 x m7a.8xlarge, 32 trials each)
+
+### 2026-11-03 auxr_1103_0033: cancelled trials leave their containers running
+- Seen: after steps 4 and 7 (each sent a second batch and cancelled the rest), 64 and 62 trial containers on the two
+  boxes from long-cancelled trials, next to the 32 live ones; one cancelled `password-recovery` kept a core busy for an hour.
+- Cause (verified in harbor-miles on the boxes): on `/flush` the agent server cancels the `/run` task and kills its
+  worker process (`agent_server/trial_runner.py` ~461-467) before the worker's `compose down`. The compose project is
+  only registered from the worker's reply, so `/flush_all` (`agent_server/teardown.py` `_kill_trial_containers`) can't
+  find it either. Vanilla ran the same code and also cancelled batches (steps 5, 6).
+- Fix: `scripts/ec2_sandboxes.sh reap <run> [secs]` runs `compose down --volumes` for every trial project created
+  before Miles' latest `rollout K:` log line (all of that rollout's trials have ended or been cancelled by then); run
+  every 120 s from the laptop during the run (`state/reap.log`). First pass removed 65 + 63 projects; live trials untouched.
+  Proper fix (harbor-miles): register the compose project before the worker starts, or tear down on cancel.
+  A stop + resume also leaves the stopped attempt's trials running (61 containers after the step-9 resume, which
+  wrote no 'rollout K:' line), so the cutoff is the later of that line and Miles' last start line.
+- Time lost: none (CPU only).    Status: worked around
+
+### 2026-11-03 auxr_1103_0033: agent setup over 120 s (tmux install) aborts a trial, its group, and costs a refill
+- Seen: step 4 `sanitize-git-repo` "RuntimeError: Command timed out after 120 seconds" (agent setup 120.4 s);
+  step 7 `dna-insert` "Failed to start tmux session. Error: None" (agent setup 128 s). No model call, so Miles marks the
+  trial ABORTED and `check_no_aborted` drops the whole group, then sends a second 160-trial batch to replace it.
+- Cause: terminus-2 installs tmux (and asciinema) into every task container with apt-get from the internet, with a
+  120 s limit (`tmux_session.py` `_TOOL_INSTALL_TIMEOUT_SEC`). Over 1,321 trials: p50 25 s, p90 30 s, p99 83 s,
+  2 over 120 s. Slow setups come in bursts: 13:26-13:31 (4 trials at 106-120 s with only 2-14 setups starting at
+  once, so the mirror or network was slow) and the 64-at-once start waves (17:07 one at 128 s; 17:48 all ~80 s).
+  mteb-retrieve's image already has the tools (1.6 s). The infra filter (`grpo/infra_filter.py`) would mask just the
+  attempt, but Miles' group filter runs first and these are RuntimeErrors, not AgentSetupTimeoutError.
+- Cost: each drop's refill added ~30 min to the rollout (step 4: 81 min, step 7: 80 min, vs ~50).
+- Fix (next run; the live run keeps its images): `scripts/bake_tools.py` rebuilds each task image under the same name
+  with tmux + asciinema (one layer, original USER kept); `setup.sh` step 8 runs it after the pre-pull, so every
+  `ec2_box.sh prepare` gets it. terminus-2 then skips its install (`tmux -V` and `asciinema --version` pass).
+- Tested: rehearsal (`TASKS=<the 20> bash scripts/rehearse.sh`, fresh box): 19 baked, mteb-retrieve already had them,
+  0 failed; one real trial per task, agent setup 1.7-1.8 s for all 20 (was p50 25 s, max 128 s), no AgentError.
+  15 of 20 ended in VerifierTimeoutError: the rehearsal's t3 mode caps the verifier at 60 s and these tasks'
+  verifiers take 49-131 s in the live run on the original images, so that's the cap, not the bake.
+- Time lost: none.    Status: fixed for the next run (box setup); the 120 s limit itself is unchanged
+- auxr_1103_0033: applied to the live boxes between steps 9 and 10 (21:23-21:25 UTC, after step 9's rollout closed,
+  before step 10's trials): each box 19 baked, 1 had the tools, 0 failed; all 40 images verified (`tmux -V`,
+  `asciinema --version`). Steps 1-9 ran on the original images, step 10 on the baked ones.
+
+### 2026-11-03 auxr_1103_0033: one aborted trial re-runs a whole batch of 160 to replace one group of 8
+- Seen: steps 4, 7 and 9 (and vanilla steps 5, 6): one aborted trial -> its group of 8 dropped -> 160 more trials
+  sent (dispatcher: 64 running + ~96 queued); the first clean group to finish is kept, the rest cancelled.
+- Cause (Miles `sglang_rollout.generate_rollout_async`): the `check_no_aborted` dynamic filter drops the group and
+  the loop refills with `data_source(over_sampling_batch_size)`; that defaults to `rollout_batch_size` (20 prompts)
+  and `arguments.py` asserts `over_sampling_batch_size >= rollout_batch_size`. The data source hands out the next
+  prompts, not the dropped one, so the kept group is whichever task finishes first: step 4 trained two
+  db-wal-recovery groups and no sanitize-git-repo, step 7 two large-scale-text-editing and no dna-insert, step 9
+  replaced a 6/8 sqlite-with-gcov group with a second write-compressor group at 0/8 (step 9: 38/160 instead of
+  ~44). "First to finish" favors tasks whose trials all hit a fixed time limit together, which the dispatcher also
+  starts first (longest first): write-compressor's 8 all timed out at ~17 min and completed before any other group.
+- Cost: ~30 min per drop (rollout 80 min vs ~50), 152 wasted trials, the cancelled trials' leaked containers (above),
+  and a task-mix shift in that step's update.
+- Not chosen: removing `check_no_aborted` and masking just the aborted attempt in `grpo/infra_filter.py`
+  (judged hacky).
+- Fix: `grpo/resubmit_group.patch` (applied by `setup.sh` step 6 after aux_reward.patch) adds
+  `--resubmit-dropped-groups N` to Miles' `inference_rollout_train.generate_rollout_async` (the loop our
+  `generate.RolloutFn` runs; `sglang_rollout.py` has a copy of the loop that we don't use): a dropped group is rerun
+  with a copy of its own prompt as submitted, as many groups as were dropped, each up to N times (then the rollout
+  stops with an error); no new prompts are drawn, so every rollout trains on all 20 tasks x 8. `configs/grpo.sh`
+  sets 3. Tests: `tests/fast/rollout/test_resubmit_dropped_groups.py` (one drop, several drops, too many, off),
+  with Miles' own rollout tests: 84 passed in the pinned image.
+- auxr_1103_0033 was paused before step 9's update (21:31 UTC) and resumed from iter_0000007 (adapter + Adam state)
+  with the fix (21:54 UTC): steps 9-10 use it, steps 1-8 used the old refill. The 320 trials of the stopped step-9
+  attempt are marked abandoned by `monitor/compare.py` (Miles' restart line in train.log).
+  A strict comparison with vanilla (old refill at its steps 5 and 6) has to keep that in mind.
+- Time lost: ~30 min per drop.    Status: fixed (from auxr_1103_0033 step 9)
+
+### 2026-11-03 auxr_1103_0033: the boxes' 15 h shutdown ended step 10 mid-rollout
+- Symptom: step 10's trials began failing together; Miles logged "rerunning dropped group ... time 2/3" for every
+  task within a minute (23:34-23:35 UTC), then stopped: `RuntimeError: group 1768 dropped 4 times (group_has_aborted),
+  over --resubmit-dropped-groups 3`. The laptop's reap loop had printed "ssh failed" for both boxes since 23:30.
+- Cause: the boxes were launched 08:33:54 UTC with user-data `shutdown -h +900` (`TTL_MIN`, a guard against
+  forgotten boxes). Logins are refused 5 min before (23:29), and at 23:34 both shut down and terminated
+  (`--instance-initiated-shutdown-behavior terminate`). The resume at 22:01 projected the end at ~01:00 UTC; nobody
+  compared it with the boxes' end.
+- Effect: step 9 had trained and saved (iter_0000008, 29.375%); step 10 never updated. The finish session then started
+  the backup + teardown; it was stopped before anything was terminated, and the laptop's H200-delete watcher too.
+- Fix: `ec2_box.sh serve` writes the scheduled shutdown (`/run/systemd/shutdown/scheduled`, epoch s) to
+  `~/data/trials/shutdown_at`, readable with the H200's read-only sync key. `scripts/box_check.sh` (run by
+  `launch.sh` after `links.sh start`, before tracker/train) checks per box: agent server answers through its tunnel
+  (127.0.0.1:1100i/health), and shutdown >= NEED_MIN away, NEED_MIN = (STEPS - steps done) x STEP_MIN (90) +
+  MARGIN_MIN (30). Any failure stops the links and exits. Tests: `tests/test_sandboxes.py` (box_check: pass, short
+  TTL, no ping / unreadable time).
+- Recovery: new boxes (on-demand, TTL_MIN=420), images rebaked by `prepare`, resumed from iter_0000008.
+- Time lost: ~2.5 h (step 10's rollout + new boxes).    Status: fixed
+
+### 2026-11-03 auxr_1103_0033: backup OK, but the H200 kept running ~2 h after the run
+- Symptom: `finish.sh` logged BACKUP_OK (44 files, 48.0 GB) and terminated the boxes at 01:26 UTC, then "H200 not
+  deleted: nebius CLI not authorized". The laptop's delete watcher never fired; the H200 idled until ~03:30 UTC (~$12).
+- Cause: `finish.sh` uploaded the final `backup_status` to S3 only inside its own nebius-delete branch. Without a
+  Nebius profile on the H200, S3 kept the "running ..." status the backup uploaded mid-way, which the laptop watcher
+  (waiting for BACKUP_OK) never saw.
+- Fix: `finish.sh` publishes the status to S3 right after the size check, whatever follows; the laptop watcher is
+  now `scripts/teardown_watch.sh <run> <instance-id>` (summary.md step 3). The H200 no longer needs Nebius
+  credentials. Tests: `tests/test_sandboxes.py` (finish publishes BACKUP_OK with and without nebius; the watcher
+  deletes on BACKUP_OK, never on BACKUP_INCOMPLETE; the publish test fails on the old finish.sh).
+- Time lost: ~2 h of an idle H200.    Status: fixed

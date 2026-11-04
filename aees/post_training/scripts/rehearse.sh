@@ -5,6 +5,7 @@
 # Then 4 real Harbor trials go through dispatcher -> tunnel -> box -> terminus-2 -> reverse tunnel -> stub -> verifier.
 #
 #   bash scripts/rehearse.sh            # ~10-15 min, ~$0.40; terminates both instances at the end (KEEP=1 keeps them)
+#   TASKS="a b c" bash scripts/rehearse.sh   # those trials instead (default: configure-git-webserver, sqlite-with-gcov x2)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)                   # aees/post_training
 export STATE=$HERE/state/rehearsal REGION=${REGION:-us-east-2} TTL_MIN=${TTL_MIN:-120}
@@ -12,6 +13,7 @@ KEY=${KEY:-$HOME/.ssh/aees-ec2.pem}
 source "$HERE/scripts/ec2_lib.sh"
 mkdir -p "$STATE"
 RUN=rehearsal
+TASKS=${TASKS:-configure-git-webserver sqlite-with-gcov configure-git-webserver sqlite-with-gcov}
 T0=$(date +%s); el() { echo "[$(( ($(date +%s) - T0) / 60 ))m$(( ($(date +%s) - T0) % 60 ))s] $*"; }
 SSH_S() { ssh -i "$KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes -x "ubuntu@$SIP" "$@"; }
 cleanup() {
@@ -53,7 +55,7 @@ sleep 5
 el "4/6 reverse tunnels"
 bash "$HERE/scripts/ec2_sandboxes.sh" probe
 
-el "5/6 4 real trials through the dispatcher"
+el "5/6 $(wc -w <<< "$TASKS" | tr -d ' ') real trials through the dispatcher"
 SSH_S "python3 - <<'PY'
 import json, threading, urllib.request
 def run(task, out):
@@ -62,7 +64,7 @@ def run(task, out):
     req = urllib.request.Request('http://127.0.0.1:11000/run', data=body, headers={'Content-Type': 'application/json'})
     out.append((task, json.loads(urllib.request.urlopen(req, timeout=900).read())))
 out = []
-ts = [threading.Thread(target=run, args=(t, out)) for t in ['configure-git-webserver', 'sqlite-with-gcov'] * 2]
+ts = [threading.Thread(target=run, args=(t, out)) for t in '$TASKS'.split()]
 [t.start() for t in ts]; [t.join() for t in ts]
 for task, r in out: print(task, r.get('exit_status'), r.get('reward'), (r.get('agent_metrics') or {}).get('exception_type'))
 PY"
@@ -72,5 +74,9 @@ sleep 70
 SSH_S "ls /data/trials/$RUN/*/result.json 2>/dev/null | wc -l | sed 's/^/synced result.json: /'; \
   wc -l < /data/trials/$RUN/dispatch.jsonl | sed 's/^/dispatch rows: /'; \
   curl -s 127.0.0.1:8770/status.json | python3 -c 'import json,sys; s=json.load(sys.stdin); \
-  print(\"tracker:\", len(s[\"trials\"]), \"trials,\", len(s[\"dispatch\"]), \"dispatch rows, sandboxes:\", (s[\"sandboxes\"] or {}).get(\"boxes_up\"))'"
+  print(\"tracker:\", len(s[\"trials\"]), \"trials,\", len(s[\"dispatch\"]), \"dispatch rows, sandboxes:\", (s[\"sandboxes\"] or {}).get(\"boxes_up\"))'; \
+  python3 -c 'import glob, json, datetime as d; p = lambda s: d.datetime.fromisoformat(s.replace(\"Z\", \"+00:00\")); \
+  [print(\"agent setup %5.1f s\" % (p(a[\"finished_at\"]) - p(a[\"started_at\"])).total_seconds(), f.split(\"/\")[-2]) \
+   for f in sorted(glob.glob(\"/data/trials/$RUN/*/result.json\")) for a in [json.load(open(f)).get(\"agent_setup\") or {}] \
+   if a.get(\"finished_at\")]'"
 el "done"
