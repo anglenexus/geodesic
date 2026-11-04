@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # On the H200, after kickoff.sh and SETUP_DONE: start a GRPO run with its watchers (summary.md, step 5).
 #   tmux links     tunnels, trial sync, dispatcher (SLOTS per box)
+#   then box_check.sh: every box answers and outlives the steps left, or nothing starts
 #   tmux tracker   dashboard on 127.0.0.1:8770
 #   tmux train     scripts/run.sh grpo, a checkpoint every step
 #   tmux deadline  stops train after DEADLINE_H hours
@@ -20,8 +21,23 @@ SLOTS=${SLOTS:-32}                                       # per box: 2 x 32 = 64,
 DEADLINE_H=${DEADLINE_H:-10}
 DEST=${DEST:-s3://aees-grpo-backups-611728564241}
 INIT_ADAPTER=${INIT_ADAPTER:-}                           # container path; weights only, fresh Adam (summary.md, step 4)
+# RESUME_FROM=/root/ckpt/<run>/iter_N/adapter: same run on from step N+2 with its Adam state; STEPS stays the total
+STEP_MIN=${STEP_MIN:-90}                                 # box_check.sh: minutes per step, plus MARGIN_MIN for the backup
+MARGIN_MIN=${MARGIN_MIN:-30}
+done_steps=0
 [ -z "$INIT_ADAPTER" ] || [ -f "$DATA/ckpt/${INIT_ADAPTER#/root/ckpt/}/adapter_megatron_rank0.pt" ] \
   || { echo "no adapter at $DATA/ckpt/${INIT_ADAPTER#/root/ckpt/}"; exit 1; }
+if [ -n "${RESUME_FROM:-}" ]; then
+  # Miles restores the rollout side (data order) from <--load>/rollout/<N>, and --load is the base model's folder;
+  # the run saved it under its own folder. Copy it where Miles looks (a few MB).
+  iter_dir=$DATA/ckpt/${RESUME_FROM#/root/ckpt/}; iter_dir=${iter_dir%/adapter}
+  n=$((10#${iter_dir##*iter_}))
+  src=$(dirname "$iter_dir")/rollout/$n; dst=$DATA/models/${MODEL:-Qwen3.6-27B}_torch_dist/rollout/$n
+  [ -d "$src" ] && [ -f "$iter_dir/adapter/training_state_rank0.pt" ] || { echo "no $src or optimizer state"; exit 1; }
+  sudo rm -rf "$dst"; sudo mkdir -p "$(dirname "$dst")"; sudo cp -a "$src" "$dst"
+  echo "resume: rollout state $src -> $dst"
+  done_steps=$((n + 1))
+fi
 for s in train deadline hourly finish; do
   tmux has-session -t "$s" 2>/dev/null && { echo "tmux $s already running: stop it first"; exit 1; }
 done
@@ -33,13 +49,16 @@ mkdir -p "$DATA/monitor/$RUN"
 sudo docker ps -q | xargs -r sudo docker rm -f >/dev/null   # leftovers of an earlier run
 cd "$HERE"
 RUN=$RUN SLOTS=$SLOTS bash scripts/links.sh start | tail -1 | cut -c1-120; echo
+# Every box answers and stays up for the steps left; otherwise no rollouts start (integration_issues.md)
+NEED_MIN=$(((STEPS - done_steps) * STEP_MIN + MARGIN_MIN)) bash scripts/box_check.sh \
+  || { bash scripts/links.sh stop; echo "box check failed: not starting $RUN (STEPS=$STEPS, $done_steps done)"; exit 1; }
 PRIOR_SNAPSHOT=${PRIOR_SNAPSHOT:-}
 prior=0
 [ -z "$PRIOR_SNAPSHOT" ] || prior=$(python3 -c 'import json,sys; print(sum(any(k.startswith("train/") for k in r) for r in json.load(open(sys.argv[1]))["steps"]))' "$PRIOR_SNAPSHOT")
 tmux kill-session -t tracker 2>/dev/null || true
 tmux new -d -s tracker "RUN=$RUN NUM_ROLLOUT=$((prior + STEPS)) PRIOR_SNAPSHOT=$PRIOR_SNAPSHOT python3 monitor/server.py"
-tmux new -d -s train "SAVE_DIR=/root/ckpt/$RUN NUM_ROLLOUT=$STEPS SAVE_INTERVAL=1 INIT_ADAPTER=$INIT_ADAPTER \
-  bash scripts/run.sh grpo > $DATA/monitor/$RUN/train_run.log 2>&1"
+tmux new -d -s train "SAVE_DIR=/root/ckpt/$RUN NUM_ROLLOUT=$STEPS SAVE_INTERVAL=1 INIT_ADAPTER=$INIT_ADAPTER RESUME_FROM=${RESUME_FROM:-} \
+  AUX=${AUX:-0} AUX_BETA=${AUX_BETA:-} Q_TEACHER=${Q_TEACHER:-qfunc_adapter} bash scripts/run.sh grpo > $DATA/monitor/$RUN/train_run.log 2>&1"
 tmux new -d -s deadline "sleep $((DEADLINE_H * 3600)); tmux kill-session -t train; sudo docker ps -q | xargs -r sudo docker rm -f; \
   echo STOPPED_AT_DEADLINE >> $DATA/monitor/$RUN/train_run.log"
 tmux new -d -s hourly "while tmux has-session -t train 2>/dev/null; do sleep 3600; sudo chown -R \$USER $DATA/ckpt/$RUN && \

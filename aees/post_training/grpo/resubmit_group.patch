@@ -1,0 +1,181 @@
+diff --git a/miles/rollout/inference_rollout/inference_rollout_train.py b/miles/rollout/inference_rollout/inference_rollout_train.py
+index 3db3584e38..ccd53b3782 100644
+--- a/miles/rollout/inference_rollout/inference_rollout_train.py
++++ b/miles/rollout/inference_rollout/inference_rollout_train.py
+@@ -1,4 +1,5 @@
+ import asyncio
++import copy
+ import logging
+ from argparse import Namespace
+ from collections.abc import Callable
+@@ -122,6 +123,8 @@ async def generate_rollout_async(
+     pendings = set()
+     data = []
+     all_data = []
++    unstarted = {}  # task -> a copy of its group as submitted, to rerun it if dropped (--resubmit-dropped-groups)
++    resubmits = {}  # group index -> times rerun
+     do_print = True
+     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
+     while len(data) < target_data_size:
+@@ -130,7 +133,10 @@ async def generate_rollout_async(
+             samples = data_source(args.over_sampling_batch_size)
+             stamp_kv_cache_namespace(samples, namespace=kv_cache_namespace)
+             scheduler.on_submit(samples)
+-            pendings.update(submit_generate_tasks(state, samples, scheduler.sample_done_callback))
++            tasks = submit_generate_tasks(state, samples, scheduler.sample_done_callback)
++            pendings.update(tasks)
++            if args.resubmit_dropped_groups:
++                unstarted.update(zip(tasks, copy.deepcopy(samples), strict=True))
+ 
+         # wait for the generation to finish
+         logger.debug(f"[rollout] Waiting on {len(pendings)} pending tasks, data={len(data)}/{target_data_size}")
+@@ -157,9 +163,25 @@ async def generate_rollout_async(
+             all_data.append(group)
+             metric_gatherer.on_group_before_dynamic_filter(args, group)
+             filter_output = apply_preput_filters(args, dynamic_filter, group)
++            rerun = unstarted.pop(task, None)
+             if not filter_output.keep:
+                 metric_gatherer.on_dynamic_filter_drop(reason=filter_output.reason)
+                 SampleOwnershipRecorder.log_dropped_groups(args=args, before=group, after=[], reason="dynamic_filter")
++                if args.resubmit_dropped_groups:
++                    # Run the same prompt again rather than drawing new prompts: the rollout keeps each prompt of
++                    # its batch once. The copy keeps its index, so the batch sorts as before.
++                    key = rerun[0][0].index if isinstance(rerun[0], list) else rerun[0].index
++                    resubmits[key] = resubmits.get(key, 0) + 1
++                    if resubmits[key] > args.resubmit_dropped_groups:
++                        raise RuntimeError(
++                            f"group {key} dropped {resubmits[key]} times ({filter_output.reason}), "
++                            f"over --resubmit-dropped-groups {args.resubmit_dropped_groups}"
++                        )
++                    logger.info(f"[rollout] rerunning dropped group {key} ({filter_output.reason}), time {resubmits[key]}")
++                    scheduler.on_submit([rerun])
++                    [retry] = submit_generate_tasks(state, [rerun], scheduler.sample_done_callback)
++                    pendings.add(retry)
++                    unstarted[retry] = copy.deepcopy(rerun)
+                 continue
+ 
+             # add the samples to the data
+diff --git a/tests/fast/ray/rollout/conftest.py b/tests/fast/ray/rollout/conftest.py
+index e1cdcdff1c..8e21148feb 100644
+--- a/tests/fast/ray/rollout/conftest.py
++++ b/tests/fast/ray/rollout/conftest.py
+@@ -31,6 +31,7 @@ def make_args(**overrides: Any) -> Namespace:
+         eval_uses_snapshots=False,
+         num_gpus_per_node=8,
+         rollout_batch_size=8,
++        resubmit_dropped_groups=0,
+         n_samples_per_prompt=4,
+         n_samples_per_eval_prompt=4,
+         rollout_max_response_len=512,
+diff --git a/tests/fast/rollout/test_resubmit_dropped_groups.py b/tests/fast/rollout/test_resubmit_dropped_groups.py
+new file mode 100644
+index 0000000000..9813a997ca
+--- /dev/null
++++ b/tests/fast/rollout/test_resubmit_dropped_groups.py
+@@ -0,0 +1,85 @@
++"""--resubmit-dropped-groups: a group the dynamic filter drops is run again with the same prompt, so every prompt
++of the batch is in the rollout once; new prompts are never drawn to replace it."""
++import asyncio
++import types
++
++import pytest
++
++from tests.fast.ray.rollout.conftest import make_args, make_sample
++from miles.rollout.inference_rollout import inference_rollout_train as train
++from miles.utils.types import Sample
++
++N = 2  # samples per prompt
++
++
++def _args(**kw):
++    base = dict(rollout_batch_size=3, over_sampling_batch_size=3, n_samples_per_prompt=N, partial_rollout=False,
++                dynamic_sampling_filter_path="miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted",
++                rollout_sample_filter_path=None, rollout_all_samples_process_path=None, reward_key=None,
++                rollout_global_dataset=True, enable_sample_ownership_checker=False, resubmit_dropped_groups=3)
++    base.update(kw)
++    return make_args(**base)
++
++
++async def _no_op(*a, **k):
++    return None
++
++
++async def _empty(*a, **k):
++    return []
++
++
++def _run(monkeypatch, args, aborts):
++    """aborts: prompt index -> number of first attempts that come back with an aborted sample."""
++    state = types.SimpleNamespace(args=args, sampling_params={}, reset=lambda: None)
++    attempts, drawn = {}, []
++
++    async def generate_and_rm_group(_state, group, sampling_params, evaluation, sample_done_callback=None):
++        i = group[0].index
++        attempts[i] = attempts.get(i, 0) + 1
++        await asyncio.sleep(0.001 * i)
++        bad = attempts[i] <= aborts.get(i, 0)
++        for k, s in enumerate(group):
++            s.status = Sample.Status.ABORTED if bad and k == 0 else Sample.Status.COMPLETED
++            s.reward = float(attempts[i])
++        return group
++
++    def data_source(count):
++        start = len(drawn)
++        groups = [[make_sample(index=start + j, reward=0.0, status=Sample.Status.PENDING) for _ in range(N)]
++                  for j in range(count)]
++        drawn.extend(range(start, start + count))
++        return groups
++
++    monkeypatch.setattr(train, "generate_and_rm_group", generate_and_rm_group)
++    monkeypatch.setattr(train.dumper_utils, "configure_sglang", _no_op)
++    monkeypatch.setattr(train, "abort", _empty)
++    monkeypatch.setattr(train, "recompute_samples_rollout_logprobs_via_prefill", _no_op)
++    out = asyncio.run(train.generate_rollout_async(state, 0, data_source))[0]
++    return out.samples, attempts, drawn
++
++
++def test_one_dropped_group_reruns_its_own_prompt(monkeypatch):
++    data, attempts, drawn = _run(monkeypatch, _args(), {1: 1})
++    assert drawn == [0, 1, 2]                                   # no new prompts drawn
++    assert [g[0].index for g in data] == [0, 1, 2]              # every prompt once, in order
++    assert attempts == {0: 1, 1: 2, 2: 1}
++    assert all(s.status == Sample.Status.COMPLETED for g in data for s in g)
++    assert [s.reward for s in data[1]] == [2.0] * N             # the clean second attempt
++
++
++def test_several_dropped_groups_each_rerun_their_own_prompt(monkeypatch):
++    data, attempts, drawn = _run(monkeypatch, _args(), {0: 2, 2: 1})
++    assert drawn == [0, 1, 2] and [g[0].index for g in data] == [0, 1, 2]
++    assert attempts == {0: 3, 1: 1, 2: 2}
++
++
++def test_a_prompt_dropped_too_often_stops_the_rollout(monkeypatch):
++    with pytest.raises(RuntimeError, match="group 1 dropped 2 times"):
++        _run(monkeypatch, _args(resubmit_dropped_groups=1), {1: 5})
++
++
++def test_off_keeps_the_refill_from_the_data_source(monkeypatch):
++    data, attempts, drawn = _run(monkeypatch, _args(resubmit_dropped_groups=0), {1: 1})
++    assert drawn == [0, 1, 2, 3, 4, 5]                          # a whole new batch to replace one group
++    assert 1 not in [g[0].index for g in data]
+diff --git a/miles/utils/arguments.py b/miles/utils/arguments.py
+index 32860e8d78..b3ed460383 100644
+--- a/miles/utils/arguments.py
++++ b/miles/utils/arguments.py
+@@ -861,6 +861,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
+             )
+ 
+             # sampling
++            parser.add_argument(
++                "--resubmit-dropped-groups",
++                type=int,
++                default=0,
++                help=(
++                    "When the dynamic sampling filter drops a group, run the same prompt again (up to this many times per "
++                    "group, then fail) instead of sampling new prompts, so each rollout keeps every prompt of its batch. "
++                    "0 keeps the default refill from the data source."
++                ),
++            )
+             parser.add_argument(
+                 "--over-sampling-batch-size",
+                 type=int,

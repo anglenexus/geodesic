@@ -70,7 +70,8 @@ def test_up_launches_spot_boxes_and_prepares_each(tmp_path):
     prep = [c for c in calls(tmp_path, "ssh") if "ec2_box.sh prepare" in c]
     assert sorted(c.split("ubuntu@")[1].split()[0] for c in prep) == ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
     copied = " ".join(calls(tmp_path, "rsync"))
-    for f in ["ec2_box.sh", "agent_server.sh", "setup.sh", "pins.sh", "harbor_parser.patch", "tunnel_key.pub", "sync_key.pub"]:
+    for f in ["ec2_box.sh", "agent_server.sh", "bake_tools.py", "setup.sh", "pins.sh", "harbor_parser.patch",
+              "tunnel_key.pub", "sync_key.pub"]:
         assert f in copied
     assert (tmp_path / "state" / "tunnel_key").exists() and (tmp_path / "state" / "sync_key").exists()
     assert sh("scripts/ec2_sandboxes.sh", "up", env=env).returncode == 1      # refuses a second set
@@ -108,6 +109,41 @@ def test_allow_serve_probe_down(tmp_path):
     r = sh("scripts/ec2_sandboxes.sh", "down", env=env)
     assert any("terminate-instances" in c and "i-1 i-2 i-3" in c for c in calls(tmp_path, "aws"))
     assert not (tmp_path / "state" / "boxes.env").exists()
+
+
+def test_reap_removes_projects_created_before_the_last_rollout_line(tmp_path):
+    """The cutoff comes from the H200's train log; each box gets one awk/compose-down pass with it."""
+    ssh = r'''
+for a in "$@"; do last="$a"; done
+case "$last" in
+  *train.log*) echo "2026-11-03 18:36:09" ;;
+  *"docker ps -a"*) echo 3 ;;
+esac'''
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "boxes.env").write_text('BOX_IPS="10.0.0.1 10.0.0.2"\n')
+    (state / "run.env").write_text("H200=9.9.9.9\nH200_USER=me\n")
+    env = {**stubs(tmp_path, {"ssh": ssh}), "STATE": str(state)}
+    r = sh("scripts/ec2_sandboxes.sh", "reap", "auxr_x", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "10.0.0.1: removed 3 stale trial projects (created before 2026-11-03 18:36:09)" in r.stdout
+    assert "10.0.0.2: removed 3" in r.stdout
+    c = calls(tmp_path, "ssh")
+    assert any("me@9.9.9.9" in x and "/data/ckpt/auxr_x/train.log" in x and "rollout [0-9]+: " in x for x in c)
+    box = [x for x in c if "ubuntu@10.0.0.1" in x and "docker ps -a" in x][0]
+    assert "c='2026-11-03 18:36:09'" in box and "__[0-9]{8}-[0-9]{6}__" in box
+    assert "compose -p {} down --volumes --remove-orphans" in box
+
+
+def test_reap_does_nothing_before_the_first_rollout_closes(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "boxes.env").write_text('BOX_IPS="10.0.0.1"\n')
+    (state / "run.env").write_text("H200=9.9.9.9\nH200_USER=me\n")
+    env = {**stubs(tmp_path), "STATE": str(state)}                           # the log has no rollout line yet
+    r = sh("scripts/ec2_sandboxes.sh", "reap", "auxr_x", env=env)
+    assert r.returncode == 0 and "removed" not in r.stdout
+    assert not [x for x in calls(tmp_path, "ssh") if "ubuntu@" in x]
 
 
 # ---- box: scripts/ec2_box.sh ----
@@ -341,3 +377,101 @@ def test_resume_from_restores_the_optimizer_and_points_at_the_iteration():
                        env={**os.environ, "SAVE_DIR": str(HERE / ".pytest_cache/s"), "RESUME_FROM": "/x", "INIT_ADAPTER": "/y"},
                        capture_output=True, text=True)
     assert r.returncode == 2 and "not both" in r.stdout
+
+
+# ---- H200: scripts/box_check.sh, before launch.sh starts Miles ----
+
+def box_check(tmp_path, shutdown_in_min, ping_ok=(True, True), need=200):
+    """Two boxes; each rsync of shutdown_at writes now + shutdown_in_min[i] (None: empty file, 'x': rsync fails)."""
+    (tmp_path / "boxes").write_text("10.0.0.1 10.0.0.2\n")
+    import time
+    at = {f"10.0.0.{i + 1}": ("" if m is None else m if m == "x" else str(int(time.time()) + m * 60))
+          for i, m in enumerate(shutdown_in_min)}
+    rsync = "src=\"${@: -2:1}\"; dst=\"${@: -1}\"; case \"$src\" in " + " ".join(
+        f'*{ip}:*) {"exit 23" if v == "x" else f"echo {v} > $dst"} ;;' for ip, v in at.items()) + " esac"
+    curl = "case \"$*\" in " + " ".join(f'*1100{i + 1}/health*) {"exit 0" if ok else "exit 7"} ;;'
+                                         for i, ok in enumerate(ping_ok)) + " esac"
+    env = stubs(tmp_path, {"rsync": rsync, "curl": curl})
+    return sh("scripts/box_check.sh", env={**env, "NEED_MIN": str(need), "BOXES_FILE": str(tmp_path / "boxes"),
+                                          "PING_TRIES": "2"})
+
+
+def test_box_check_passes_when_every_box_answers_and_outlives_the_run(tmp_path):
+    r = box_check(tmp_path, (420, None))
+    assert r.returncode == 0, r.stdout + r.stderr
+    lines = r.stdout.splitlines()
+    assert "box 1 (10.0.0.1): ping ok; shuts down" in lines[0] and lines[0].endswith("need 200 min: OK")
+    assert "no shutdown scheduled" in lines[1] and lines[1].endswith("OK")
+
+
+def test_box_check_fails_on_a_box_shutting_down_before_the_steps_left(tmp_path):   # auxr_1103_0033 step 10
+    r = box_check(tmp_path, (420, 60))
+    assert r.returncode == 1
+    two = r.stdout.splitlines()[1]
+    assert two.endswith("FAIL") and ("in 59 min" in two or "in 60 min" in two)
+
+
+def test_box_check_fails_on_no_ping_or_an_unreadable_shutdown_time(tmp_path):
+    r = box_check(tmp_path, (420, "x"), ping_ok=(False, True))
+    assert r.returncode == 1
+    one, two = r.stdout.splitlines()
+    assert "ping no answer" in one and one.endswith("FAIL")
+    assert "unreadable" in two and two.endswith("FAIL")
+
+
+# ---- teardown: scripts/finish.sh (H200) publishes its status; scripts/teardown_watch.sh (laptop) deletes ----
+
+FINISH_AWS = r'''
+case "$*" in
+  *"s3 ls --recursive"*)                                 # every local file uploaded at its size
+    cd "$STUB/data/ckpt/r1" && find . -type f | while read -r f; do
+      echo "2026-11-03 00:00:00 $(wc -c < "$f" | tr -d ' ') r1/${f#./}"; done ;;
+  *"s3 cp"*"backup_status"*) cp "$3" "$STUB/published" ;;
+esac'''
+
+
+def finish(tmp_path, nebius_ok):
+    data = tmp_path / "data"
+    (data / "ckpt/r1/iter_0000000/adapter").mkdir(parents=True)
+    (data / "ckpt/r1/iter_0000000/adapter/adapter_config.json").write_text("{}")
+    (data / "monitor/r1").mkdir(parents=True)
+    (data / "trials/r1").mkdir(parents=True)
+    (tmp_path / "box_ids").write_text("i-1 i-2\n")
+    env = stubs(tmp_path, {"aws": FINISH_AWS, "sudo": '"$@"',
+                           "nebius": "exit 0" if nebius_ok else "exit 1"})
+    return sh("scripts/finish.sh", env={**env, "DATA": str(data), "RUN": "r1", "DEST": "s3://b",
+                                        "BOX_IDS_FILE": str(tmp_path / "box_ids"), "NEBIUS_INSTANCE_ID": "ci-1"})
+
+
+def test_finish_publishes_backup_ok_even_when_the_h200_cannot_delete_itself(tmp_path):   # auxr_1103_0033
+    r = finish(tmp_path, nebius_ok=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (tmp_path / "published").read_text().splitlines()[0] == "BACKUP_OK"
+    assert any("terminate-instances" in c for c in calls(tmp_path, "aws"))
+    assert not any("instance delete" in c for c in calls(tmp_path, "nebius"))
+    assert "the laptop's watcher deletes it" in r.stdout
+
+
+def test_finish_deletes_the_h200_itself_when_nebius_is_authorized(tmp_path):
+    r = finish(tmp_path, nebius_ok=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert any("instance delete --id ci-1" in c for c in calls(tmp_path, "nebius"))
+    assert (tmp_path / "published").read_text().splitlines()[0] == "BACKUP_OK"
+
+
+def watch(tmp_path, status):
+    aws = f'case "$*" in *"s3 cp"*backup_status*) printf "{status}" ;; *describe-instances*) echo 0 ;; esac'
+    env = stubs(tmp_path, {"aws": aws, "nebius": ""})
+    return sh("scripts/teardown_watch.sh", "r1", "ci-1", "1", env=env)
+
+
+def test_teardown_watch_deletes_the_h200_on_backup_ok(tmp_path):
+    r = watch(tmp_path, r"BACKUP_OK\n44 files\n")
+    assert r.returncode == 0 and "deleting H200 ci-1" in r.stdout
+    assert any("--profile aees compute instance delete --id ci-1" in c for c in calls(tmp_path, "nebius"))
+
+
+def test_teardown_watch_never_deletes_on_an_incomplete_backup(tmp_path):
+    r = watch(tmp_path, r"BACKUP_INCOMPLETE\nmissing x\n")
+    assert r.returncode == 1 and "NOT deleted" in r.stdout
+    assert calls(tmp_path, "nebius") == []

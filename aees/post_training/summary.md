@@ -163,7 +163,10 @@ RUN=$RUN_T3 bash scripts/preflight.sh t3
 ### 3. AWS and Nebius credentials on the H200, needed for the automatic teardown
 
 - **(user)** `aws configure` on the H200, with the `agent_aees` key, region us-east-2.
-- **(user)** `nebius profile create` on the H200:
+- **(agent)** On the laptop, for the whole run: `bash scripts/teardown_watch.sh <run> <computeinstance-...> &`. It deletes
+  the H200 with the laptop's `aees` profile once `finish.sh` publishes BACKUP_OK to S3 (and nothing on
+  BACKUP_INCOMPLETE), so the H200 needs no Nebius key. The step below is optional (the H200 then deletes itself).
+- **(user, optional)** `nebius profile create` on the H200:
   - endpoint `api.nebius.cloud`, service-account authorization;
   - service account **ID** `serviceaccount-u00m8xacn35xbs65hz` (the ID, not the name), in the editors group;
   - its public-key ID and private key (`~/code/testing/private.pem` on the laptop, scp it over);

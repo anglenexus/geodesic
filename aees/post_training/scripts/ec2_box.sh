@@ -34,6 +34,9 @@ serve)
   # verifier hangs to its 30-min limit on failures, which held a whole step (integration_issues.md).
   t3="HARBOR_VERIFIER_TIMEOUT_SEC=${VERIFIER_TIMEOUT_SEC:-600}"
   [ "${3:-}" = t3 ] && t3="HARBOR_AGENT_MAX_ITERATIONS=2 HARBOR_VERIFIER_TIMEOUT_SEC=60"   # integration test T3
+  # The box's scheduled shutdown (user-data: TTL_MIN), epoch seconds, where the H200's read-only key can fetch it
+  # (scripts/box_check.sh, before a launch). Empty when none is scheduled.
+  sudo sed -n 's/^USEC=//p' /run/systemd/shutdown/scheduled 2>/dev/null | cut -c1-10 > "$DATA/trials/shutdown_at" || true
   tmux kill-session -t agent 2>/dev/null || true
   sudo fuser -k -TERM 11000/tcp >/dev/null 2>&1 || true     # the server outlives its tmux session (sg docker child)
   for _ in $(seq 30); do curl -sf 127.0.0.1:11000/health >/dev/null 2>&1 || break; sleep 1; done

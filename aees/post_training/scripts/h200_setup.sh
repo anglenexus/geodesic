@@ -34,4 +34,6 @@ wait "$img" || { tail -20 "$DATA/monitor/setup_6.log"; exit 1; }; stamp "Miles i
 echo "READY_FOR_T0"                                      # T0 can run while the conversion does
 sg docker -c "STEPS=9 bash $HERE/setup.sh" > "$DATA/monitor/setup_9.log" 2>&1 || { tail -20 "$DATA/monitor/setup_9.log"; exit 1; }
 stamp "torch_dist conversion"
+STEPS=10 bash "$HERE/setup.sh" > "$DATA/monitor/setup_10.log" 2>&1 || { tail -20 "$DATA/monitor/setup_10.log"; exit 1; }
+stamp "Q-function adapter (auxiliary reward teacher)"
 echo "SETUP_DONE"

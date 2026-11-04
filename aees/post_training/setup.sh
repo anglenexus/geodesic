@@ -108,7 +108,10 @@ if [ ! -d "$DATA/src/miles/.git" ]; then
   git clone https://github.com/radixark/miles.git "$DATA/src/miles"
 fi
 git -C "$DATA/src/miles" fetch origin
+git -C "$DATA/src/miles" checkout -- . 2>/dev/null || true             # drop an earlier patch
 git -C "$DATA/src/miles" checkout --detach "$MILES_COMMIT"
+git -C "$DATA/src/miles" apply "$HERE/grpo/aux_reward.patch"   # --opd-baseline exact (auxiliary reward); default unchanged
+git -C "$DATA/src/miles" apply "$HERE/grpo/resubmit_group.patch"   # --resubmit-dropped-groups: rerun the same prompt
 (cd "$HERE" && uv sync --python 3.12)    # our host-side scripts (export, split, tests)
 fi
 
@@ -120,12 +123,15 @@ done
 fi
 
 if want 8; then
-echo "== 8/9 TB 2.1 task definitions + image pre-pull (training, validation, test tasks)"
+echo "== 8/9 TB 2.1 task definitions + image pre-pull (training, validation, test tasks), tmux baked in"
 [ -d "$DATA/tasks/terminal-bench-2-1" ] || \
   (cd "$DATA/src/harbor" && uv run harbor datasets download terminal-bench/terminal-bench-2-1 -o "$DATA/tasks")
 (cd "$HARBOR_STATE" && cat $TASK_LISTS) > "$DATA/tasks/all_used.txt"
 python3 "$HERE/../harbor/scripts/task_images.py" "$DATA/tasks/terminal-bench-2-1" "$DATA/tasks/all_used.txt" \
-  | sort -u | xargs -r -P 8 -n 1 sudo docker pull -q
+  | sort -u > "$DATA/tasks/images.txt"
+xargs -r -P 8 -n 1 sudo docker pull -q < "$DATA/tasks/images.txt"
+# tmux + asciinema in the images, so trials don't install them from the internet (integration_issues.md)
+xargs -r python3 "$HERE/scripts/bake_tools.py" --docker "sudo docker" < "$DATA/tasks/images.txt"
 fi
 
 if want 9; then
@@ -142,6 +148,14 @@ for m in $MODELS; do
       PYTHONPATH=/root/Megatron-LM torchrun --nproc-per-node 1 tools/convert_hf_to_torch_dist.py \"\${MODEL_ARGS[@]}\" \
         --hf-checkpoint /root/models/$name --save /root/models/${name}_torch_dist"
 done
+fi
+
+if want 10; then
+echo "== 10 auxiliary reward: the Q-function's PEFT adapter (the teacher, swapped into the policy's LoRA)"
+Q_ADAPTER=${Q_ADAPTER:-s3://aees-grpo-backups-611728564241/qfunc/qfunc_1030_1950/final/adapter}
+aws s3 sync "$Q_ADAPTER/" "$DATA/models/qfunc_adapter_peft/" --only-show-errors
+sudo docker run --rm -v "$DATA/models:/root/models" -v "$HERE:/root/post_training" "$MILES_IMAGE" \
+  python3 /root/post_training/grpo/q_adapter.py /root/models/qfunc_adapter_peft "/root/models/${Q_TEACHER:-qfunc_adapter}"   # Miles' key layout
 fi
 
 cat <<NEXT

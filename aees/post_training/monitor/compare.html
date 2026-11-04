@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auxiliary Reward vs Vanilla</title>
+<style>
+:root { --bg:#fbfaf7; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a65; --line:#e4e2dc;
+        --vanilla:#8a8780; --aux:#c2410c; --good:#15803d; --bad:#b91c1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+        --bg:#151513; --panel:#1d1d1a; --ink:#ecebe6; --muted:#a3a19a; --line:#34332f;
+        --vanilla:#9e9b93; --aux:#fb923c; --good:#4ade80; --bad:#f87171; } }
+:root[data-theme="dark"] { --bg:#151513; --panel:#1d1d1a; --ink:#ecebe6; --muted:#a3a19a; --line:#34332f;
+        --vanilla:#9e9b93; --aux:#fb923c; --good:#4ade80; --bad:#f87171; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system, system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+.legend span { display:inline-flex; align-items:center; gap:6px; margin-right:16px; }
+.legend i { width:18px; height:3px; display:inline-block; border-radius:2px; }
+.hero { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+.stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin: 12px 0 4px; }
+.stat { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+.stat b { display:block; font-size:22px; font-variant-numeric: tabular-nums; }
+.stat small { color: var(--muted); }
+.grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+.card h3 { font-size: 13px; margin: 0 0 6px; font-weight: 600; }
+svg { width:100%; height:auto; display:block; }
+table { border-collapse: collapse; width:100%; font-variant-numeric: tabular-nums; margin-top:10px; }
+th, td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+.tablewrap { overflow-x:auto; }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+.foot { color: var(--muted); font-size: 12px; margin-top: 20px; }
+.bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; display: flex; margin: 8px 0 4px; }
+.bar i { display: block; height: 100%; }
+details { margin-top: 8px; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:3px; background: var(--line); }
+.dot.ok { background: var(--good); } .dot.no { background: var(--bad); } .dot.live { opacity: .45; }
+table.grid td:nth-child(2) { text-align: left; white-space: nowrap; } summary { cursor: pointer; color: var(--muted); }
+.chips span { display: inline-block; border: 1px solid var(--line); border-radius: 12px; padding: 1px 8px; margin: 2px 4px 2px 0; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>GRPO + auxiliary reward vs vanilla GRPO</h1>
+  <p class="sub">Same 20 training tasks, G = 8, lr 1e-5, one update per rollout. Success = Miles' <code>rollout/raw_reward</code> per step (both runs, same code path).
+     Auxiliary run: every generated token's advantage + β·A<sup>Q</sup>, A<sup>Q</sup> = Q(s,x) − Σ<sub>a</sub> π(a|s)·Q(s,a).</p>
+  <div class="legend"><span><i style="background:var(--vanilla)"></i>vanilla GRPO</span><span><i style="background:var(--aux)"></i>GRPO + auxiliary reward</span></div>
+
+  <section class="hero" id="rollout"></section>
+
+  <section class="hero">
+    <h3 style="margin:0">Success rate per step</h3>
+    <div id="hero"></div>
+    <div class="stats" id="stats"></div>
+    <div class="tablewrap"><table id="table"></table></div>
+  </section>
+
+  <section class="hero"><h3 style="margin:0">Time per phase (Miles perf/*, minutes, mean over logged steps)</h3>
+    <div class="tablewrap"><table id="phases"></table></div></section>
+
+  <div class="grid" id="grid"></div>
+  <p class="foot" id="foot"></p>
+</main>
+<script>
+const SUCCESS = "rollout/raw_reward";
+const PANELS = [
+  ["Cumulative mean success", "cumulative"],
+  ["Response length (tokens)", "rollout/response_lengths"],
+  ["Truncated (48k context)", "rollout/truncated"],
+  ["Gradient norm", "train/grad_norm"],
+  ["Policy loss", "train/pg_loss"],
+  ["Trainer vs rollout KL", "train/train_rollout_kl"],
+  ["Step time (s)", "perf/step_time"],
+  ["Rollout time: trainer wait (s)", "perf/train_wait_time"],
+];
+const PHASES = [["rollout (trainer waits)", "perf/train_wait_time"], ["log-probs (policy)", "perf/log_probs_time"],
+                ["teacher pass (aux)", "perf/teacher_log_probs_time"], ["actor train", "perf/actor_train_time"],
+                ["weight sync", "perf/update_weights_time"], ["sleep + wake", ["perf/sleep_time", "perf/wake_up_time"]],
+                ["step total", "perf/step_time"]];
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function series(run, key) {
+  const steps = Object.keys(run.steps).map(Number).sort((a, b) => a - b);
+  if (key === "cumulative") {
+    let s = 0, n = 0;
+    return steps.filter(k => SUCCESS in run.steps[k]).map(k => { s += run.steps[k][SUCCESS]; n += 1; return [k, s / n]; });
+  }
+  return steps.filter(k => key in run.steps[k]).map(k => [k, run.steps[k][key]]);
+}
+
+function chart(lines, {height = 220, pct = false, maxStep = 10} = {}) {
+  const W = 640, H = height, L = 46, R = 12, T = 10, B = 28;
+  const all = lines.flatMap(l => l.pts.map(p => p[1]));
+  if (!all.length) return `<svg viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" text-anchor="middle" fill="${css('--muted')}">no data yet</text></svg>`;
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (pct) { lo = 0; hi = Math.max(0.5, hi * 1.15); }
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const pad = (hi - lo) * 0.08; if (!pct) { lo -= pad; hi += pad; }
+  const xs = Math.max(maxStep, ...lines.flatMap(l => l.pts.map(p => p[0])));
+  const X = k => L + (k - 1) / Math.max(1, xs - 1) * (W - L - R), Y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+  const fmt = v => pct ? (v * 100).toFixed(0) + "%" : (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(2));
+  let g = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = lo + (hi - lo) * i / 4;
+    g += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css('--line')}"/>` +
+         `<text x="${L-6}" y="${Y(v)+4}" text-anchor="end" font-size="11" fill="${css('--muted')}">${fmt(v)}</text>`;
+  }
+  for (let k = 1; k <= xs; k++) g += `<text x="${X(k)}" y="${H-8}" text-anchor="middle" font-size="11" fill="${css('--muted')}">${k}</text>`;
+  for (const l of lines) {
+    if (!l.pts.length) continue;
+    g += `<polyline fill="none" stroke="${l.color}" stroke-width="2.2" points="${l.pts.map(p => X(p[0]) + "," + Y(p[1])).join(" ")}"/>`;
+    for (const p of l.pts) g += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.2" fill="${l.color}"><title>step ${p[0]}: ${fmt(p[1])}</title></circle>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
+}
+
+function renderRollout(R) {
+  const el = document.getElementById("rollout");
+  if (!R || !R.steps.length) { el.innerHTML = `<h3 style="margin:0">Rollout (aux run)</h3><p class="sub">no rollout data yet</p>`; return; }
+  const N = R.tasks, G = R.group, cur = R.steps[R.steps.length - 1], L = R.live || {};
+  const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "–";
+  const w = v => (100 * v / N).toFixed(1) + "%", gs = cur.groups;
+  const state = cur.closed ? "rollout closed" : gs.running || L.running || L.waiting ? "rollout in progress"
+    : "rollout finished, update running (Miles' success logs before the update)";
+  const check = st => st.match === null ? `<span class="sub">pending</span>` : st.match ? `<span class="pos">✓</span>` : `<span class="neg">✗</span>`;
+  const inflight = (L.running ?? 0) + (L.waiting ?? 0);
+  const sent = st => (st.sent.join(" + ") || "0") + (!st.closed && st === cur && inflight ? ` <small class="sub">+ ${inflight} running/queued</small>` : "")
+    + (st.abandoned ? ` <small class="sub">(${st.abandoned} from an attempt stopped before its update, not counted)</small>` : "");
+  const coverage = st => {
+    const covered = Object.values(st.per_task).filter(t => t.selected_groups).length;
+    if (st.selected < N) return `<span class="sub">${covered}/${N} so far</span>`;
+    if (!st.missing.length && !st.doubled.length) return `<span class="pos">${N}/${N} tasks × ${G} ✓</span>`;
+    return `<span class="neg">${covered}/${N} ✗</span> <small class="sub">missing ${st.missing.join(", ")}; doubled ${st.doubled.join(", ")}</small>`;
+  };
+  const rows = R.steps.map(st => `<tr><td>${st.step}</td><td>${sent(st)}</td><td>${st.selected}/${N}</td>` +
+    `<td>${st.passed}</td><td>${st.selected === N ? pct(st.passed, N * G) : "–"}</td>` +
+    `<td>${st.miles == null ? "–" : (100 * st.miles).toFixed(1) + "%"} ${check(st)}</td>` +
+    `<td>${coverage(st)}</td>` +
+    `<td>${st.groups.dropped || ""}</td><td>${st.groups.unused || ""}</td><td>${st.groups.cancelled || ""}</td>` +
+    `<td>${st.trials.usable || ""}</td><td>${st.trials.unusable || ""}</td></tr>`).join("");
+  const why = {dropped: "dropped: a trial aborted (environment failed before any model call)",
+               unused: "unused: complete, finished after the 20 were taken", cancelled: "cancelled: still running when the batch filled"};
+  const details = R.steps.filter(st => st.detail.length).map(st => {
+    const by = {}; st.detail.forEach(g => (by[g.status] = by[g.status] || []).push(g));
+    return `<details><summary>Step ${st.step}: ${st.detail.length} groups not trained on</summary>` + Object.entries(by).map(([s, gs]) =>
+      `<p class="sub" style="margin:6px 0 2px">${why[s] || s}</p><div class="chips">${gs.map(g =>
+        `<span>${g.task} · batch ${g.batch} · ${g.done}/${G} finished · ${g.passed} passed</span>`).join("")}</div>`).join("") + `</details>`; }).join("");
+  const grid = st => {
+    const tasks = [...new Set(R.steps.flatMap(x => Object.keys(x.per_task)))].sort();    // all tasks, even before a trial ends
+    const none = {selected: [], dropped: 0, selected_groups: 0, running: []};
+    const dot = (x, live) => `<i class="dot ${x ? "ok" : "no"}${live ? " live" : ""}"></i>`;
+    const dots = t => { const v = st.per_task[t] || none;
+      if (v.selected_groups) return v.selected.map(x => dot(x)).join("");
+      const r = v.running.slice(0, G);                 // group still running: its finished trials so far
+      return r.map(x => dot(x, true)).join("") + `<i class="dot wait"></i>`.repeat(G - r.length); };
+    const score = t => { const v = st.per_task[t] || none;
+      if (v.selected_groups) return `${v.selected.reduce((a, b) => a + b, 0)}/${v.selected.length}`;
+      return v.running.length ? `<span class="sub">${v.running.reduce((a, b) => a + b, 0)}/${v.running.length} so far</span>` : "–"; };
+    const note = t => { const v = st.per_task[t] || none; return [v.dropped ? `${v.dropped} dropped, rerun` : "", v.selected_groups > 1 ? "doubled" : "",
+      v.batch > 1 ? `from batch ${v.batch}` : ""].filter(Boolean).join(" · "); };
+    return `<h3 style="margin:16px 0 4px">Trajectory check, step ${st.step}: the ${N} × ${G} the update trains on</h3>
+      <small class="sub">green passed · red failed · faded: finished, its group still running · grey: not finished</small>
+      <div class="tablewrap"><table class="grid">${tasks.map(t => `<tr><td>${t}</td><td>${dots(t)}</td>
+        <td>${score(t)}</td><td class="sub">${note(t)}</td></tr>`).join("")}</table></div>`;
+  };
+  el.innerHTML = `<h3 style="margin:0">Rollout (aux run) — step ${cur.step}, ${state}: ${cur.selected} / ${N} groups selected</h3>
+    <div class="bar"><i style="width:${w(cur.selected)};background:var(--good)"></i><i style="width:${w(gs.running)};background:var(--aux);opacity:.55"></i></div>
+    <small class="sub">green: groups of ${G} selected for the update · orange: groups still running · dispatcher: ${L.running ?? "?"} running, ${L.waiting ?? "?"} waiting on ${L.boxes ?? "?"} boxes</small>
+    <p class="sub" style="margin-top:10px">Each step trains on exactly ${N} groups of ${G} (${N * G} trials). Miles drops any group with an aborted trial. Through step 8 (and in vanilla) it then sent another batch of all ${N} tasks × ${G} and kept the first clean group to finish, whatever its task, so that step trained one task twice and the dropped one not at all. From step 9 (<code>--resubmit-dropped-groups</code>) it reruns only the dropped task, so every update has all ${N} tasks × ${G}; the trajectory check column verifies this per step. Trials finished counts per batch. Passed and pass rate count the selected ${N * G} only; ✓ means they reproduce Miles' logged success.</p>
+    <div class="tablewrap"><table><tr><th>step</th><th>trials finished</th><th>groups selected</th><th>passed</th><th>pass rate</th><th>Miles success</th>
+      <th>trajectory check</th><th>dropped groups</th><th>unused groups</th><th>cancelled groups</th><th>other trials: usable</th><th>unusable</th></tr>${rows}</table></div>
+    ${grid(cur)}
+    ${details}`;
+}
+
+function render(d) {
+  renderRollout(d.aux.rollout);
+  const V = d.vanilla, A = d.aux, cv = css('--vanilla'), ca = css('--aux');
+  const sv = series(V, SUCCESS), sa = series(A, SUCCESS);
+  document.getElementById("hero").innerHTML = chart([{pts: sv, color: cv}, {pts: sa, color: ca}], {height: 260, pct: true});
+  const n = sa.length, mean = pts => pts.length ? pts.reduce((s, p) => s + p[1], 0) / pts.length : NaN;
+  const vSame = sv.slice(0, n), last = pts => pts.length ? pts[pts.length - 1][1] : NaN;
+  const pct = v => isNaN(v) ? "–" : (v * 100).toFixed(1) + "%";
+  const delta = mean(sa) - mean(vSame);
+  document.getElementById("stats").innerHTML = [
+    ["Steps done (aux)", `${n} / 10`, ""],
+    ["Mean success, aux", pct(mean(sa)), `steps 1–${n || "–"}`],
+    ["Mean success, vanilla", pct(mean(vSame)), `same steps`],
+    ["Difference", isNaN(delta) ? "–" : `<span class="${delta >= 0 ? "pos" : "neg"}">${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(1)} pts</span>`, "aux − vanilla"],
+    ["Latest step, aux", pct(last(sa)), n ? `step ${sa[n-1][0]}` : ""],
+  ].map(([t, v, s]) => `<div class="stat"><small>${t}</small><b>${v}</b><small>${s}</small></div>`).join("");
+  let rows = `<tr><th>step</th>${Array.from({length: 10}, (_, i) => `<th>${i + 1}</th>`).join("")}</tr>`;
+  const row = (name, run) => `<tr><td>${name}</td>${Array.from({length: 10}, (_, i) => {
+    const m = run.steps[String(i + 1)]; return `<td>${m && SUCCESS in m ? pct(m[SUCCESS]) : "–"}</td>`; }).join("")}</tr>`;
+  document.getElementById("table").innerHTML = rows + row("vanilla", V) + row("aux", A);
+  const auxKeys = [...new Set(Object.values(A.steps).flatMap(Object.keys))].filter(k => /opd|aux/i.test(k)).sort();
+  const val = (m, k) => Array.isArray(k) ? (k.every(x => x in m) ? k.reduce((s, x) => s + m[x], 0) : undefined) : m[k];
+  const meanMin = (run, k) => { const v = Object.values(run.steps).map(m => val(m, k)).filter(x => x !== undefined);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length / 60 : NaN; };
+  const fm = x => isNaN(x) ? "–" : x.toFixed(1);
+  document.getElementById("phases").innerHTML = `<tr><th>phase (mean min per step)</th><th>vanilla</th><th>aux</th><th>aux − vanilla</th></tr>` +
+    PHASES.map(([n, k]) => { const a = meanMin(V, k), b = meanMin(A, k);
+      return `<tr><td>${n}</td><td>${fm(a)}</td><td>${fm(b)}</td><td>${isNaN(a) || isNaN(b) ? "–" : (b - a >= 0 ? "+" : "") + (b - a).toFixed(1)}</td></tr>`; }).join("");
+  const panels = PANELS.concat(auxKeys.map(k => [k + " (aux run)", k]));
+  document.getElementById("grid").innerHTML = panels.map(([title, key]) =>
+    `<div class="card"><h3>${title}</h3>${chart([{pts: series(V, key), color: cv}, {pts: series(A, key), color: ca}],
+      {pct: key === "cumulative" || key === "rollout/truncated"})}</div>`).join("");
+  const upd = A.updated ? new Date(A.updated * 1000).toLocaleTimeString() : "never";
+  document.getElementById("foot").textContent = `Vanilla: ${V.runs.join(" → ")} (Adam restarted at steps 2 and 7). ` +
+    `Aux run log last read: ${upd}${A.error ? " — " + A.error : ""}. Refreshes every 60 s.`;
+}
+
+async function load() {
+  try { render(await (await fetch("data.json")).json()); }
+  catch (e) { document.getElementById("foot").textContent = "data.json unavailable: " + e; }
+}
+load(); setInterval(load, 60000);
+</script>
+</body>
+</html>

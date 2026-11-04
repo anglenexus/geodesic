@@ -5,6 +5,7 @@
 #   bash scripts/ec2_sandboxes.sh allow <h200-ip> [user]   # H200 may ssh in (tunnels, trial sync); copies its keys there
 #   bash scripts/ec2_sandboxes.sh serve <run> [t3]         # (re)start each box's agent server; t3: 2-turn trials
 #   bash scripts/ec2_sandboxes.sh probe [h200-ip]           # reverse tunnels (during preflight T0); rows -> H200
+#   bash scripts/ec2_sandboxes.sh reap <run> [secs]         # remove cancelled trials' containers (every secs)
 #   bash scripts/ec2_sandboxes.sh status | down
 #
 # Boxes terminate themselves after TTL_MIN whatever happens here. State: state/boxes.env, state/box_<i>.log,
@@ -31,7 +32,7 @@ prepare_box() {       # prepare_box <i> <ip>: copy what the box needs, then scri
   rsync -az -e "$rsh" --exclude .venv --exclude '*.sqlite' --exclude 'state/remote/' --exclude '*.log' \
     --exclude __pycache__ "$HERE/../harbor/" "ubuntu@$2:geodesic/aees/harbor/"
   rsync -az -e "$rsh" "$HERE/setup.sh" "ubuntu@$2:geodesic/aees/post_training/"
-  rsync -az -e "$rsh" "$HERE/scripts/ec2_box.sh" "$HERE/scripts/agent_server.sh" "ubuntu@$2:geodesic/aees/post_training/scripts/"
+  rsync -az -e "$rsh" "$HERE/scripts/ec2_box.sh" "$HERE/scripts/agent_server.sh" "$HERE/scripts/bake_tools.py" "ubuntu@$2:geodesic/aees/post_training/scripts/"
   rsync -az -e "$rsh" "$HERE/configs/pins.sh" "ubuntu@$2:geodesic/aees/post_training/configs/"
   rsync -az -e "$rsh" "$HERE/grpo/harbor_parser.patch" "ubuntu@$2:geodesic/aees/post_training/grpo/"
   rsync -az -e "$rsh" "$STATE/tunnel_key.pub" "$STATE/sync_key.pub" "ubuntu@$2:"
@@ -106,6 +107,29 @@ probe)                # each box: 16 reverse-tunnel listeners, and the H200's T0
     printf '%s' "$rows" | ssh ${H200_KEY:+-i "$H200_KEY"} "${H200_USER:-ubuntu}@$2" \
       "cat >> ${DATA:-/data}/monitor/\$(cat ~/aees_run)/preflight.jsonl"
   fi ;;
+reap)                 # remove the containers of trials Miles cancelled (integration_issues.md: cancelled trials leak)
+  # The agent server kills a cancelled trial's worker before its 'compose down' and only learns the compose project
+  # from the worker's reply, so /flush_all can't find it either. Every trial of a rollout has ended or been cancelled
+  # by the time Miles logs 'rollout K:', and a restart (resume) abandons the trials before it, so a compose project
+  # created before the latest of those lines is stale.
+  RUN=${2:?usage: $0 reap <run> [every-seconds]}; EVERY=${3:-0}
+  source "$STATE/run.env"
+  while :; do
+    mark='\[[0-9]{4}-[0-9-]+ [0-9:]+[^]]*(\] log_utils.py:[0-9]+ - rollout [0-9]+: | main\] arguments.py:[0-9]+ - --tokenizer-model)'
+    cutoff=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$H200_USER@$H200" \
+      "grep -a -o -E \"$mark\" ${DATA:-/data}/ckpt/$RUN/train.log | tail -1 | cut -c2-20" || true)
+    if [ -n "$cutoff" ]; then
+      for ip in $(boxes); do
+        n=$(ssh_box "$ip" "docker ps -a --format '{{.CreatedAt}}|{{.Label \"com.docker.compose.project\"}}' \
+          | awk -F'|' -v c='$cutoff' 'substr(\$1, 1, 19) < c && \$2 ~ /__[0-9]{8}-[0-9]{6}__/ {print \$2}' | sort -u \
+          | xargs -r -P 8 -I{} sh -c 'docker compose -p {} down --volumes --remove-orphans >/dev/null 2>&1 && echo {}' \
+          | wc -l" 2>/dev/null || echo "ssh failed")
+        echo "$(date -u +%T) $ip: removed $n stale trial projects (created before $cutoff)"
+      done
+    fi
+    [ "$EVERY" -gt 0 ] || break
+    sleep "$EVERY"
+  done ;;
 status)
   for ip in $(boxes); do
     echo "== $ip: $(ssh_box "$ip" 'curl -s 127.0.0.1:11000/health; echo " containers: $(docker ps -q | wc -l)"' 2>&1)"
@@ -116,5 +140,5 @@ down)
   aws ec2 terminate-instances --region "$REGION" --instance-ids $BOX_IDS \
     --query 'TerminatingInstances[].CurrentState.Name' --output text
   rm "$STATE/boxes.env" ;;
-*) sed -n 2,10p "$0"; exit 2 ;;
+*) sed -n 2,11p "$0"; exit 2 ;;
 esac
