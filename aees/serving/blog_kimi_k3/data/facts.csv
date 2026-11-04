@@ -1,0 +1,15 @@
+fact,value,unit,source
+weights_gb_per_gpu,195.32,GB,"server log: Load weight end, mem usage"
+free_gb_per_gpu_after_load,69.31,GB,"server log: Load weight end, avail mem"
+weight_load_s,410.7,s,"server log: Load weight end, elapsed"
+server_start_s,1030,s,"serve_kimi_k3.sh start, until the API answered"
+kv_pool_tokens,4813312,tokens,server log: max_total_num_tokens
+state_slots,265,slots,server log: max_mamba_cache_size
+state_slots_per_request,5,slots,server log
+running_cap,53,requests,server log: max_running_requests capped by the state cache
+max_running_requests_asked,128,requests,launch flag --max-running-requests
+prefix_hit_agent,0.949,share,SGLang metric during the agent tests
+tool_calls_ok,36,prompts,p3_quality.json
+tool_calls_total,37,prompts,p3_quality.json
+gpu_price_per_hour,7.1,$ per GPU-hour,"Modal list price, B300"
+gpus,8,GPUs,one node

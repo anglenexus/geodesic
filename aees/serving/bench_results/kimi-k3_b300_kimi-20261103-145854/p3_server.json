@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "kv_pool_tokens": 4813312,
+  "cache_hit_rate": {
+   "agent": 0.949,
+   "long": 0.0,
+   "chat": 0.0
+  },
+  "launch": "#!/usr/bin/env bash\n\nsglang serve --model-path \"/models/Kimi-K3\" --trust-remote-code \\\n  --served-model-name kimi-k3 \\\n  --host 127.0.0.1 --port 30000 \\\n  --tp-size 8 --dcp-size 8 \\\n  --mem-fraction-static 0.85 --weight-loader-prefetch-checkpoints --weight-loader-prefetch-num-threads 1 \\\n  --reasoning-parser kimi_k3 --tool-call-parser kimi_k3 \\\n  --context-length 65536 \\\n  --max-running-requests 128 \\\n  --enable-metrics \\\n  --enable-cache-report \\\n  --log-level info  2>&1 | tee \"/root/kimi-serve/logs/server_kimi_k3_dcp8_20261103_231735.log\"",
+  "startup_log": [
+   "[2026-11-03 23:18:17] Breakable CUDA graph is incompatible with KDA hybrid linear attention; disabling prefill CUDA graph.",
+   "[2026-11-03 23:18:17] Kimi-K3 DCP keeps decode attention backend 'cutedsl_mla' (prefill=None -> 'trtllm_mla').",
+   "[2026-11-03 23:18:19] server_args={'model_path': '/models/Kimi-K3', 'tokenizer_path': '/models/Kimi-K3', 'tokenizer_mode': 'auto', 'tokenizer_backend': 'huggingface', 'tokenizer_worker_num': 1, 'detokenizer_worker_num': 1, 'skip_tokenizer_init': False, 'load_format': 'auto', 'model_loader_extra_conf",
+   "[2026-11-03 23:26:17 TP0] Load weight end. elapsed=410.66 s, type=KimiK3ForConditionalGeneration, quant=compressed-tensors, avail mem=69.31 GB, mem usage=195.32 GB.",
+   "[2026-11-03 23:26:19 TP3] max_running_requests is capped to 53 by the mamba state cache (max_mamba_cache_size=265, 5 state slots per request). To raise it: increase --mamba-full-memory-ratio or --max-mamba-cache-size, or halve the state size with --mamba-ssm-dtype bfloat16.",
+   "[2026-11-03 23:33:42 TP0] max_total_num_tokens=4813312, chunked_prefill_size=16384, max_prefill_tokens=16384, max_running_requests=53, context_len=65536, available_gpu_mem=35.36 GB"
+  ],
+  "weights_gb": 195.32,
+  "ready_seconds": 970
+ }
+}
