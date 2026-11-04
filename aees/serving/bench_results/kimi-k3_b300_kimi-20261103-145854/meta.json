@@ -1,0 +1,211 @@
+{
+ "phase3": {
+  "runs": [
+   {
+    "started": "2026-11-03T23:35:19",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:37:38",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:39:19",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:41:16",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:42:45",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:44:10",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:45:08",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:46:27",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   },
+   {
+    "started": "2026-11-03T23:48:14",
+    "arms": [
+     "baseline"
+    ],
+    "quick": false,
+    "mode": "full",
+    "budget_min": 0,
+    "host": "modal"
+   }
+  ],
+  "model": "kimi-k3",
+  "model_label": "Kimi K3",
+  "served_name": "kimi-k3",
+  "serve_script": "serve_kimi_k3.sh",
+  "serve_env": {
+   "MAX_RUNNING": "128"
+  },
+  "base_flags": "",
+  "gpu_class": "blackwell",
+  "arm_flags": {
+   "baseline": "(baseline)"
+  },
+  "arm_labels": {
+   "baseline": "Native MXFP4 experts (rest BF16), TP8 + DCP8: SGLang's B300 Balanced recipe"
+  },
+  "workloads": {
+   "agent": {
+    "kind": "gsp",
+    "system": 4096,
+    "question": 128,
+    "output": 256,
+    "groups": 16
+   },
+   "chat": {
+    "kind": "random",
+    "input": 1024,
+    "output": 256
+   },
+   "long": {
+    "kind": "random",
+    "input": 8192,
+    "output": 256
+   }
+  },
+  "plan": {
+   "arms": [
+    "baseline"
+   ],
+   "sweeps": {
+    "_other": {
+     "agent": [
+      [
+       1,
+       6
+      ],
+      [
+       16,
+       48
+      ],
+      [
+       64,
+       192
+      ]
+     ],
+     "chat": [
+      [
+       64,
+       128
+      ]
+     ],
+     "long": [
+      [
+       16,
+       32
+      ]
+     ]
+    }
+   },
+   "extras": {
+    "cold": [
+     [
+      16,
+      32
+     ]
+    ],
+    "rates": [
+     [
+      4,
+      60
+     ]
+    ],
+    "p999": [
+     64,
+     400
+    ],
+    "burst": 256
+   },
+   "budget_min": 15,
+   "reserve_min": 15,
+   "warm_output": 1
+  },
+  "versions": {
+   "torch": "2.14.1+cu130",
+   "cuda": "13.0",
+   "flashinfer": "0.7.2",
+   "sglang": "0.5.23"
+  },
+  "gpu": "NVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB\nNVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB\nNVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB\nNVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB\nNVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB\nNVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB\nNVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB\nNVIDIA B300 SXM6 AC, 610.57.04, 275040 MiB"
+ },
+ "phase4_env": {
+  "gpu": "NVIDIA B300 SXM6 AC",
+  "peak_gbs": 8000,
+  "sm": "10.3",
+  "sms": 148,
+  "torch": "2.14.1+cu130",
+  "cuda": "13.0",
+  "flashinfer": "0.7.2",
+  "time": "2026-11-03 23:17:00",
+  "model": "kimi-k3"
+ },
+ "exported": "2026-11-03T15:53:43",
+ "git_commit": "91101ec",
+ "source": {
+  "phase3": "/Users/willzou/code/geodesic/aees/serving/.nebius/recovered_kimi-20261103-145854/kimi-k3_b300_kimi-20261103-145854",
+  "phase4": "/Users/willzou/code/geodesic/aees/serving/.nebius/recovered_kimi-20261103-145854/fi_kimi-k3"
+ }
+}

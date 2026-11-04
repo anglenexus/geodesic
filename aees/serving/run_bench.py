@@ -11,11 +11,14 @@ Run on the GPU host, in the same directory as the serve scripts and make_dashboa
     python run_bench.py --model qwen3.5-27b --arms baseline fa3 triton     # other settings, own 30 min
     python run_bench.py                                  # Qwen3-4B, the original ~1.5 h matrix
     python run_bench.py --resume results/<run-id>        # continue an interrupted run
+    python run_bench.py --model kimi-k3 --reuse-server   # Kimi K3 on 8x B300 (Modal), 15 min, server already up
 
 --model picks the serve script, settings and test sizes (MODELS below); the GPU is detected (--gpu
 overrides). Qwen3.5-27B default settings:
     A100-40GB   AWQ 4-bit baseline, prefix cache off, MTP speculative decoding
     H100/H200   the three weight precisions: AWQ 4-bit (baseline), FP8, BF16
+Kimi K3 (8x B300, see kimi_k3_plan.md): one setting in 15 minutes, SGLang's Balanced recipe (TP8 + DCP8);
+the other settings each need a ~13-minute restart and only fit a longer budget.
 Every 27B run stops at --budget-min (default 30): points that don't fit are skipped and logged, and the
 baseline's extra tests (cold start, QPS, p99.9, burst) only run if the remaining settings still fit.
 
@@ -46,8 +49,8 @@ ARMS = {
     "baseline": dict(flags="", label="Default settings: FlashInfer, prefix cache on, BF16 KV cache"),
     "no_radix": dict(flags="--disable-radix-cache", label="Prefix (radix) cache off"),
     "fp8_kv": dict(flags="--kv-cache-dtype fp8_e5m2", label="FP8 e5m2 KV cache", gpus=("ampere", "other")),
-    "fp8_kv_e4m3": dict(flags="--kv-cache-dtype fp8_e4m3", label="FP8 e4m3 KV cache (native FP8 on Hopper)",
-                        gpus=("hopper",)),
+    "fp8_kv_e4m3": dict(flags="--kv-cache-dtype fp8_e4m3", label="FP8 e4m3 KV cache (native FP8 on Hopper and Blackwell)",
+                        gpus=("hopper", "blackwell")),
     "page16": dict(flags="--page-size 16", label="KV page size 16"),
     "triton": dict(flags="--attention-backend triton --sampling-backend pytorch", label="Triton attention, no FlashInfer"),
     "fa3": dict(flags="--attention-backend fa3", label="FlashAttention-3 attention (Hopper)", gpus=("hopper",)),
@@ -64,6 +67,10 @@ ARMS = {
                         env={"WEIGHTS": "fp8"}, needs="~/models/Qwen3.5-27B-FP8", min_gb=70),
     "bf16_weights": dict(flags="", label="BF16 weights (official Qwen checkpoint, full precision)",
                          env={"WEIGHTS": "bf16"}, needs="~/models/Qwen3.5-27B", min_gb=70),
+    # Kimi K3 (serve_kimi_k3.sh): the baseline is TP8 + DCP8; these change one thing each.
+    "low_latency": dict(flags="", label="Plain TP8, no decode context parallel (SGLang's Low-Latency recipe)",
+                        env={"DCP": "1"}),
+    "kda_bf16": dict(flags="--mamba-ssm-dtype bfloat16", label="KDA recurrent state in BF16 instead of FP32"),
 }
 WORKLOADS = {
     # agent: 16 shared 4K-token system prompts (prompt templates + tool schemas), short question
@@ -133,6 +140,17 @@ PLAN_27B_HOPPER = {
                   budget_min=8, reserve_min=0, warm_output=1, quality=False),
 }
 
+_KIMI_SWEEP = {"agent": [(1, 6), (16, 48), (64, 192)], "chat": [(64, 128)], "long": [(16, 32)]}
+PLAN_KIMI = {  # one 8x B300 node; a restart costs ~13 min (1.56 TB of weights), so 15 min = one setting
+    "full": dict(arms=["baseline"], sweeps={"_other": _KIMI_SWEEP},
+                 extras=dict(cold=[(16, 32)], rates=[(4, 60)], p999=(64, 400), burst=256),
+                 budget_min=15, reserve_min=15, warm_output=1),
+    "quick": dict(arms=["baseline"], sweeps={"_other": {"agent": [(16, 32)], "chat": [(64, 64)]}},
+                  budget_min=8, reserve_min=0, warm_output=1),
+    "trace": dict(arms=["baseline"], sweeps={"_other": {"agent": [(16, 48)]}},
+                  budget_min=8, reserve_min=0, warm_output=1, quality=False),
+}
+
 MODELS = {
     "qwen3-4b": dict(
         label="Qwen3-4B-Instruct-2507", serve="serve.sh", served="qwen3-4b",
@@ -156,6 +174,14 @@ MODELS = {
         # The quality check measures tool-call formatting across settings, not reasoning: thinking off
         # keeps it fast and deterministic (thinking stays on for Harbor runs).
         quality_extra={"chat_template_kwargs": {"enable_thinking": False}}, restore=False),
+    "kimi-k3": dict(
+        label="Kimi K3", serve="serve_kimi_k3.sh", served="kimi-k3", model_dir="/models/Kimi-K3",
+        baseline_label="Native MXFP4 experts (rest BF16), TP8 + DCP8: SGLang's B300 Balanced recipe",
+        arms=["baseline", "low_latency", "kda_bf16", "fp8_kv_e4m3"],
+        plans={"_any": PLAN_KIMI}, serve_env={"_any": {"MAX_RUNNING": "128"}}, base_flags={"_any": ""},
+        point_timeout=280,  # every point fits a 5-minute piece (pieces_kimi_k3.py)
+        # Kimi's template switch is `thinking` (Qwen's is `enable_thinking`); off for the same reason as Qwen.
+        quality_extra={"chat_template_kwargs": {"thinking": False}}, restore=False),
 }
 
 METRIC_RE = re.compile(r"^(sglang:[A-Za-z0-9_:]+)(?:\{[^}]*\})?\s+([-+0-9.eE]+|NaN|[+-]?Inf)\s*$")
@@ -267,7 +293,7 @@ def gpu_info():
         name, mem, cap = [x.strip() for x in line.split(",")]
     except Exception:
         return None, None, "other"
-    return name, int(float(mem)) // 1024, {"8": "ampere", "9": "hopper"}.get(cap.split(".")[0], "other")
+    return name, int(float(mem)) // 1024, {"8": "ampere", "9": "hopper", "10": "blackwell"}.get(cap.split(".")[0], "other")
 
 
 def slug(text):
@@ -318,6 +344,7 @@ class Runner:
         self.t0 = time.time()
         self.budget = (a.budget_min if a.budget_min is not None else self.plan.get("budget_min")) or 0
         self.done = set()
+        self.reused = False
         if self.manifest.exists():
             for line in self.manifest.read_text().splitlines():
                 if line.strip():
@@ -422,6 +449,19 @@ class Runner:
         if self.a.dry_run:
             return True
         t = time.time()
+        if self.a.reuse_server and not self.reused and arm == "baseline" and self.http("/v1/models"):
+            # Started before this run (Kimi K3: ~13 min of weight loading kept out of the 15-minute budget).
+            self.reused = True
+            (self.dir / arm).mkdir(parents=True, exist_ok=True)
+            start = self.a.work_dir / "logs" / "server_start.txt"
+            (self.dir / arm / "server_start.txt").write_text(start.read_text() if start.exists() else "")
+            facts = self.startup_facts()
+            self.md(f"\n## {arm}: {self.label(arm)}\n\nReused the server that was already running"
+                    + "".join(f"; {k} {v}" for k, v in facts.items()) + f". Elapsed {self.elapsed_min():.1f} min.\n")
+            self.md("| workload | test | concurrency | requests | tok/s | req/s | TTFT p50 ms | TTFT p99 ms | ITL p50 ms "
+                    "| ITL p99 ms | seconds |")
+            self.md("|---|---|---|---|---|---|---|---|---|---|---|")
+            return True
         p = subprocess.run(["bash", str(self.serve), "restart"], env=dict(os.environ, EXTRA_ARGS=extra, **env),
                            capture_output=True, text=True)
         (self.dir / arm).mkdir(parents=True, exist_ok=True)
@@ -607,31 +647,39 @@ class Runner:
                 ["nvidia-smi", "--query-gpu=timestamp,utilization.gpu,memory.used,power.draw",
                  "--format=csv,noheader,nounits", "-l", "1"],
                 stdout=open(self.dir / arm / "gpu.csv", "a"), stderr=subprocess.DEVNULL)
+        # --points (pieces_kimi_k3.py): run only the named points, e.g. agent:conc:16 or quality; no shared warm-up.
+        want = lambda wl, mode, v: not self.a.points or f"{wl}:{mode}:{v}" in self.a.points  # noqa: E731
         try:
-            self.run_point(arm, "agent", "warmup", 0, 32, conc=16, record=False)
+            if not self.a.points:
+                self.run_point(arm, "agent", "warmup", 0, 32, conc=16, record=False)
             for wl, points in sweeps.items():
                 for c, n in points:
-                    self.run_point(arm, wl, "conc", c, n, conc=c)
-                if not self.a.dry_run:
+                    if want(wl, "conc", c):
+                        self.run_point(arm, wl, "conc", c, n, conc=c)
+                if not self.a.dry_run and any(want(wl, "conc", c) for c, _ in points):
                     m = self.http("/metrics")
                     if m:
                         (self.dir / arm / f"metrics_{wl}.txt").write_text(m)
-            if self.plan.get("quality", True):
+            if self.plan.get("quality", True) and (not self.a.points or "quality" in self.a.points):
                 self.quality_check(arm)
             ex = self.plan.get("extras")
             if arm == "baseline" and ex:
                 need = self.plan.get("reserve_min", 0) * arms_left
-                if self.budget and self.left_min() < need + 3:
+                if self.budget and self.left_min() < need + 3 and not self.a.points:
                     self.md(f"\nSkipped the cold-start, QPS, p99.9 and burst tests: {self.left_min():.0f} min left, "
                             f"the other {arms_left} setting(s) need ~{need:g}.")
                 else:
                     for c, n in ex["cold"]:  # cold start: empty cache, everyone arrives at once
-                        self.run_point(arm, "agent", "cold", c, n, conc=c, warm=False)
+                        if want("agent", "cold", c):
+                            self.run_point(arm, "agent", "cold", c, n, conc=c, warm=False)
                     for r, n in ex["rates"]:
-                        self.run_point(arm, "agent", "rate", r, n, rate=r)
+                        if want("agent", "rate", r):
+                            self.run_point(arm, "agent", "rate", r, n, rate=r)
                     c, n = ex["p999"]
-                    self.run_point(arm, "agent", "p999", c, n, conc=c)  # long run for p99.9 tails
-                    self.run_point(arm, "agent", "burst", ex["burst"], ex["burst"])  # every request sent at once
+                    if want("agent", "p999", c):
+                        self.run_point(arm, "agent", "p999", c, n, conc=c)  # long run for p99.9 tails
+                    if want("agent", "burst", ex["burst"]):
+                        self.run_point(arm, "agent", "burst", ex["burst"], ex["burst"])  # every request sent at once
         finally:
             if gpu:
                 gpu.terminate()
@@ -654,7 +702,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", default=os.environ.get("BENCH_MODEL", "qwen3-4b"), choices=list(MODELS),
                     help="model profile: serve script, settings and test sizes (default qwen3-4b)")
-    ap.add_argument("--gpu", choices=["ampere", "hopper", "other"],
+    ap.add_argument("--gpu", choices=["ampere", "hopper", "blackwell", "other"],
                     help="GPU class; detected with nvidia-smi when omitted (set it for --dry-run off the GPU host)")
     ap.add_argument("--arms", nargs="+", choices=list(ARMS),
                     help="settings to test (default: the plan's list for this model and GPU)")
@@ -673,6 +721,10 @@ def main():
                     help="tokenizer folder for the load generator (default: the profile's checkpoint)")
     ap.add_argument("--point-timeout", type=int, help="seconds per test point (default: per model)")
     ap.add_argument("--no-restore", action="store_true", help="leave the last setting's server running")
+    ap.add_argument("--points", nargs="+",
+                    help="only these test points (workload:mode:value, e.g. agent:conc:16) and/or 'quality'")
+    ap.add_argument("--reuse-server", action="store_true",
+                    help="use the already-running server for the baseline instead of restarting it")
     a = ap.parse_args()
     prof = MODELS[a.model]
     a.gpu_name, a.gpu_gb, detected = gpu_info()

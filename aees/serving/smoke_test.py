@@ -6,6 +6,7 @@
 #   python smoke_test.py chat --tools --system "You are a terse assistant."
 #   python smoke_test.py chat --model qwen3.5-27b              # thinking models: reasoning shown dimmed
 #   python smoke_test.py chat --model qwen3.5-27b --no-think   # ask the model to skip thinking
+#   python smoke_test.py --model kimi-k3 --no-think            # Kimi K3 on Modal (tunnel from modal_kimi_k3.py)
 # The API address defaults to http://127.0.0.1:30000/v1 (override with --base-url or API_PORT=...).
 import argparse, json, os, sys, time, urllib.request
 from openai import OpenAI
@@ -22,10 +23,10 @@ p.add_argument("--tools", action="store_true", help="chat mode: enable the demo 
 p.add_argument("--temperature", type=float, default=0.7)
 p.add_argument("--max-tokens", type=int, default=8192, help="thinking counts toward this")
 p.add_argument("--no-think", action="store_true",
-               help="send enable_thinking=false (Qwen3/3.5 chat templates; ignored by other models)")
+               help="ask the model to skip thinking (Qwen3/3.5: enable_thinking=false, Kimi K3: thinking=false)")
 args = p.parse_args()
 # Sent on every request; harmless for models whose chat template has no thinking switch.
-EXTRA = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}} if args.no_think else {}
+EXTRA = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False, "thinking": False}}} if args.no_think else {}
 DIM, RESET = "\033[2m", "\033[0m"
 
 try:  # fail fast, with the fix, if the tunnel isn't up

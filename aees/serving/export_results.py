@@ -21,6 +21,7 @@ what lands here is enough to rebuild every chart and table:
   p3_timeseries.csv  SGLang /metrics gauges per setting, averaged over 5 s
   p3_gpu.csv         GPU memory, utilization and power per setting, averaged over 5 s
   p4_sparse.json, p4_balance.json, p4_precision.json   kernel microbenchmarks (as written by fi_bench.py)
+  p4_mla.json, p4_fp4.json   Kimi K3 kernel microbenchmarks (as written by fi_bench_kimi.py)
   p4_jit.json        JIT timings, module names and sizes, and the source diff between two variants
   p4_trace.json      live KV-index snapshot statistics plus one binned index map
 
@@ -159,7 +160,7 @@ def export_phase3(run, out):
 def export_phase4(fi, out):
     import fi_bench
     env = None
-    for name in ("sparse", "balance", "precision"):
+    for name in ("sparse", "balance", "precision", "mla", "fp4"):  # mla, fp4: fi_bench_kimi.py (Kimi K3)
         f = fi / f"{name}.json"
         if f.exists():
             shutil.copy(f, out / f"p4_{name}.json")
