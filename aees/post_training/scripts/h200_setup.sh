@@ -31,6 +31,7 @@ sg docker -c "STEPS=6 bash $HERE/setup.sh" > "$DATA/monitor/setup_6.log" 2>&1 & 
 STEPS=7 bash "$HERE/setup.sh" > "$DATA/monitor/setup_7.log" 2>&1 & wts=$!
 wait "$wts" || { tail -20 "$DATA/monitor/setup_7.log"; exit 1; }; stamp "weights ($MODELS)"
 wait "$img" || { tail -20 "$DATA/monitor/setup_6.log"; exit 1; }; stamp "Miles image + source"
+[ "${SERVE_ONLY:-0}" = 1 ] && { echo "SETUP_DONE"; exit 0; }    # phase 1 (align_tmax_plan.md): serving only, no training
 echo "READY_FOR_T0"                                      # T0 can run while the conversion does
 sg docker -c "STEPS=9 bash $HERE/setup.sh" > "$DATA/monitor/setup_9.log" 2>&1 || { tail -20 "$DATA/monitor/setup_9.log"; exit 1; }
 stamp "torch_dist conversion"

@@ -3,7 +3,7 @@
 #
 #   bash scripts/ec2_sandboxes.sh up [N]                   # launch N boxes (default 2, ec2_sizing.md) and prepare them in parallel
 #   bash scripts/ec2_sandboxes.sh allow <h200-ip> [user]   # H200 may ssh in (tunnels, trial sync); copies its keys there
-#   bash scripts/ec2_sandboxes.sh serve <run> [t3]         # (re)start each box's agent server; t3: 2-turn trials
+#   bash scripts/ec2_sandboxes.sh serve <run> [t3|phase1]  # (re)start each box's agent server; t3: 2-turn trials; phase1: align_tmax_plan.md
 #   bash scripts/ec2_sandboxes.sh probe [h200-ip]           # reverse tunnels (during preflight T0); rows -> H200
 #   bash scripts/ec2_sandboxes.sh reap <run> [secs]         # remove cancelled trials' containers (every secs)
 #   bash scripts/ec2_sandboxes.sh status | down
@@ -34,7 +34,7 @@ prepare_box() {       # prepare_box <i> <ip>: copy what the box needs, then scri
   rsync -az -e "$rsh" "$HERE/setup.sh" "ubuntu@$2:geodesic/aees/post_training/"
   rsync -az -e "$rsh" "$HERE/scripts/ec2_box.sh" "$HERE/scripts/agent_server.sh" "$HERE/scripts/bake_tools.py" "ubuntu@$2:geodesic/aees/post_training/scripts/"
   rsync -az -e "$rsh" "$HERE/configs/pins.sh" "ubuntu@$2:geodesic/aees/post_training/configs/"
-  rsync -az -e "$rsh" "$HERE/grpo/harbor_parser.patch" "ubuntu@$2:geodesic/aees/post_training/grpo/"
+  rsync -az -e "$rsh" "$HERE/grpo/harbor_parser.patch" "$HERE/grpo/command_timeout.patch" "ubuntu@$2:geodesic/aees/post_training/grpo/"
   rsync -az -e "$rsh" "$STATE/tunnel_key.pub" "$STATE/sync_key.pub" "ubuntu@$2:"
   ssh_box "$2" 'bash geodesic/aees/post_training/scripts/ec2_box.sh prepare'
 }
@@ -87,7 +87,7 @@ allow)
   "${SSH_H[@]}" "chmod 600 ~/.ssh/aees_tunnel ~/.ssh/aees_sync && echo '$BOX_IPS' > ~/aees_boxes"
   echo "H200 $H200 may reach: $BOX_IPS (keys in ~/.ssh/aees_{tunnel,sync}, list in ~/aees_boxes)" ;;
 serve)
-  RUN=${2:?usage: $0 serve <run> [t3]}; MODE=${3:-normal}
+  RUN=${2:?usage: $0 serve <run> [t3|phase1]}; MODE=${3:-normal}
   pids=(); for ip in $(boxes); do ssh_box "$ip" "bash geodesic/aees/post_training/scripts/ec2_box.sh serve $RUN $MODE" & pids+=($!); done
   fail=0; for p in "${pids[@]}"; do wait "$p" || fail=1; done
   [ "$fail" = 0 ] && echo "agent servers ($MODE) up on: $(boxes)" || echo "some agent servers did not start (see above)"

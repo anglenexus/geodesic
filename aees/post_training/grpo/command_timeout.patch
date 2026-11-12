@@ -1,0 +1,175 @@
+diff --git a/agent_server/trial_runner.py b/agent_server/trial_runner.py
+index e54fe307..5cb2d37f 100644
+--- a/agent_server/trial_runner.py
++++ b/agent_server/trial_runner.py
+@@ -80,6 +80,10 @@ def _agent_connection_config(
+         if max_turns := os.getenv("HARBOR_AGENT_MAX_ITERATIONS"):
+             kwargs["max_turns"] = int(max_turns)
+             kwargs["suppress_max_turns_warning"] = True
++        if command_timeout := os.getenv("HARBOR_TERMINUS_2_COMMAND_TIMEOUT_SEC"):
++            kwargs["command_timeout_sec"] = float(command_timeout)
++        if _env_flag("HARBOR_TERMINUS_2_STOP_AT_CONTEXT"):
++            kwargs["stop_at_context_limit"] = True
+         return kwargs, {
+             "OPENAI_API_KEY": request.api_key or "dummy",
+             "OPENAI_API_BASE": request.base_url,
+diff --git a/src/harbor/agents/terminus_2/terminus_2.py b/src/harbor/agents/terminus_2/terminus_2.py
+index 413b9cb7..61860e2a 100644
+--- a/src/harbor/agents/terminus_2/terminus_2.py
++++ b/src/harbor/agents/terminus_2/terminus_2.py
+@@ -1,3 +1,4 @@
++import asyncio
+ import copy
+ import shlex
+ import time
+@@ -194,6 +195,8 @@ class Terminus2(BaseAgent):
+         llm_kwargs: dict[str, Any] | None = None,
+         llm_call_kwargs: dict[str, Any] | None = None,
+         extra_env: dict[str, str] | None = None,
++        command_timeout_sec: float | None = None,
++        stop_at_context_limit: bool = False,
+         *args,
+         **kwargs,
+     ):
+@@ -356,6 +359,15 @@ class Terminus2(BaseAgent):
+         self._store_all_messages = store_all_messages
+         self._interleaved_thinking = interleaved_thinking
+         self._llm_kwargs = llm_kwargs
++        # Per-command limit: a command still running this long after its Enter gets one Ctrl-C (None: no limit)
++        self._command_timeout_sec = command_timeout_sec
++        self._command_seq = 0
++        self._command_notes: list[str] = []
++        self._command_watchdogs: set[asyncio.Task] = set()
++        self._shell_job: int | None = None  # the terminal's foreground group with the shell at its prompt
++        # With summarization off, a call refused for the context limit ends the trial with an error; with this set it
++        # ends the agent instead, and the verifier grades the container as it is (as Tmax's agent does)
++        self._stop_at_context_limit = stop_at_context_limit
+ 
+     def _resolve_model_info(
+         self, model_name: str | None, provided_model_info: dict[str, Any] | None
+@@ -1272,6 +1284,8 @@ so ask everything you need to know."""
+         start_time = time.time()
+         try:
+             for command in commands:
++                if await self._starts_command(command.keystrokes, session):
++                    self._watch_command(command.keystrokes, session)
+                 try:
+                     await session.send_keys(
+                         command.keystrokes,
+@@ -1287,12 +1301,63 @@ so ask everything you need to know."""
+                         ),
+                     )
+ 
+-            return False, self._limit_output_length(
++            return False, self._take_command_notes() + self._limit_output_length(
+                 await session.get_incremental_output()
+             )
+         finally:
+             self._command_exec_times.append((time.time() - start_time) * 1000)
+ 
++    async def _starts_command(self, keystrokes: str, session: TmuxSession) -> bool:
++        """Whether these keystrokes start a new shell command: they press Enter while the shell is at its
++        prompt. Keys typed into a running program (an editor, a REPL, a script reading stdin) don't start one."""
++        if self._command_timeout_sec is None or not session.runs_command(keystrokes):
++            return False
++        try:
++            job = await session.foreground_job()
++            if job is not None and self._shell_job is None:  # before the first command the shell is at its prompt
++                self._shell_job = job
++            return job is not None and job == self._shell_job
++        except Exception as e:  # an unreadable terminal must not end the trial
++            self.logger.debug(f"Command time limit check failed: {e}")
++            return False
++
++    def _watch_command(self, keystrokes: str, session: TmuxSession) -> None:
++        self._command_seq += 1
++        task = asyncio.create_task(
++            self._interrupt_after_limit(self._command_seq, keystrokes, session)
++        )
++        self._command_watchdogs.add(task)
++        task.add_done_callback(self._command_watchdogs.discard)
++
++    async def _interrupt_after_limit(
++        self, seq: int, keystrokes: str, session: TmuxSession
++    ) -> None:
++        """After the limit, send Ctrl-C if this command is still in the foreground, and kill its process group if it
++        is still there 2 s later. A newer command means the shell was back at its prompt, so this one had
++        finished; the check is repeated after each wait, before anything is sent."""
++        await asyncio.sleep(self._command_timeout_sec)
++        try:
++            job = await session.foreground_job()
++            if seq != self._command_seq or job is None or job == self._shell_job:  # superseded, unreadable, finished
++                return
++            await session.send_keys("C-c", block=False, min_timeout_sec=2.0)
++            how = "interrupted with Ctrl-C"
++            if seq == self._command_seq and await session.foreground_job() == job:
++                await session.environment.exec(
++                    command=f"kill -KILL -- -{job}", user=session._user
++                )
++                how = "killed (it kept running after Ctrl-C)"
++            self._command_notes.append(
++                f"Command timed out after {self._command_timeout_sec:g} seconds and was {how}: "
++                f"{keystrokes.strip()[:200]}"
++            )
++        except Exception as e:  # the environment may be gone when the trial ended meanwhile
++            self.logger.debug(f"Command time limit check failed: {e}")
++
++    def _take_command_notes(self) -> str:
++        notes, self._command_notes = self._command_notes, []
++        return "".join(note + "\n" for note in notes)
++
+     async def _run_agent_loop(
+         self,
+         initial_prompt: str,
+@@ -1677,7 +1742,13 @@ so ask everything you need to know."""
+                 chat=self._chat,
+                 original_instruction=instruction,
+             )
++        except ContextLengthExceededError:
++            if not self._stop_at_context_limit:
++                raise
++            self.logger.debug("Context limit reached: agent stops, the verifier grades the current state")
+         finally:
++            for task in list(self._command_watchdogs):
++                task.cancel()
+             # Always capture metrics and rollout details even if the agent times out or errors
+             # Combine main chat rollout details with subagent rollout details
+             context.rollout_details = (
+diff --git a/src/harbor/agents/terminus_2/tmux_session.py b/src/harbor/agents/terminus_2/tmux_session.py
+index 06496fb3..7da18c44 100644
+--- a/src/harbor/agents/terminus_2/tmux_session.py
++++ b/src/harbor/agents/terminus_2/tmux_session.py
+@@ -594,6 +594,33 @@ class TmuxSession:
+     def _is_executing_command(self, key: str) -> bool:
+         return self._is_enter_key(key) or self._ends_with_newline(key)
+ 
++    def runs_command(self, keys: str) -> bool:
++        """Whether sending *keys* presses Enter, i.e. runs what was typed."""
++        return bool(keys) and self._is_executing_command(keys)
++
++    # The foreground process group of the terminal the agent types into. Terminus-2 records the session with
++    # `asciinema rec`, which runs the agent's shell in a terminal of its own; when the pane's foreground job has a
++    # child that leads its own session (a recorder), follow it into that terminal. /proc only: task images may lack
++    # ps. Fields after "comm) ": 2 ppid, 4 session, 6 tpgid.
++    _FOREGROUND_JOB_SH = (
++        "st() {{ sed 's/.*) //' /proc/$1/stat 2>/dev/null; }}; "
++        "p=$(tmux display-message -p -t {session} '#{{pane_pid}}') || exit 1; "
++        "for _ in 1 2 3 4; do set -- $(st $p); tp=$6; [ -n \"$tp\" ] || exit 1; c=; "
++        "for f in /proc/[0-9]*; do q=${{f#/proc/}}; set -- $(st $q); "
++        "[ \"$2\" = \"$tp\" ] && [ \"$4\" = \"$q\" ] && {{ c=$q; break; }}; done; "
++        "[ -n \"$c\" ] || break; p=$c; done; echo $tp"
++    )
++
++    async def foreground_job(self) -> int | None:
++        """The foreground process group of the agent's terminal (None when it can't be read). It equals the shell's
++        own group while the shell waits at its prompt; Terminus2 records that value before the first command."""
++        result = await self.environment.exec(
++            command=self._FOREGROUND_JOB_SH.format(session=self._session_name),
++            user=self._user,
++        )
++        out = (result.stdout or "").strip()
++        return int(out) if result.return_code == 0 and out.isdigit() else None
++
+     def _prevent_execution(self, keys: list[str]) -> list[str]:
+         keys = keys.copy()
+         while keys and self._is_executing_command(keys[-1]):

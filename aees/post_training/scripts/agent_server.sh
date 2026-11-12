@@ -14,7 +14,7 @@ export HARBOR_TASKS_DIR=$DATA/tasks/terminal-bench-2-1   # one folder per instan
 export HARBOR_TERMINUS_2_PARSER=json               # as SFT data, baseline, evaluation (grpo/harbor_parser.patch)
 export HARBOR_TERMINUS_2_ENABLE_SUMMARIZE=false    # summarization off (D10)
 export AGENT_MAX_INPUT_TOKENS=$MAX_LEN             # terminus-2's context size; = Miles' --max-seq-len
-export AGENT_MAX_OUTPUT_TOKENS=8192                # = MAX_TURN_TOKENS in configs/grpo.sh
+export AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-8192}   # = MAX_TURN_TOKENS in configs/grpo.sh (phase 1: 16384)
 export HARBOR_TIMEOUT_MULTIPLIER=1.0               # task.toml timeouts as written, as in the ledger (server default 2.0)
 export DOCKER_PRUNE_INTERVAL_SEC=1e9               # off: its `docker image prune -a` deletes the pre-pulled task images
 

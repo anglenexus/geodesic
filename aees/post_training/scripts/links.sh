@@ -6,6 +6,7 @@
 #   dispatch   grpo/dispatch.py on 127.0.0.1:11000 (Miles' AGENT_SERVER_URL): longest task first, SLOTS per box
 #
 #   RUN=grpo_10h bash scripts/links.sh start | stop | status
+#   MINUTES=<json> DISPATCH_ARGS=--fixed-order: phase 1 starts trials by task time limit (align_tmax_plan.md)
 # Needs ~/aees_boxes and ~/.ssh/aees_{tunnel,sync} (laptop: scripts/ec2_sandboxes.sh allow <h200-ip>).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)                   # aees/post_training
@@ -46,7 +47,7 @@ start)
   done
   tmux new-window -t links -n sync "$(sync_cmd) 2>&1 | grep -v '^$' >> $DATA/monitor/$RUN/sync.log"
   tmux new-window -t links -n dispatch "python3 $HERE/grpo/dispatch.py --backends ${backends%,} --slots $SLOTS \
-    --minutes $HERE/grpo/task_minutes.json --log $DATA/trials/$RUN/dispatch.jsonl 2>&1 | tee -a $DATA/monitor/$RUN/dispatch.log"
+    --minutes ${MINUTES:-$HERE/grpo/task_minutes.json} ${DISPATCH_ARGS:-} --log $DATA/trials/$RUN/dispatch.jsonl 2>&1 | tee -a $DATA/monitor/$RUN/dispatch.log"
   for _ in $(seq 30); do curl -sf 127.0.0.1:11000/health >/dev/null 2>&1 && break; sleep 1; done
   bash "$0" status ;;
 status)

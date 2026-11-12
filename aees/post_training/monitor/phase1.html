@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rollout Baseline Tracker</title>
+<!-- Served by monitor/phase1.py (reads /status.json every 15 s), or opened from a saved snapshot. -->
+<style>
+  :root { color-scheme: light;
+    --page:#f9f9f7; --surface:#fcfcfb; --fg:#0b0b0b; --fg2:#52514e; --muted:#898781; --grid:#e1e0d9;
+    --axis:#c3c2b7; --ring:rgba(11,11,11,0.10); --up:#006300;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;            /* categorical (engines), validated light */
+    --tmax:#e34948;                                                   /* reference: Tmax, validated against --s1 */
+    --nothink:#898781;                                                /* reference: ours thinking off (secondary) */
+    --good:#0ca30c; --warning:#fab219; --critical:#d03b3b; }
+  @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) { color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --fg:#f0efec; --fg2:#c3c2b7; --grid:#2c2c2a; --axis:#383835;
+    --ring:rgba(255,255,255,0.10); --up:#0ca30c; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+    --tmax:#e66767; } }
+  :root[data-theme="dark"] { color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --fg:#f0efec; --fg2:#c3c2b7; --grid:#2c2c2a; --axis:#383835;
+    --ring:rgba(255,255,255,0.10); --up:#0ca30c; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+    --tmax:#e66767; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; background:var(--page); color:var(--fg);
+         font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size:18px; margin:0; } h2 { font-size:14px; margin:0 0 8px; color:var(--fg); }
+  h3 { font-size:12px; margin:8px 0 2px; color:var(--fg2); font-weight:600; }
+  .sub { color:var(--fg2); font-size:13px; } .muted { color:var(--muted); }
+  .bar { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; }
+  .grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fill, minmax(min(560px, 100%), 1fr)); }
+  .grid3 { display:grid; gap:12px; grid-template-columns:repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+  .card { background:var(--surface); border:1px solid var(--ring); border-radius:10px; padding:12px; min-width:0; }
+  .wide { grid-column:1 / -1; }
+  .tiles { display:grid; gap:12px; grid-template-columns:repeat(auto-fill, minmax(min(190px, 100%), 1fr)); margin:12px 0; }
+  .tile .k { color:var(--fg2); font-size:12px; } .tile .v { font-size:24px; font-weight:600; line-height:1.2; }
+  .tile .d { font-size:12px; color:var(--fg2); }
+  .scroll { overflow-x:auto; }
+  table { border-collapse:collapse; font-size:12px; width:100%; font-variant-numeric:tabular-nums; }
+  td, th { padding:3px 6px; text-align:right; border-bottom:1px solid var(--grid); white-space:nowrap; }
+  td:first-child, th:first-child { text-align:left; }
+  th { color:var(--fg2); font-weight:600; } th.sort { cursor:pointer; user-select:none; }
+  th.sort:hover { color:var(--fg); }
+  td.c svg { vertical-align:middle; margin-left:4px; }
+  .legend { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12px; color:var(--fg2); margin:0 0 6px; }
+  .key { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+  .lkey { display:inline-block; width:14px; height:2px; margin-right:5px; vertical-align:3px; }
+  .tick { display:inline-block; width:3px; height:11px; margin-right:5px; vertical-align:-1px; border-radius:1px; }
+  .chip { font-size:12px; padding:1px 8px; border-radius:10px; border:1px solid var(--grid); background:var(--surface); color:var(--fg2); }
+  .chip b { color:var(--fg); font-weight:600; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:2px; }
+  button, label.file { font:inherit; font-size:13px; padding:3px 10px; cursor:pointer; border-radius:6px;
+                       border:1px solid var(--axis); background:var(--surface); color:var(--fg); }
+  #tip { position:fixed; pointer-events:none; z-index:10; background:var(--surface); color:var(--fg);
+         border:1px solid var(--ring); border-radius:8px; padding:6px 8px; font-size:12px;
+         box-shadow:0 2px 10px rgba(0,0,0,.15); display:none; max-width:300px; }
+  #tip b { font-weight:600; } #tip .r { display:flex; gap:6px; align-items:center; }
+  svg text { fill:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+  svg text.ref { fill:var(--fg2); }
+  .chart { position:relative; } .chart svg { display:block; width:100%; }
+  .pill { padding:1px 8px; border-radius:10px; font-size:12px; font-weight:600; border:1px solid currentColor; }
+  .ok { color:var(--up); } .bad { color:var(--critical); }
+  .nodata { color:var(--muted); font-style:italic; }
+</style>
+</head>
+<body>
+<div class="bar"><h1 id="run">Rollout baseline</h1><span id="mode" class="pill muted">live</span>
+  <span style="flex:1"></span>
+  <button id="liveBtn" hidden onclick="goLive()">Back to live</button>
+  <label class="file">Open snapshot <input type="file" accept=".json,application/json" hidden
+         onchange="openSnapshot(this.files[0])"></label></div>
+<div class="sub" id="status" style="margin-top:4px">loading…</div>
+<div class="legend" id="settings" style="margin-top:6px"></div>
+<div class="legend" style="margin-top:8px"><span><span class="key" style="background:var(--s1)"></span>this run (thinking on)</span>
+  <span><span class="tick" style="background:var(--tmax)"></span>red = Tmax base Qwen3.6-27B (released eval)</span>
+  <span><span class="tick" style="background:var(--nothink)"></span>gray = ours, thinking off (auxr_1103_0033)</span></div>
+<div class="tiles" id="tiles"></div>
+<div class="grid">
+  <div class="card wide"><h2>Per task</h2><div class="legend" id="taskLegend"></div><div class="scroll" id="tasks"></div></div>
+  <div class="card"><h2>Outcomes</h2><div id="outcomes"></div></div>
+  <div class="card"><h2>Where the agent's time goes</h2><div id="timesplit"></div></div>
+  <div class="card wide"><h2>Agent behaviour per trajectory <span class="muted" id="behN"></span></h2>
+    <div class="scroll" id="behaviour"></div><div class="grid3" id="hists" style="margin-top:8px"></div></div>
+  <div class="card wide"><div class="bar" style="margin-bottom:6px"><h2 style="margin:0">Serving</h2>
+    <span style="flex:1"></span><button id="tblBtn" onclick="showTable = !showTable; servingPanel(last.s)">Table view</button></div>
+    <div class="legend" id="engLegend"></div>
+    <div class="grid3" id="engCharts"></div><div class="scroll" id="engTable"></div>
+    <div class="scroll" id="engines" style="margin-top:10px"></div></div>
+</div>
+<div id="tip"></div>
+<script>
+// ---- data: live from /status.json every 15 s, or a saved snapshot (Open snapshot) ----
+const $ = id => document.getElementById(id);
+const TZ = "America/Los_Angeles";
+const ENGINE_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];    // fixed order: engine i -> slot i
+const OURS = "var(--s1)", TMAX = "var(--tmax)", NOTHINK = "var(--nothink)";
+let timer = null, last = {s: null, snap: false}, sortKey = null, sortDir = 1, showTable = false;
+
+const pct = (v, d = 1) => v == null ? "–" : (100 * v).toFixed(d) + "%";
+const num = (v, d = 0) => v == null || isNaN(v) ? "–" : Number(v).toLocaleString("en-US", {maximumFractionDigits: d});
+const sec = v => v == null ? "–" : v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(2)} s`;
+const dur = s => s == null ? "–" : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min`;
+const clock = t => t == null ? "–" : new Date(t * 1000).toLocaleTimeString("en-US", {timeZone: TZ, hour: "numeric", minute: "2-digit"});
+const stamp = t => t == null ? "–" : new Date(t * 1000).toLocaleString("en-US", {timeZone: TZ, month: "short",
+  day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit"}) + " PT";
+function el(tag, attrs = {}, ...kids) {                    // DOM builder: text always goes in as text nodes
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "style") e.style.cssText = v; else if (k.startsWith("on")) e[k] = v; else e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return e;
+}
+const svgEl = (tag, attrs = {}) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+const svgText = (attrs, text, cls) => { const t = svgEl("text", attrs); if (cls) t.setAttribute("class", cls);
+  t.textContent = text; return t; };
+const refs = s => s.reference || {};
+const tmaxRef = s => refs(s).tmax || {}, ntRef = s => refs(s).ours_nothink || {};
+
+// ---- tooltip: one floating box, rows of [color, value, label] ----
+const tip = $("tip");
+function showTip(ev, title, rows) {
+  tip.replaceChildren(el("div", {style: "margin-bottom:3px;color:var(--fg2)"}, title),
+    ...rows.map(([c, v, l]) => el("div", {class: "r"}, c ? el("span", {class: "lkey", style: `background:${c}`}) : null,
+                                  el("b", {}, v), el("span", {class: "muted"}, l))));
+  tip.style.display = "block";
+  const x = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8), y = ev.clientY + 14;
+  tip.style.left = Math.max(8, x) + "px";
+  tip.style.top = (y + tip.offsetHeight > innerHeight ? ev.clientY - tip.offsetHeight - 10 : y) + "px";
+}
+const hideTip = () => tip.style.display = "none";
+function hover(node, title, rows) {                        // per-mark tooltip on hover and keyboard focus
+  node.onpointermove = ev => showTip(ev, title, rows);
+  node.onpointerleave = hideTip;
+  node.setAttribute("tabindex", "0");
+  node.onfocus = () => { const r = node.getBoundingClientRect(); showTip({clientX: r.left, clientY: r.bottom}, title, rows); };
+  node.onblur = hideTip;
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/status.json", {cache: "no-store"});
+    render(await r.json(), false);
+  } catch (e) { $("status").textContent = "tracker not answering: " + e; }
+}
+function goLive() { $("liveBtn").hidden = true; poll(); clearInterval(timer); timer = setInterval(poll, 15000); }
+function openSnapshot(file) {
+  if (!file) return;
+  file.text().then(t => { clearInterval(timer); $("liveBtn").hidden = location.protocol === "file:"; render(JSON.parse(t), true); })
+    .catch(e => alert("not a status.json: " + e));
+}
+
+// ---- reference bar: ours as a blue bar, Tmax as a red tick, thinking-off as a gray tick ----
+function refBar(v, tmax, nothink, max, W = 64, H = 12) {
+  const svg = svgEl("svg", {width: W, height: H, viewBox: `0 0 ${W} ${H}`, style: `width:${W}px`, "aria-hidden": "true"});
+  const x = u => 1 + Math.min(1, Math.max(0, u / (max || 1))) * (W - 3);
+  svg.append(svgEl("line", {x1: 0.5, x2: 0.5, y1: 0, y2: H, stroke: "var(--axis)"}));
+  if (v != null) svg.append(svgEl("rect", {x: 1, y: H / 2 - 3, width: Math.max(v > 0 ? 3 : 0, x(v) - 1), height: 6, rx: 2, fill: OURS}));
+  if (nothink != null) svg.append(svgEl("rect", {x: x(nothink) - 1, y: 1, width: 2, height: H - 2, rx: 1, fill: NOTHINK}));
+  if (tmax != null) svg.append(svgEl("rect", {x: x(tmax) - 1.5, y: 0, width: 3, height: H, rx: 1, fill: TMAX}));
+  return svg;
+}
+// a value with its reference bar, and a tooltip naming all three
+function refCell(v, tmax, nothink, max, fmt, title) {
+  const td = el("td", {class: "c"}, fmt(v), refBar(v, tmax, nothink, max));
+  hover(td, title, [[OURS, fmt(v), "this run"], [TMAX, fmt(tmax), "Tmax"], ...(nothink != null ? [[NOTHINK, fmt(nothink), "thinking off"]] : [])]);
+  return td;
+}
+
+// ---- header and tiles ----
+function header(s, snap) {
+  $("run").textContent = `Rollout baseline · ${s.run}`;
+  document.title = `${s.progress.done}/${s.planned} · ${s.run}`;
+  $("mode").textContent = snap ? "snapshot" : "live";
+  const p = s.progress, d = p.dispatcher, now = s.generated;
+  const finished = p.done >= s.planned;
+  const parts = [finished ? "finished" : p.done ? "running" : "waiting for the first trial",
+    `started ${clock(p.first_start)} PT`, `elapsed ${dur(p.elapsed)}`];
+  if (!finished && p.eta != null) parts.push(`naive ETA ${clock(now + p.eta)} PT (${dur(p.eta)})`);
+  parts.push(d ? `dispatcher: ${d.running} running, ${d.waiting ?? "–"} waiting, ${d.free} free slots` : "dispatcher not answering");
+  parts.push(snap ? `snapshot of ${stamp(s.generated)}` : `updated ${stamp(s.generated)}`);
+  $("status").textContent = parts.join(" · ");
+}
+
+function settingsLine(s) {
+  const st = s.settings;
+  const v = x => typeof x === "object" && x !== null ? JSON.stringify(x) : String(x);
+  $("settings").replaceChildren(...(st ? [el("span", {class: "muted"}, "Settings:"),
+    ...Object.entries(st).map(([k, x]) => el("span", {class: "chip"}, `${k} `, el("b", {}, v(x))))] :
+    [el("span", {class: "muted"}, "Settings: no settings.json")]));
+}
+
+function tiles(s) {
+  const p = s.progress, o = s.overall, sv = s.serving, b = s.behaviour, d = p.dispatcher, tm = tmaxRef(s), nt = ntRef(s);
+  // T(label, value, [ours, tmax, nothink, max] or null, reference text, other lines...)
+  const T = (k, v, bar, ref, ...lines) => el("div", {class: "card tile"}, el("div", {class: "k"}, k), el("div", {class: "v"}, v),
+    bar ? el("div", {style: "margin:3px 0"}, refBar(bar[0], bar[1], bar[2], bar[3], 150, 12)) : null,
+    ref ? el("div", {class: "d"}, el("span", {class: "tick", style: "background:var(--tmax)"}), ref) : null,
+    ...lines.map(x => el("div", {class: "d"}, x)));
+  const lat = x => x && (x.p50 != null || x.p50_all != null)
+    ? `${sec(x.p50 ?? x.p50_all)} / ${sec(x.p90 ?? x.p90_all)}` : "no data";
+  const latNote = x => x && x.p50 != null ? `p50 / p90, last 5 min (${num(x.n)} requests)` : x && x.p50_all != null ? "p50 / p90, since engine start" : "p50 / p90";
+  const cells = [
+    T("Pass rate", pct(o.pass_rate), [o.pass_rate, tm.pass_rate ?? o.tmax.rate, o.ours_nothink.rate, 0.5],
+      `Tmax ${pct(tm.pass_rate ?? o.tmax.rate)}`, `${o.passed} / ${o.scored} scored · thinking off ${pct(o.ours_nothink.rate)}`),
+    T("Trials done", `${p.done} / ${s.planned}`, null, null,
+      d ? `${d.running} running · ${d.waiting ?? "–"} waiting` : "dispatcher: no data",
+      s.outcomes.infra_total ? `${s.outcomes.infra_total} infra errors (not scored)` : "no infra errors"),
+    T("Timeout rate", pct(o.timeout_rate), [o.timeout_rate, tm.timeout_rate, nt.timeout_rate, 1],
+      `Tmax ${pct(tm.timeout_rate)}`, `${o.timeouts} hit the task limit · thinking off ${pct(nt.timeout_rate)}`),
+    T("Context limit (65k) stops", `${o.seqlen ?? "–"}`, null, null, `${pct(o.seqlen_rate)} of scored trials`),
+    T("Model calls per trajectory", num(b.calls.median, 1), [b.calls.median, (tm.steps || {}).median, (nt.calls || {}).median, 64],
+      `Tmax median ${num((tm.steps || {}).median, 1)}`, `median · 64-call stops ${pct(b.hit_64)} (Tmax ${pct(tm.hit_64_rate)})`),
+    T("Agent minutes per trajectory", num(b.agent_min.median, 1), [b.agent_min.median, (tm.agent_min || {}).median, null, 30],
+      `Tmax median ${num((tm.agent_min || {}).median, 1)}`, "median"),
+    T("Per-agent tok/s during calls", num(b.tok_s_calls, 1), [b.tok_s_calls, tm.tok_s_per_agent_during_calls, nt.tok_s_per_agent_during_calls, 80],
+      `Tmax ${num(tm.tok_s_per_agent_during_calls, 1)}`, `thinking off ${num(nt.tok_s_per_agent_during_calls, 1)}`),
+    T("Per-agent tok/s overall", num(b.tok_s_overall, 1), [b.tok_s_overall, tm.tok_s_per_agent_overall, nt.tok_s_per_agent_overall, 50],
+      `Tmax ${num(tm.tok_s_per_agent_overall, 1)}`, `thinking off ${num(nt.tok_s_per_agent_overall, 1)}`),
+    T("TTFT", lat(sv.ttft), null, null, latNote(sv.ttft)),
+    T("Inter-token latency", lat(sv.itl), null, null, latNote(sv.itl)),
+    T("Output tokens/s, all engines", sv.tok_s == null ? "no data" : num(sv.tok_s), null, null,
+      `${sv.up} / ${sv.engines.length} engines answering`, `${num(sv.running)} running · ${num(sv.queued)} queued requests`)];
+  $("tiles").replaceChildren(...cells);
+}
+
+// ---- per-task table ----
+const refRate = r => r && r.n ? r.passed / r.n : null;
+const COLS = [
+  ["task", "Task", t => t.task], ["limit_min", "Limit", t => t.limit_min], ["done", "Done", t => t.done],
+  ["pass", "Pass rate", t => t.pass_rate], ["timeouts", "Timeouts", t => t.scored ? t.timeouts / t.scored : null],
+  ["seqlen", "65k stops", t => t.seqlen], ["stopped_64", "64 calls", t => t.stopped_64],
+  ["calls_median", "Calls (med)", t => t.calls_median], ["commands", "Commands", t => t.commands],
+  ["output_tokens_median", "Out tokens (med)", t => t.output_tokens_median],
+  ["agent_min_median", "Agent min (med)", t => t.agent_min_median], ["interrupts", "120 s int", t => t.interrupts],
+  ["tok_s_calls", "tok/s in calls", t => t.tok_s_calls], ["results", "Attempts", t => t.results.length]];
+
+function taskTable(s) {
+  $("taskLegend").replaceChildren(
+    el("span", {}, "Bars: this run (blue), Tmax (red tick), thinking off (gray tick); Tmax and thinking-off counts in the tooltips."),
+    el("span", {}, el("span", {class: "dot", style: "background:var(--good)"}), "pass"),
+    el("span", {}, el("span", {class: "dot", style: "background:var(--warning)"}), "timeout"),
+    el("span", {}, el("span", {class: "dot", style: "background:var(--muted)"}), "fail"));
+  let rows = [...s.tasks];
+  if (sortKey) { const f = COLS.find(c => c[0] === sortKey)[2];
+    rows.sort((a, b) => { const x = f(a), y = f(b);
+      return x == null ? 1 : y == null ? -1 : (x < y ? -1 : x > y ? 1 : 0) * sortDir; }); }
+  const head = el("tr", {}, COLS.map(([k, l]) => el("th", {class: "sort", title: "sort",
+    onclick: () => { sortDir = sortKey === k ? -sortDir : (k === "task" ? 1 : -1); sortKey = k; taskTable(last.s); }},
+    l + (sortKey === k ? (sortDir > 0 ? " ▲" : " ▼") : ""))));
+  const tm = t => t.tmax || {}, mx = f => Math.max(1, ...s.tasks.flatMap(f).filter(v => v != null));
+  const maxCalls = mx(t => [t.calls_median, tm(t).steps_median]), maxTok = mx(t => [t.output_tokens_median, tm(t).output_tokens_median]);
+  const maxMin = mx(t => [t.agent_min_median, tm(t).agent_min_median, t.limit_min]);
+  const body = rows.map(t => {
+    const T = tm(t), N = t.ours_nothink || {};
+    const pass = el("td", {class: "c"}, t.scored ? `${t.passed}/${t.scored}` : "–", refBar(t.pass_rate, refRate(T), refRate(N), 1, 90));
+    hover(pass, t.task, [[OURS, `${pct(t.pass_rate, 0)} (${t.passed}/${t.scored})`, "this run"],
+                         [TMAX, `${pct(refRate(T), 0)} (${T.passed ?? "–"}/${T.n ?? "–"})`, "Tmax"],
+                         [NOTHINK, `${pct(refRate(N), 0)} (${N.passed ?? "–"}/${N.n ?? "–"})`, "thinking off"]]);
+    const to = el("td", {}, t.scored ? `${t.timeouts}/${t.scored}` : "–");
+    hover(to, `${t.task}: timeouts`, [[OURS, t.scored ? `${t.timeouts}/${t.scored}` : "–", "this run"],
+      [TMAX, `${T.timeouts ?? "–"}/${T.n ?? "–"}`, "Tmax"], [NOTHINK, `${N.timeouts ?? "–"}/${N.n ?? "–"}`, "thinking off"]]);
+    const ints = el("td", {}, t.trials_parsed ? t.interrupts : "–");
+    hover(ints, `${t.task}: 120 s command interrupts`, [[OURS, `${t.interrupts} in ${t.commands} commands`, "this run"],
+      [TMAX, `${T.cmd_timeouts ?? "–"} in ${T.commands ?? "–"} commands`, "Tmax"]]);
+    return el("tr", {},
+      el("td", {}, t.task), el("td", {}, t.limit_min == null ? "–" : `${num(t.limit_min)} min`),
+      el("td", {}, t.done + (t.infra ? ` (${t.infra} infra)` : "")), pass, to,
+      el("td", {}, t.scored ? t.seqlen ?? "–" : "–"), el("td", {}, t.trials_parsed ? t.stopped_64 : "–"),
+      refCell(t.calls_median, T.steps_median, null, maxCalls, v => num(v, 1), `${t.task}: model calls per trajectory (median)`),
+      el("td", {}, t.trials_parsed ? t.commands : "–"),
+      refCell(t.output_tokens_median, T.output_tokens_median, null, maxTok, v => num(v), `${t.task}: output tokens per trajectory (median)`),
+      refCell(t.agent_min_median, T.agent_min_median, null, maxMin, v => num(v, 1), `${t.task}: agent minutes (median)`),
+      ints, el("td", {}, num(t.tok_s_calls, 1)),
+      el("td", {style: "text-align:left"}, t.results.map((r, i) => { const d = el("span", {class: "dot",
+        style: `background:${r === "pass" ? "var(--good)" : r === "timeout" ? "var(--warning)" : "var(--muted)"}`});
+        hover(d, `${t.task} · attempt ${i + 1}`, [[null, r, ""]]); return d; })));
+  });
+  const o = s.overall, b = s.behaviour, tmx = tmaxRef(s);
+  const allPass = el("td", {class: "c"}, `${o.passed}/${o.scored}`, refBar(o.pass_rate, tmx.pass_rate ?? o.tmax.rate, o.ours_nothink.rate, 1, 90));
+  hover(allPass, "All tasks", [[OURS, `${pct(o.pass_rate)} (${o.passed}/${o.scored})`, "this run"],
+    [TMAX, `${pct(o.tmax.rate)} (${o.tmax.passed}/${o.tmax.n})`, "Tmax"], [NOTHINK, `${pct(o.ours_nothink.rate)} (${o.ours_nothink.passed}/${o.ours_nothink.n})`, "thinking off"]]);
+  const foot = el("tr", {style: "font-weight:600"}, el("td", {}, "All tasks"), el("td"), el("td", {}, s.progress.done), allPass,
+    el("td", {}, `${o.timeouts}/${o.scored}`), el("td", {}, o.seqlen ?? "–"), el("td", {}, b.trials ? Math.round((b.hit_64 || 0) * b.trials) : "–"),
+    refCell(b.calls.median, (tmx.steps || {}).median, null, maxCalls, v => num(v, 1), "All tasks: model calls (median)"),
+    el("td", {}, b.commands_total ?? "–"),
+    refCell(b.output_tokens.median, (tmx.output_tokens_per_trial || {}).median, null, maxTok, v => num(v), "All tasks: output tokens (median)"),
+    refCell(b.agent_min.median, (tmx.agent_min || {}).median, null, maxMin, v => num(v, 1), "All tasks: agent minutes (median)"),
+    el("td", {}, b.interrupts), el("td", {}, num(b.tok_s_calls, 1)), el("td"));
+  $("tasks").replaceChildren(el("table", {}, el("thead", {}, head), el("tbody", {}, body, foot)));
+}
+
+// ---- outcomes ----
+function outcomeTable(s) {
+  const o = s.outcomes, all = [...Object.entries(o.by_status), ...Object.entries(o.infra)];
+  if (!all.length) return $("outcomes").replaceChildren(el("div", {class: "nodata"}, "no finished trials yet"));
+  const max = Math.max(...all.map(([, n]) => n)), total = all.reduce((a, [, n]) => a + n, 0);
+  const row = ([k, n], infra) => {
+    const svg = svgEl("svg", {width: 110, height: 12, style: "width:110px;vertical-align:middle"});
+    svg.append(svgEl("rect", {x: 0, y: 2, width: Math.max(3, 110 * n / max), height: 8, rx: 2,
+                              fill: infra ? "var(--muted)" : "var(--s1)"}));
+    const pass = infra ? "infra, not scored" : o.passed_by_status[k] ? `${o.passed_by_status[k]} passed` : "";
+    const tr = el("tr", {}, el("td", {}, k), el("td", {}, n), el("td", {}, pct(n / total, 0)),
+                  el("td", {style: "text-align:left"}, svg), el("td", {class: "muted"}, pass));
+    hover(tr, k, [[null, `${n} trials`, pct(n / total, 1)]]); return tr;
+  };
+  const tm = tmaxRef(s);
+  $("outcomes").replaceChildren(el("div", {class: "scroll"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Exit status", "Trials", "Share", "", ""].map(h => el("th", {}, h)))),
+    el("tbody", {}, Object.entries(o.by_status).map(e => row(e, false)), Object.entries(o.infra).map(e => row(e, true))))),
+    el("div", {class: "sub", style: "margin-top:6px"},
+       `${o.scored} scored, ${o.passed} passed; ${o.infra_total} infrastructure errors ("Error: …") excluded from pass rates. `,
+       el("span", {class: "tick", style: "background:var(--tmax)"}), `Tmax: ${pct(tm.timeout_rate)} timeouts.`));
+}
+
+// ---- time split and per-agent tok/s ----
+function timeSplit(s) {
+  const b = s.behaviour, tm = tmaxRef(s), nt = ntRef(s);
+  if (!b.timed) return $("timesplit").replaceChildren(el("div", {class: "nodata"}, "no trajectories with step timestamps yet"));
+  const W = Math.max(260, $("timesplit").clientWidth || 400), H = 58, L = 0, bw = W - 4;
+  const parts = [["model calls", b.share_model, "var(--s1)"], ["commands", b.share_cmd, "var(--s3)"], ["other", b.share_other, "var(--axis)"]];
+  const svg = svgEl("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Share of agent time"});
+  let x0 = 2;
+  for (const [l, v, c] of parts) {
+    const w = (v || 0) * bw, g = svgEl("g");
+    g.append(svgEl("rect", {x: x0, y: 16, width: Math.max(0, w - 2), height: 16, rx: 3, fill: c}));
+    if (w > 70) g.append(svgText({x: x0 + 6, y: 28, style: "fill:#fff"}, `${l} ${pct(v, 0)}`));
+    hover(g, l, [[c, pct(v), "this run"]]);
+    svg.append(g); x0 += w;
+  }
+  const mark = (u, c, label, y, h) => { if (u == null) return; const x = 2 + u * bw;
+    svg.append(svgEl("rect", {x: x - 1.5, y, width: 3, height: h, rx: 1, fill: c}));
+    if (label) svg.append(svgText({x, y: y < 16 ? y + 8 : y + h + 11, "text-anchor": "middle"}, label, "ref")); };
+  if (tm.share_time_model_calls != null) {
+    mark(tm.share_time_model_calls, TMAX, "Tmax", 4, 30);
+    mark(tm.share_time_model_calls + tm.share_time_commands, TMAX, null, 4, 30);
+  }
+  if (nt.share_time_model_calls != null) {
+    mark(nt.share_time_model_calls, NOTHINK, null, 16, 26);
+    mark(nt.share_time_model_calls + nt.share_time_commands, NOTHINK, null, 16, 26);
+  }
+  const shares = (m, c) => m == null ? ["–", "–", "–"] : [pct(m, 0), pct(c, 0), pct(1 - m - c, 0)];
+  const table = el("table", {}, el("thead", {}, el("tr", {}, ["", "model calls", "commands", "other", "tok/s overall", "tok/s in calls"].map(h => el("th", {}, h)))),
+    el("tbody", {},
+      el("tr", {}, el("td", {}, el("span", {class: "key", style: "background:var(--s1)"}), "this run"),
+         ...shares(b.share_model, b.share_cmd).map(v => el("td", {}, v)), el("td", {}, num(b.tok_s_overall, 1)), el("td", {}, num(b.tok_s_calls, 1))),
+      el("tr", {}, el("td", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), "Tmax"),
+         ...shares(tm.share_time_model_calls, tm.share_time_commands).map(v => el("td", {}, v)),
+         el("td", {}, num(tm.tok_s_per_agent_overall, 1)), el("td", {}, num(tm.tok_s_per_agent_during_calls, 1))),
+      el("tr", {}, el("td", {}, el("span", {class: "tick", style: "background:var(--nothink)"}), "thinking off"),
+         ...shares(nt.share_time_model_calls, nt.share_time_commands).map(v => el("td", {}, v)),
+         el("td", {}, num(nt.tok_s_per_agent_overall, 1)), el("td", {}, num(nt.tok_s_per_agent_during_calls, 1)))));
+  // per-agent tok/s bars, one row each, Tmax as a red tick
+  const rowBar = (label, v, t, n, max) => el("div", {class: "bar", style: "gap:8px;margin-top:4px"},
+    el("span", {style: "width:150px;font-size:12px;color:var(--fg2)"}, label), refBar(v, t, n, max, 180, 12),
+    el("span", {style: "font-size:12px"}, `${num(v, 1)} tok/s`));
+  $("timesplit").replaceChildren(el("div", {class: "sub"}, `Share of agent time over ${b.timed} timed trajectories (red ticks: Tmax's split points)`),
+    el("div", {class: "chart"}, svg), el("div", {class: "scroll"}, table),
+    el("h3", {}, "Per-agent output tokens/s"),
+    rowBar("during model calls", b.tok_s_calls, tm.tok_s_per_agent_during_calls, ntRef(s).tok_s_per_agent_during_calls, 80),
+    rowBar("over agent time", b.tok_s_overall, tm.tok_s_per_agent_overall, ntRef(s).tok_s_per_agent_overall, 80),
+    el("div", {class: "sub", style: "margin-top:4px"},
+       "Model-call time per step = gap since the previous step minus the commands' requested durations (each ≤ 60 s)."));
+}
+
+// ---- behaviour: summary table and histograms with Tmax's median ----
+function behaviourPanel(s) {
+  const b = s.behaviour, tm = tmaxRef(s);
+  $("behN").textContent = `(${b.trials} finished trajectories${b.running ? `, ${b.running} running` : ""})`;
+  if (!b.trials) { $("hists").replaceChildren();
+    return $("behaviour").replaceChildren(el("div", {class: "nodata"}, "no trial folders synced yet")); }
+  const tmCmd = tm.commands != null ? {mean: tm.commands / 100} : null;
+  const rows = [["Model calls (steps)", b.calls, 1, tm.steps], ["Commands", b.commands, 0, tmCmd],
+                ["Output tokens", b.output_tokens, 0, tm.output_tokens_per_trial], ["Output tokens per call", b.call_output_tokens, 0, tm.output_tokens_per_call],
+                ["Agent minutes", b.agent_min, 1, tm.agent_min], ["… in model calls", b.model_min, 1, null],
+                ["… in commands", b.cmd_min, 1, null], ["… other", b.other_min, 1, null]];
+  const K = ["median", "mean", "p90", "max"];
+  const table = el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "per trajectory"), el("th", {}, "n"), K.map(k => el("th", {}, k)),
+      K.map(k => el("th", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), `Tmax ${k}`)))),
+    el("tbody", {}, rows.map(([l, d, p, t]) => el("tr", {}, el("td", {}, l), el("td", {}, d.n),
+      ...K.map(k => el("td", {}, num(d[k], p))), ...K.map(k => el("td", {class: "muted"}, t ? num(t[k], p) : "–"))))));
+  const shares = el("div", {class: "sub", style: "margin:8px 0"},
+    `Trajectories with any 120 s command interrupt: ${pct(b.any_interrupt)} · interrupts per command ${pct(b.interrupt_rate_per_command, 2)} ` +
+    `(Tmax ${pct(tm.cmd_timeout_rate_per_command, 2)}) · reaching 64 model calls: ${pct(b.hit_64)} (Tmax ${pct(tm.hit_64_rate)}).`);
+  // success rate and the passed vs failed split, Tmax's overall medians as red ticks
+  const o = s.overall, bo = b.by_outcome || {}, P = bo.passed || {}, F = bo.failed || {};
+  const split = [["Model calls", "calls", (tm.steps || {}).median, 1], ["Commands", "commands", null, 0],
+                 ["Agent minutes", "agent_min", (tm.agent_min || {}).median, 1],
+                 ["Output tokens", "output_tokens", (tm.output_tokens_per_trial || {}).median, 0]];
+  const sTable = el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "median per trajectory"),
+      el("th", {}, `passed (${P.n ?? 0})`), el("th", {}, `failed (${F.n ?? 0})`),
+      el("th", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), "Tmax, all"))),
+    el("tbody", {}, split.map(([l, k, t, d]) => { const mx = Math.max(1, P[k] || 0, F[k] || 0, t || 0);
+      return el("tr", {}, el("td", {}, l),
+        el("td", {class: "c"}, num(P[k], d), refBar(P[k], t, null, mx)), el("td", {class: "c"}, num(F[k], d), refBar(F[k], t, null, mx)),
+        el("td", {class: "muted"}, num(t, d))); })));
+  const head = el("div", {class: "bar", style: "align-items:flex-start;gap:12px 24px;margin-bottom:10px"},
+    el("div", {}, el("div", {class: "sub"}, "Success rate"), el("div", {style: "font-size:24px;font-weight:600"}, pct(o.pass_rate)),
+       refBar(o.pass_rate, tm.pass_rate ?? o.tmax.rate, o.ours_nothink.rate, 0.5, 150, 12),
+       el("div", {class: "sub"}, `${o.passed} / ${o.scored} scored · `, el("span", {class: "tick", style: "background:var(--tmax)"}),
+          `Tmax ${pct(tm.pass_rate ?? o.tmax.rate)}`)),
+    el("div", {class: "scroll", style: "flex:1;min-width:0"}, sTable));
+  $("behaviour").replaceChildren(head, table, shares);
+  const pt = b.per_trial;
+  $("hists").replaceChildren(
+    histogram("Model calls per trajectory", pt.map(t => t.calls), 4, 16, (tm.steps || {}).median, v => num(v, 1), "64+"),
+    histogram("Agent minutes per trajectory", pt.map(t => t.agent_min), 2, 15, (tm.agent_min || {}).median, v => num(v, 1), "30+"),
+    histogram("Output tokens per trajectory", pt.map(t => t.output_tokens), 5000, 12, (tm.output_tokens_per_trial || {}).median, v => num(v), "60k+"));
+}
+
+function histogram(title, values, bin, n, tmaxMedian, fmt, lastLabel) {
+  const card = el("div", {}, el("h3", {}, title));
+  const box = el("div", {class: "chart"}); card.append(box);
+  const vals = values.filter(v => v != null);
+  const bins = Array.from({length: n + 1}, (_, i) => ({lo: i * bin, n: 0}));
+  for (const v of vals) bins[Math.min(n, Math.floor(v / bin))].n++;
+  const W = 320, H = 130, L = 24, B = 16, T = 14, max = Math.max(1, ...bins.map(x => x.n)), bw = (W - L - 4) / bins.length;
+  const svg = svgEl("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": title});
+  const y = c => (H - B) - c / max * (H - B - T);
+  for (const f of [0, 0.5, 1]) { const c = Math.round(f * max);
+    svg.append(svgEl("line", {x1: L, x2: W, y1: y(c), y2: y(c), stroke: f ? "var(--grid)" : "var(--axis)"}));
+    svg.append(svgText({x: L - 4, y: y(c) + 3, "text-anchor": "end"}, c)); }
+  bins.forEach((x, i) => {
+    const g = svgEl("g");
+    g.append(svgEl("rect", {x: L + i * bw, y: 0, width: bw, height: H - B, fill: "transparent"}));
+    if (x.n) g.append(svgEl("rect", {x: L + i * bw + 1, y: y(x.n), width: bw - 2, height: (H - B) - y(x.n), rx: 2, fill: OURS}));
+    if (i % 4 === 0 || i === n) svg.append(svgText({x: L + i * bw + bw / 2, y: H - 3, "text-anchor": "middle"},
+                                                    i === n ? lastLabel : (bin >= 1000 ? `${x.lo / 1000}k` : x.lo)));
+    hover(g, i === n ? lastLabel : `${fmt(x.lo)}–${fmt(x.lo + bin)}`, [[null, `${x.n} trajectories`, ""]]);
+    svg.append(g);
+  });
+  if (tmaxMedian != null) {                                  // Tmax's median: red dashed line, labelled
+    const x = L + Math.min(tmaxMedian / bin, n + 1) * bw;
+    svg.append(svgEl("line", {x1: x, x2: x, y1: T - 2, y2: H - B, stroke: TMAX, "stroke-width": 2, "stroke-dasharray": "4 3"}));
+    svg.append(svgText({x: Math.min(W - 2, x + 4), y: T - 3, "text-anchor": x > W - 90 ? "end" : "start"}, `Tmax median ${fmt(tmaxMedian)}`, "ref"));
+  }
+  box.append(svg);
+  if (!vals.length) box.replaceChildren(el("div", {class: "nodata"}, "no data"));
+  return card;
+}
+
+// ---- serving: tok/s, TTFT and ITL per engine over time, and the engines' current state ----
+function servingPanel(s) {
+  if (!s) return;
+  const es = s.serving.engines;
+  $("engLegend").replaceChildren(...es.map((e, i) => el("span", {},
+    el("span", {class: "lkey", style: `background:${ENGINE_COLORS[i % 4]}`}), `:${e.port}`)));
+  const tok = es.map(e => e.series.filter(p => p[1] != null));
+  const ls = (k, j) => es.map(e => (e.latency_series || []).filter(p => p[j] != null).map(p => [p[0], p[j]]));
+  const ttft = ls("ttft", 1), itl = ls("itl", 3);
+  $("engCharts").hidden = showTable; $("engTable").hidden = !showTable; $("tblBtn").textContent = showTable ? "Chart view" : "Table view";
+  if (showTable) {
+    const ts = [...new Set(tok.flat().map(p => p[0]))].sort((a, b) => b - a);
+    const look = es.map(e => new Map(e.series.map(p => [p[0], p[1]])));
+    $("engTable").replaceChildren(el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Time (PT)"), es.map(e => el("th", {}, `:${e.port} tok/s`)))),
+      el("tbody", {}, ts.map(t => el("tr", {}, el("td", {}, clock(t)), look.map(m => el("td", {}, num(m.get(t)))))))));
+  } else {
+    const box = () => el("div", {class: "chart"});
+    const c1 = box(), c2 = box(), c3 = box();
+    $("engCharts").replaceChildren(el("div", {}, el("h3", {}, "Output tokens/s per engine"), c1),
+      el("div", {}, el("h3", {}, "TTFT p50 per engine (5-min window)"), c2),
+      el("div", {}, el("h3", {}, "Inter-token latency p50 per engine (5-min window)"), c3));
+    lineChart(c1, es, tok, v => num(v), "tok/s");
+    lineChart(c2, es, ttft, sec, "");
+    lineChart(c3, es, itl, sec, "");
+  }
+  const H = ["Engine", "Up", "Running", "Queued", "Output tok/s (5 min)", "Prefix-cache hit",
+             "TTFT p50 / p90 (5 min)", "TTFT p50 / p90 (all)", "ITL p50 / p90 (5 min)", "ITL p50 / p90 (all)"];
+  const pair = (x, all) => x ? `${sec(all ? x.p50_all : x.p50)} / ${sec(all ? x.p90_all : x.p90)}` : "–";
+  const body = es.map((e, i) => el("tr", {},
+    el("td", {}, el("span", {class: "lkey", style: `background:${ENGINE_COLORS[i % 4]}`}), `:${e.port}`),
+    el("td", {class: e.up ? "ok" : "bad"}, e.up ? "yes" : "no data"),
+    el("td", {}, num(e.running)), el("td", {}, num(e.queued)), el("td", {}, num(e.tok_s)),
+    el("td", {title: e.cache_hit_source || ""}, pct(e.cache_hit)),
+    el("td", {}, pair(e.ttft)), el("td", {}, pair(e.ttft, true)), el("td", {}, pair(e.itl)), el("td", {}, pair(e.itl, true))));
+  const sv = s.serving;
+  const tot = el("tr", {style: "font-weight:600"}, el("td", {}, "All"), el("td", {}, `${sv.up}/${es.length}`),
+    el("td", {}, num(sv.running)), el("td", {}, num(sv.queued)), el("td", {}, num(sv.tok_s)), el("td"),
+    el("td", {}, pair(sv.ttft)), el("td", {}, pair(sv.ttft, true)), el("td", {}, pair(sv.itl)), el("td", {}, pair(sv.itl, true)));
+  $("engines").replaceChildren(el("table", {}, el("thead", {}, el("tr", {}, H.map(h => el("th", {}, h)))), el("tbody", {}, body, tot)),
+    el("div", {class: "sub", style: "margin-top:6px"}, `Sampled every 10 s and logged to serving.jsonl; last sample ${stamp(sv.sampled)}. ` +
+      "Latencies from the engines' Prometheus histograms (interpolated within buckets)."));
+}
+
+function lineChart(box, es, series, fmtY, unit) {
+  const pts = series.flat();
+  if (!pts.length) return box.replaceChildren(el("div", {class: "nodata"}, "no data yet"));
+  const W = Math.max(260, box.clientWidth || 360), H = 170, L = 50, R = 44, T = 8, B = 22;
+  const t0 = Math.min(...pts.map(p => p[0])), t1 = Math.max(...pts.map(p => p[0]));
+  const ymax = niceMax(Math.max(1e-6, ...pts.map(p => p[1])));
+  const x = t => L + (t1 > t0 ? (t - t0) / (t1 - t0) : 0.5) * (W - L - R), y = v => T + (1 - v / ymax) * (H - T - B);
+  const svg = svgEl("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img"});
+  for (let i = 0; i <= 4; i++) { const v = ymax * i / 4;
+    svg.append(svgEl("line", {x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: i ? "var(--grid)" : "var(--axis)"}));
+    svg.append(svgText({x: L - 6, y: y(v) + 4, "text-anchor": "end"}, fmtY(v))); }
+  const nt = Math.max(1, Math.min(5, Math.floor((W - L - R) / 80)));
+  for (let i = 0; i <= nt; i++) { const t = t0 + (t1 - t0) * i / nt;
+    svg.append(svgText({x: x(t), y: H - 6, "text-anchor": i === 0 ? "start" : i === nt ? "end" : "middle"}, clock(t))); }
+  const ends = [];
+  series.forEach((sr, i) => {
+    if (!sr.length) return;
+    svg.append(svgEl("path", {d: sr.map((p, j) => `${j ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(""),
+      fill: "none", stroke: ENGINE_COLORS[i % 4], "stroke-width": 2, "stroke-linejoin": "round"}));
+    const p = sr[sr.length - 1]; ends.push({i, x: x(p[0]) + 6, y: y(p[1]) + 4});
+  });
+  ends.sort((a, b) => a.y - b.y).forEach((e, k) => { if (k) e.y = Math.max(e.y, ends[k - 1].y + 12); });   // no overlap
+  for (const e of ends) svg.append(svgText({x: e.x, y: e.y}, `:${es[e.i].port}`));
+  const cross = svgEl("line", {y1: T, y2: H - B, stroke: "var(--axis)", visibility: "hidden"});
+  const dots = series.map((_, i) => svgEl("circle", {r: 4, fill: ENGINE_COLORS[i % 4], stroke: "var(--surface)",
+                                                      "stroke-width": 2, visibility: "hidden"}));
+  svg.append(cross, ...dots);
+  const hit = svgEl("rect", {x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent"});
+  svg.append(hit);
+  const ts = [...new Set(pts.map(p => p[0]))].sort((a, b) => a - b);
+  hit.onpointermove = ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+    const t = ts.reduce((a, b) => Math.abs(x(b) - px) < Math.abs(x(a) - px) ? b : a);
+    cross.setAttribute("x1", x(t)); cross.setAttribute("x2", x(t)); cross.setAttribute("visibility", "visible");
+    const rows = series.map((sr, i) => { const p = sr.find(q => q[0] === t);
+      if (p) { dots[i].setAttribute("cx", x(t)); dots[i].setAttribute("cy", y(p[1])); dots[i].setAttribute("visibility", "visible"); }
+      else dots[i].setAttribute("visibility", "hidden");
+      return [ENGINE_COLORS[i % 4], p ? `${fmtY(p[1])} ${unit}` : "no data", `:${es[i].port}`]; });
+    showTip(ev, `${clock(t)} PT`, rows);
+  };
+  hit.onpointerleave = () => { hideTip(); cross.setAttribute("visibility", "hidden"); dots.forEach(d => d.setAttribute("visibility", "hidden")); };
+  box.replaceChildren(svg);
+}
+function niceMax(v) { const p = 10 ** Math.floor(Math.log10(v)), m = v / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; }
+
+function render(s, snap) {
+  last = {s, snap};
+  $("mode").className = "pill " + (snap ? "muted" : "ok");
+  header(s, snap); settingsLine(s); tiles(s); taskTable(s); outcomeTable(s); timeSplit(s); behaviourPanel(s); servingPanel(s);
+}
+addEventListener("resize", () => { if (last.s) { timeSplit(last.s); servingPanel(last.s); } });
+if (location.protocol === "file:") $("status").textContent = "open a saved status.json with “Open snapshot”";
+else goLive();
+</script>
+</body>
+</html>
