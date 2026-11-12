@@ -42,23 +42,52 @@ def test_vanilla_file_has_ten_steps_with_success():
     assert all("perf/step_time" in s and "perf/train_wait_time" in s for s in v["steps"].values())
 
 
-def test_server_serves_page_and_data():
+def serve(*args):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
-    p = subprocess.Popen([sys.executable, ROOT / "monitor" / "compare.py", "--port", str(port)],
+    p = subprocess.Popen([sys.executable, ROOT / "monitor" / "compare.py", "--port", str(port), *args],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    for _ in range(50):
+        try:
+            return p, port, json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/data.json").read())
+        except OSError:
+            time.sleep(0.1)
+    p.terminate()
+    raise AssertionError("compare.py did not serve")
+
+
+def test_server_serves_page_and_data(tmp_path):
+    p, port, d = serve("--aux-json", str(tmp_path / "none.json"))    # no host, no saved run
     try:
-        for _ in range(50):
-            try:
-                d = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/data.json").read())
-                break
-            except OSError:
-                time.sleep(0.1)
         assert len(d["vanilla"]["steps"]) == 10 and d["aux"]["steps"] == {} and d["aux"]["error"]
         page = urllib.request.urlopen(f"http://127.0.0.1:{port}/").read().decode()
         assert "<title>Auxiliary Reward vs Vanilla</title>" in page and "rollout/raw_reward" in page
+        assert "renderStages" in page and "perf/teacher_log_probs_time" in page
     finally:
         p.terminate()
+
+
+def test_server_serves_the_saved_aux_run():
+    p, _, d = serve()                                   # default --aux-json: auxr_1103_0033, all 10 steps
+    try:
+        assert d["aux"]["run"] == "auxr_1103_0033" and len(d["aux"]["steps"]) == 10 and not d["aux"]["error"]
+        assert len(d["aux"]["rollout"]["steps"]) == 10 and all(st["match"] for st in d["aux"]["rollout"]["steps"])
+        sft = d["pipeline"]["sft"]                      # the break-even section: SFT epoch measured in qfunc_1030_1950
+        assert d["pipeline"]["sft_epochs"] == 2 and sft["steps"] == 93 and 3500 < sft["train_seconds"] < 4200
+    finally:
+        p.terminate()
+
+
+def test_stage_timers_add_up_to_step_time():
+    """The page's six stages: train_wait (all but the train block) = rollout + hand-off timers; train = teacher pass +
+    policy log-probs + actor train + a few seconds (advantages, adapter swap); the two make perf/step_time."""
+    for name in ("vanilla_steps.json", "aux_steps.json"):
+        for k, m in json.loads((ROOT / "monitor" / name).read_text())["steps"].items():
+            assert abs(m["perf/train_wait_time"] + m["perf/train_time"] - m["perf/step_time"]) < 1, (name, k)
+            rest = m["perf/train_time"] - m.get("perf/teacher_log_probs_time", 0) - m["perf/log_probs_time"] \
+                - m["perf/actor_train_time"]
+            assert 0 <= rest < 10, (name, k, rest)
+            assert ("perf/teacher_log_probs_time" in m) == (name == "aux_steps.json")
 
 
 def trial(task, queued, end, reward=0.0, exit="Submitted"):
