@@ -60,6 +60,13 @@
   .pill { padding:1px 8px; border-radius:10px; font-size:12px; font-weight:600; border:1px solid currentColor; }
   .ok { color:var(--up); } .bad { color:var(--critical); }
   .nodata { color:var(--muted); font-style:italic; }
+  .tall { max-height:72vh; overflow:auto; }                       /* 89 tasks: scroll inside the card */
+  .tall thead th { position:sticky; top:0; background:var(--surface); z-index:1; }
+  .tall tfoot td { position:sticky; bottom:0; background:var(--surface); border-top:1px solid var(--axis); }
+  .tall tbody tr:nth-child(even) td { background:color-mix(in srgb, var(--grid) 30%, transparent); }
+  .dot.todo { background:transparent; border:1px solid var(--axis); width:8px; height:8px; }
+  input.filter { font:inherit; font-size:12px; padding:2px 8px; border-radius:6px; border:1px solid var(--axis);
+                 background:var(--surface); color:var(--fg); width:min(220px, 100%); }
 </style>
 </head>
 <body>
@@ -71,11 +78,14 @@
 <div class="sub" id="status" style="margin-top:4px">loading…</div>
 <div class="legend" id="settings" style="margin-top:6px"></div>
 <div class="legend" style="margin-top:8px"><span><span class="key" style="background:var(--s1)"></span>this run (thinking on)</span>
-  <span><span class="tick" style="background:var(--tmax)"></span>red = Tmax base Qwen3.6-27B (released eval)</span>
-  <span><span class="tick" style="background:var(--nothink)"></span>gray = ours, thinking off (auxr_1103_0033)</span></div>
+  <span><span class="tick" style="background:var(--tmax)"></span><span id="tmaxLegend">red = Tmax base Qwen3.6-27B (released eval)</span></span>
+  <span><span class="tick" style="background:var(--nothink)"></span><span id="ntLegend">gray = ours, thinking off (auxr_1103_0033)</span></span>
+  <span id="attempts"></span></div>
 <div class="tiles" id="tiles"></div>
 <div class="grid">
-  <div class="card wide"><h2>Per task</h2><div class="legend" id="taskLegend"></div><div class="scroll" id="tasks"></div></div>
+  <div class="card wide"><div class="bar" style="margin-bottom:6px"><h2 style="margin:0">Per task <span class="muted" id="taskN"></span></h2>
+    <span style="flex:1"></span><input class="filter" id="taskFilter" type="search" placeholder="filter tasks"
+    oninput="taskTable(last.s)"></div><div class="legend" id="taskLegend"></div><div class="scroll" id="tasks"></div></div>
   <div class="card"><h2>Outcomes</h2><div id="outcomes"></div></div>
   <div class="card"><h2>Where the agent's time goes</h2><div id="timesplit"></div></div>
   <div class="card wide"><h2>Agent behaviour per trajectory <span class="muted" id="behN"></span></h2>
@@ -116,6 +126,15 @@ const svgText = (attrs, text, cls) => { const t = svgEl("text", attrs); if (cls)
   t.textContent = text; return t; };
 const refs = s => s.reference || {};
 const tmaxRef = s => refs(s).tmax || {}, ntRef = s => refs(s).ours_nothink || {};
+// headline pass-rate reference (Tmax paper when the reference has it) and the released records over the same tasks
+const paperRef = s => s.overall.tmax.n == null;
+const tmaxPass = s => s.overall.tmax.rate;
+const tmaxLabel = s => s.overall.tmax.label || "Tmax";
+const tmaxPassText = s => pct(tmaxPass(s)) + (s.overall.tmax.pm ? ` ± ${(100 * s.overall.tmax.pm).toFixed(1)}` : "");
+const recLabel = s => paperRef(s) ? "Tmax records, TB 2.0" : "Tmax";
+const records = s => s.overall.tmax_records || s.overall.tmax;
+const ntLabel = s => s.overall.ours_nothink.label || "thinking off";
+const bigLimits = s => s.tasks.some(t => t.limit_min > 30);
 
 // ---- tooltip: one floating box, rows of [color, value, label] ----
 const tip = $("tip");
@@ -182,6 +201,19 @@ function header(s, snap) {
   $("status").textContent = parts.join(" · ");
 }
 
+function attemptsLine(s) {
+  const a = s.attempts;
+  if (!a || !a.attempts) return $("attempts").replaceChildren();
+  const ext = a.extend_possible ? ` (extension to ${a.extend_attempts}: ${a.extend_requested ? "queued" : "not requested"})` : "";
+  $("attempts").replaceChildren(el("span", {class: "chip"}, "attempts planned: ", el("b", {}, a.attempts), ext));
+}
+function legendLine(s) {
+  $("tmaxLegend").textContent = paperRef(s)
+    ? `red = Tmax base Qwen3.6-27B: pass rate from the ${tmaxLabel(s)}; everything else from the released eval records (TB 2.0, ${records(s).tasks ?? "all"} tasks)`
+    : "red = Tmax base Qwen3.6-27B (released eval)";
+  $("ntLegend").textContent = `gray = ours, ${ntLabel(s)} (auxr_1103_0033)`;
+}
+
 function settingsLine(s) {
   const st = s.settings;
   const v = x => typeof x === "object" && x !== null ? JSON.stringify(x) : String(x);
@@ -201,22 +233,25 @@ function tiles(s) {
     ? `${sec(x.p50 ?? x.p50_all)} / ${sec(x.p90 ?? x.p90_all)}` : "no data";
   const latNote = x => x && x.p50 != null ? `p50 / p90, last 5 min (${num(x.n)} requests)` : x && x.p50_all != null ? "p50 / p90, since engine start" : "p50 / p90";
   const cells = [
-    T("Pass rate", pct(o.pass_rate), [o.pass_rate, tm.pass_rate ?? o.tmax.rate, o.ours_nothink.rate, 0.5],
-      `Tmax ${pct(tm.pass_rate ?? o.tmax.rate)}`, `${o.passed} / ${o.scored} scored · thinking off ${pct(o.ours_nothink.rate)}`),
+    T("Pass rate", pct(o.pass_rate), [o.pass_rate, tmaxPass(s), o.ours_nothink.rate, Math.max(0.5, o.pass_rate || 0)],
+      `${paperRef(s) ? tmaxLabel(s) : "Tmax"} ${tmaxPassText(s)}`,
+      ...(paperRef(s) ? [`${recLabel(s)}: ${pct(records(s).rate)} (${records(s).passed}/${records(s).n})`] : []),
+      `${o.passed} / ${o.scored} scored · ${ntLabel(s)} ${pct(o.ours_nothink.rate)}`),
     T("Trials done", `${p.done} / ${s.planned}`, null, null,
+      ...(s.attempts && s.attempts.attempts ? [`${s.tasks.length} tasks × ${s.attempts.extend_requested ? s.attempts.extend_attempts : s.attempts.attempts} attempts`] : []),
       d ? `${d.running} running · ${d.waiting ?? "–"} waiting` : "dispatcher: no data",
       s.outcomes.infra_total ? `${s.outcomes.infra_total} infra errors (not scored)` : "no infra errors"),
     T("Timeout rate", pct(o.timeout_rate), [o.timeout_rate, tm.timeout_rate, nt.timeout_rate, 1],
-      `Tmax ${pct(tm.timeout_rate)}`, `${o.timeouts} hit the task limit · thinking off ${pct(nt.timeout_rate)}`),
+      `${recLabel(s)} ${pct(tm.timeout_rate)}`, `${o.timeouts} hit the task limit · thinking off ${pct(nt.timeout_rate)}`),
     T("Context limit (65k) stops", `${o.seqlen ?? "–"}`, null, null, `${pct(o.seqlen_rate)} of scored trials`),
     T("Model calls per trajectory", num(b.calls.median, 1), [b.calls.median, (tm.steps || {}).median, (nt.calls || {}).median, 64],
-      `Tmax median ${num((tm.steps || {}).median, 1)}`, `median · 64-call stops ${pct(b.hit_64)} (Tmax ${pct(tm.hit_64_rate)})`),
-    T("Agent minutes per trajectory", num(b.agent_min.median, 1), [b.agent_min.median, (tm.agent_min || {}).median, null, 30],
-      `Tmax median ${num((tm.agent_min || {}).median, 1)}`, "median"),
+      `${recLabel(s)} median ${num((tm.steps || {}).median, 1)}`, `median · 64-call stops ${pct(b.hit_64)} (Tmax ${pct(tm.hit_64_rate)})`),
+    T("Agent minutes per trajectory", num(b.agent_min.median, 1), [b.agent_min.median, (tm.agent_min || {}).median, null, bigLimits(s) ? 60 : 30],
+      `${recLabel(s)} median ${num((tm.agent_min || {}).median, 1)}`, "median"),
     T("Per-agent tok/s during calls", num(b.tok_s_calls, 1), [b.tok_s_calls, tm.tok_s_per_agent_during_calls, nt.tok_s_per_agent_during_calls, 80],
-      `Tmax ${num(tm.tok_s_per_agent_during_calls, 1)}`, `thinking off ${num(nt.tok_s_per_agent_during_calls, 1)}`),
+      `${recLabel(s)} ${num(tm.tok_s_per_agent_during_calls, 1)}`, `thinking off ${num(nt.tok_s_per_agent_during_calls, 1)}`),
     T("Per-agent tok/s overall", num(b.tok_s_overall, 1), [b.tok_s_overall, tm.tok_s_per_agent_overall, nt.tok_s_per_agent_overall, 50],
-      `Tmax ${num(tm.tok_s_per_agent_overall, 1)}`, `thinking off ${num(nt.tok_s_per_agent_overall, 1)}`),
+      `${recLabel(s)} ${num(tm.tok_s_per_agent_overall, 1)}`, `thinking off ${num(nt.tok_s_per_agent_overall, 1)}`),
     T("TTFT", lat(sv.ttft), null, null, latNote(sv.ttft)),
     T("Inter-token latency", lat(sv.itl), null, null, latNote(sv.itl)),
     T("Output tokens/s, all engines", sv.tok_s == null ? "no data" : num(sv.tok_s), null, null,
@@ -236,12 +271,18 @@ const COLS = [
   ["tok_s_calls", "tok/s in calls", t => t.tok_s_calls], ["results", "Attempts", t => t.results.length]];
 
 function taskTable(s) {
+  if (!s) return;
+  const R = recLabel(s), many = s.tasks.length > 30, a = s.attempts || {};
+  const perTask = a.extend_requested ? a.extend_attempts : a.attempts;     // planned attempts: hollow dots until done
   $("taskLegend").replaceChildren(
-    el("span", {}, "Bars: this run (blue), Tmax (red tick), thinking off (gray tick); Tmax and thinking-off counts in the tooltips."),
+    el("span", {}, `Bars: this run (blue), ${paperRef(s) ? "Tmax released records, TB 2.0" : "Tmax"} (red tick), thinking off (gray tick); counts in the tooltips.`),
     el("span", {}, el("span", {class: "dot", style: "background:var(--good)"}), "pass"),
     el("span", {}, el("span", {class: "dot", style: "background:var(--warning)"}), "timeout"),
-    el("span", {}, el("span", {class: "dot", style: "background:var(--muted)"}), "fail"));
-  let rows = [...s.tasks];
+    el("span", {}, el("span", {class: "dot", style: "background:var(--muted)"}), "fail"),
+    ...(perTask ? [el("span", {}, el("span", {class: "dot todo"}), "not finished")] : []));
+  const q = ($("taskFilter").value || "").trim().toLowerCase();
+  let rows = s.tasks.filter(t => !q || t.task.toLowerCase().includes(q));
+  $("taskN").textContent = `(${q ? `${rows.length} of ` : ""}${s.tasks.length} tasks)`;
   if (sortKey) { const f = COLS.find(c => c[0] === sortKey)[2];
     rows.sort((a, b) => { const x = f(a), y = f(b);
       return x == null ? 1 : y == null ? -1 : (x < y ? -1 : x > y ? 1 : 0) * sortDir; }); }
@@ -255,16 +296,16 @@ function taskTable(s) {
     const T = tm(t), N = t.ours_nothink || {};
     const pass = el("td", {class: "c"}, t.scored ? `${t.passed}/${t.scored}` : "–", refBar(t.pass_rate, refRate(T), refRate(N), 1, 90));
     hover(pass, t.task, [[OURS, `${pct(t.pass_rate, 0)} (${t.passed}/${t.scored})`, "this run"],
-                         [TMAX, `${pct(refRate(T), 0)} (${T.passed ?? "–"}/${T.n ?? "–"})`, "Tmax"],
+                         [TMAX, `${pct(refRate(T), 0)} (${T.passed ?? "–"}/${T.n ?? "–"})`, R],
                          [NOTHINK, `${pct(refRate(N), 0)} (${N.passed ?? "–"}/${N.n ?? "–"})`, "thinking off"]]);
     const to = el("td", {}, t.scored ? `${t.timeouts}/${t.scored}` : "–");
     hover(to, `${t.task}: timeouts`, [[OURS, t.scored ? `${t.timeouts}/${t.scored}` : "–", "this run"],
-      [TMAX, `${T.timeouts ?? "–"}/${T.n ?? "–"}`, "Tmax"], [NOTHINK, `${N.timeouts ?? "–"}/${N.n ?? "–"}`, "thinking off"]]);
+      [TMAX, `${T.timeouts ?? "–"}/${T.n ?? "–"}`, R], [NOTHINK, `${N.timeouts ?? "–"}/${N.n ?? "–"}`, "thinking off"]]);
     const ints = el("td", {}, t.trials_parsed ? t.interrupts : "–");
     hover(ints, `${t.task}: 120 s command interrupts`, [[OURS, `${t.interrupts} in ${t.commands} commands`, "this run"],
-      [TMAX, `${T.cmd_timeouts ?? "–"} in ${T.commands ?? "–"} commands`, "Tmax"]]);
+      [TMAX, `${T.cmd_timeouts ?? "–"} in ${T.commands ?? "–"} commands`, R]]);
     return el("tr", {},
-      el("td", {}, t.task), el("td", {}, t.limit_min == null ? "–" : `${num(t.limit_min)} min`),
+      el("td", {}, t.task), el("td", {}, t.limit_min == null ? "–" : `${num(t.limit_min, 1)} min`),
       el("td", {}, t.done + (t.infra ? ` (${t.infra} infra)` : "")), pass, to,
       el("td", {}, t.scored ? t.seqlen ?? "–" : "–"), el("td", {}, t.trials_parsed ? t.stopped_64 : "–"),
       refCell(t.calls_median, T.steps_median, null, maxCalls, v => num(v, 1), `${t.task}: model calls per trajectory (median)`),
@@ -274,12 +315,15 @@ function taskTable(s) {
       ints, el("td", {}, num(t.tok_s_calls, 1)),
       el("td", {style: "text-align:left"}, t.results.map((r, i) => { const d = el("span", {class: "dot",
         style: `background:${r === "pass" ? "var(--good)" : r === "timeout" ? "var(--warning)" : "var(--muted)"}`});
-        hover(d, `${t.task} · attempt ${i + 1}`, [[null, r, ""]]); return d; })));
+        hover(d, `${t.task} · attempt ${i + 1}`, [[null, r, ""]]); return d; }),
+        Array.from({length: Math.max(0, (perTask || 0) - t.results.length)}, () => el("span", {class: "dot todo"}))));
   });
   const o = s.overall, b = s.behaviour, tmx = tmaxRef(s);
-  const allPass = el("td", {class: "c"}, `${o.passed}/${o.scored}`, refBar(o.pass_rate, tmx.pass_rate ?? o.tmax.rate, o.ours_nothink.rate, 1, 90));
+  const allPass = el("td", {class: "c"}, `${o.passed}/${o.scored}`, refBar(o.pass_rate, tmaxPass(s), o.ours_nothink.rate, 1, 90));
   hover(allPass, "All tasks", [[OURS, `${pct(o.pass_rate)} (${o.passed}/${o.scored})`, "this run"],
-    [TMAX, `${pct(o.tmax.rate)} (${o.tmax.passed}/${o.tmax.n})`, "Tmax"], [NOTHINK, `${pct(o.ours_nothink.rate)} (${o.ours_nothink.passed}/${o.ours_nothink.n})`, "thinking off"]]);
+    ...(paperRef(s) ? [[TMAX, tmaxPassText(s), tmaxLabel(s)]] : []),
+    [paperRef(s) ? null : TMAX, `${pct(records(s).rate)} (${records(s).passed}/${records(s).n})`, paperRef(s) ? "Tmax released records, TB 2.0" : "Tmax"],
+    [NOTHINK, `${pct(o.ours_nothink.rate)} (${o.ours_nothink.passed}/${o.ours_nothink.n})`, ntLabel(s)]]);
   const foot = el("tr", {style: "font-weight:600"}, el("td", {}, "All tasks"), el("td"), el("td", {}, s.progress.done), allPass,
     el("td", {}, `${o.timeouts}/${o.scored}`), el("td", {}, o.seqlen ?? "–"), el("td", {}, b.trials ? Math.round((b.hit_64 || 0) * b.trials) : "–"),
     refCell(b.calls.median, (tmx.steps || {}).median, null, maxCalls, v => num(v, 1), "All tasks: model calls (median)"),
@@ -287,7 +331,8 @@ function taskTable(s) {
     refCell(b.output_tokens.median, (tmx.output_tokens_per_trial || {}).median, null, maxTok, v => num(v), "All tasks: output tokens (median)"),
     refCell(b.agent_min.median, (tmx.agent_min || {}).median, null, maxMin, v => num(v, 1), "All tasks: agent minutes (median)"),
     el("td", {}, b.interrupts), el("td", {}, num(b.tok_s_calls, 1)), el("td"));
-  $("tasks").replaceChildren(el("table", {}, el("thead", {}, head), el("tbody", {}, body, foot)));
+  $("tasks").className = many ? "scroll tall" : "scroll";
+  $("tasks").replaceChildren(el("table", {}, el("thead", {}, head), el("tbody", {}, body), el("tfoot", {}, foot)));
 }
 
 // ---- outcomes ----
@@ -310,7 +355,7 @@ function outcomeTable(s) {
     el("tbody", {}, Object.entries(o.by_status).map(e => row(e, false)), Object.entries(o.infra).map(e => row(e, true))))),
     el("div", {class: "sub", style: "margin-top:6px"},
        `${o.scored} scored, ${o.passed} passed; ${o.infra_total} infrastructure errors ("Error: …") excluded from pass rates. `,
-       el("span", {class: "tick", style: "background:var(--tmax)"}), `Tmax: ${pct(tm.timeout_rate)} timeouts.`));
+       el("span", {class: "tick", style: "background:var(--tmax)"}), `${recLabel(s)}: ${pct(tm.timeout_rate)} timeouts.`));
 }
 
 // ---- time split and per-agent tok/s ----
@@ -332,7 +377,7 @@ function timeSplit(s) {
     svg.append(svgEl("rect", {x: x - 1.5, y, width: 3, height: h, rx: 1, fill: c}));
     if (label) svg.append(svgText({x, y: y < 16 ? y + 8 : y + h + 11, "text-anchor": "middle"}, label, "ref")); };
   if (tm.share_time_model_calls != null) {
-    mark(tm.share_time_model_calls, TMAX, "Tmax", 4, 30);
+    mark(tm.share_time_model_calls, TMAX, recLabel(s), 4, 30);
     mark(tm.share_time_model_calls + tm.share_time_commands, TMAX, null, 4, 30);
   }
   if (nt.share_time_model_calls != null) {
@@ -344,7 +389,7 @@ function timeSplit(s) {
     el("tbody", {},
       el("tr", {}, el("td", {}, el("span", {class: "key", style: "background:var(--s1)"}), "this run"),
          ...shares(b.share_model, b.share_cmd).map(v => el("td", {}, v)), el("td", {}, num(b.tok_s_overall, 1)), el("td", {}, num(b.tok_s_calls, 1))),
-      el("tr", {}, el("td", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), "Tmax"),
+      el("tr", {}, el("td", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), recLabel(s)),
          ...shares(tm.share_time_model_calls, tm.share_time_commands).map(v => el("td", {}, v)),
          el("td", {}, num(tm.tok_s_per_agent_overall, 1)), el("td", {}, num(tm.tok_s_per_agent_during_calls, 1))),
       el("tr", {}, el("td", {}, el("span", {class: "tick", style: "background:var(--nothink)"}), "thinking off"),
@@ -369,19 +414,19 @@ function behaviourPanel(s) {
   $("behN").textContent = `(${b.trials} finished trajectories${b.running ? `, ${b.running} running` : ""})`;
   if (!b.trials) { $("hists").replaceChildren();
     return $("behaviour").replaceChildren(el("div", {class: "nodata"}, "no trial folders synced yet")); }
-  const tmCmd = tm.commands != null ? {mean: tm.commands / 100} : null;
+  const tmCmd = tm.commands != null ? {mean: tm.commands / (tm.n_timed || 100)} : null;   // commands over timed trials
   const rows = [["Model calls (steps)", b.calls, 1, tm.steps], ["Commands", b.commands, 0, tmCmd],
                 ["Output tokens", b.output_tokens, 0, tm.output_tokens_per_trial], ["Output tokens per call", b.call_output_tokens, 0, tm.output_tokens_per_call],
                 ["Agent minutes", b.agent_min, 1, tm.agent_min], ["… in model calls", b.model_min, 1, null],
                 ["… in commands", b.cmd_min, 1, null], ["… other", b.other_min, 1, null]];
   const K = ["median", "mean", "p90", "max"];
   const table = el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "per trajectory"), el("th", {}, "n"), K.map(k => el("th", {}, k)),
-      K.map(k => el("th", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), `Tmax ${k}`)))),
+      K.map(k => el("th", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), `${recLabel(s)} ${k}`)))),
     el("tbody", {}, rows.map(([l, d, p, t]) => el("tr", {}, el("td", {}, l), el("td", {}, d.n),
       ...K.map(k => el("td", {}, num(d[k], p))), ...K.map(k => el("td", {class: "muted"}, t ? num(t[k], p) : "–"))))));
   const shares = el("div", {class: "sub", style: "margin:8px 0"},
     `Trajectories with any 120 s command interrupt: ${pct(b.any_interrupt)} · interrupts per command ${pct(b.interrupt_rate_per_command, 2)} ` +
-    `(Tmax ${pct(tm.cmd_timeout_rate_per_command, 2)}) · reaching 64 model calls: ${pct(b.hit_64)} (Tmax ${pct(tm.hit_64_rate)}).`);
+    `(${recLabel(s)} ${pct(tm.cmd_timeout_rate_per_command, 2)}) · reaching 64 model calls: ${pct(b.hit_64)} (${recLabel(s)} ${pct(tm.hit_64_rate)}).`);
   // success rate and the passed vs failed split, Tmax's overall medians as red ticks
   const o = s.overall, bo = b.by_outcome || {}, P = bo.passed || {}, F = bo.failed || {};
   const split = [["Model calls", "calls", (tm.steps || {}).median, 1], ["Commands", "commands", null, 0],
@@ -389,26 +434,27 @@ function behaviourPanel(s) {
                  ["Output tokens", "output_tokens", (tm.output_tokens_per_trial || {}).median, 0]];
   const sTable = el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "median per trajectory"),
       el("th", {}, `passed (${P.n ?? 0})`), el("th", {}, `failed (${F.n ?? 0})`),
-      el("th", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), "Tmax, all"))),
+      el("th", {}, el("span", {class: "tick", style: "background:var(--tmax)"}), `${recLabel(s)}, all`))),
     el("tbody", {}, split.map(([l, k, t, d]) => { const mx = Math.max(1, P[k] || 0, F[k] || 0, t || 0);
       return el("tr", {}, el("td", {}, l),
         el("td", {class: "c"}, num(P[k], d), refBar(P[k], t, null, mx)), el("td", {class: "c"}, num(F[k], d), refBar(F[k], t, null, mx)),
         el("td", {class: "muted"}, num(t, d))); })));
   const head = el("div", {class: "bar", style: "align-items:flex-start;gap:12px 24px;margin-bottom:10px"},
     el("div", {}, el("div", {class: "sub"}, "Success rate"), el("div", {style: "font-size:24px;font-weight:600"}, pct(o.pass_rate)),
-       refBar(o.pass_rate, tm.pass_rate ?? o.tmax.rate, o.ours_nothink.rate, 0.5, 150, 12),
+       refBar(o.pass_rate, tmaxPass(s), o.ours_nothink.rate, Math.max(0.5, o.pass_rate || 0), 150, 12),
        el("div", {class: "sub"}, `${o.passed} / ${o.scored} scored · `, el("span", {class: "tick", style: "background:var(--tmax)"}),
-          `Tmax ${pct(tm.pass_rate ?? o.tmax.rate)}`)),
+          `${paperRef(s) ? tmaxLabel(s) : "Tmax"} ${tmaxPassText(s)}`)),
     el("div", {class: "scroll", style: "flex:1;min-width:0"}, sTable));
   $("behaviour").replaceChildren(head, table, shares);
   const pt = b.per_trial;
   $("hists").replaceChildren(
-    histogram("Model calls per trajectory", pt.map(t => t.calls), 4, 16, (tm.steps || {}).median, v => num(v, 1), "64+"),
-    histogram("Agent minutes per trajectory", pt.map(t => t.agent_min), 2, 15, (tm.agent_min || {}).median, v => num(v, 1), "30+"),
-    histogram("Output tokens per trajectory", pt.map(t => t.output_tokens), 5000, 12, (tm.output_tokens_per_trial || {}).median, v => num(v), "60k+"));
+    histogram("Model calls per trajectory", pt.map(t => t.calls), 4, 16, (tm.steps || {}).median, v => num(v, 1), "64+", recLabel(s)),
+    histogram("Agent minutes per trajectory", pt.map(t => t.agent_min), bigLimits(s) ? 4 : 2, 15, (tm.agent_min || {}).median, v => num(v, 1),
+              bigLimits(s) ? "60+" : "30+", recLabel(s)),
+    histogram("Output tokens per trajectory", pt.map(t => t.output_tokens), 5000, 12, (tm.output_tokens_per_trial || {}).median, v => num(v), "60k+", recLabel(s)));
 }
 
-function histogram(title, values, bin, n, tmaxMedian, fmt, lastLabel) {
+function histogram(title, values, bin, n, tmaxMedian, fmt, lastLabel, refName = "Tmax") {
   const card = el("div", {}, el("h3", {}, title));
   const box = el("div", {class: "chart"}); card.append(box);
   const vals = values.filter(v => v != null);
@@ -432,7 +478,7 @@ function histogram(title, values, bin, n, tmaxMedian, fmt, lastLabel) {
   if (tmaxMedian != null) {                                  // Tmax's median: red dashed line, labelled
     const x = L + Math.min(tmaxMedian / bin, n + 1) * bw;
     svg.append(svgEl("line", {x1: x, x2: x, y1: T - 2, y2: H - B, stroke: TMAX, "stroke-width": 2, "stroke-dasharray": "4 3"}));
-    svg.append(svgText({x: Math.min(W - 2, x + 4), y: T - 3, "text-anchor": x > W - 90 ? "end" : "start"}, `Tmax median ${fmt(tmaxMedian)}`, "ref"));
+    svg.append(svgText({x: Math.min(W - 2, x + 4), y: T - 3, "text-anchor": x > W - 90 ? "end" : "start"}, `${refName} median ${fmt(tmaxMedian)}`, "ref"));
   }
   box.append(svg);
   if (!vals.length) box.replaceChildren(el("div", {class: "nodata"}, "no data"));
@@ -531,7 +577,7 @@ function niceMax(v) { const p = 10 ** Math.floor(Math.log10(v)), m = v / p;
 function render(s, snap) {
   last = {s, snap};
   $("mode").className = "pill " + (snap ? "muted" : "ok");
-  header(s, snap); settingsLine(s); tiles(s); taskTable(s); outcomeTable(s); timeSplit(s); behaviourPanel(s); servingPanel(s);
+  header(s, snap); attemptsLine(s); legendLine(s); settingsLine(s); tiles(s); taskTable(s); outcomeTable(s); timeSplit(s); behaviourPanel(s); servingPanel(s);
 }
 addEventListener("resize", () => { if (last.s) { timeSplit(last.s); servingPanel(last.s); } });
 if (location.protocol === "file:") $("status").textContent = "open a saved status.json with “Open snapshot”";

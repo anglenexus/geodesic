@@ -12,7 +12,7 @@ FWD_PORTS=$(seq -s ' ' 30000 30015)                      # Miles' session server
 case "${1:-}" in
 prepare)
   mkdir -p "$DATA"/{tasks,src,trials,docker}
-  DATA=$DATA STEPS="2 3 5 8" TASK_LISTS=tb21_selected_tasks.txt bash "$HERE/setup.sh"   # the 20 training tasks
+  DATA=$DATA STEPS="2 3 5 8" TASK_LISTS="${BOX_TASK_LISTS:-tb21_selected_tasks.txt}" bash "$HERE/setup.sh"   # default: the 20 training tasks
   command -v rrsync >/dev/null || { echo "rrsync missing (rsync >= 3.2.4 ships it)"; exit 1; }
   # The agent server refuses to start without a Docker Hub entry in ~/.docker/config.json. Trials never pull: the
   # 20 images are pre-pulled, the prebuilt compose file has no pull policy, and `down --rmi local` keeps them. An

@@ -29,6 +29,8 @@ as the TB leaderboard requires) unless a decision below says otherwise.
 | 2026-11-12 | **Grade context-limit stops with the verifier** (`HARBOR_TERMINUS_2_STOP_AT_CONTEXT=1` in phase1 mode) | As Tmax's agent: at the context limit the agent stops and the container is graded. In `phase1_1112_0027b` the 22 such trials were scored 0 ungraded; their containers are gone, so only a rerun can grade them. |
 | 2026-11-12 | 120 s limit fixed: detection follows Terminus-2's `asciinema rec` terminal and compares with the shell's foreground group recorded before the first command | It never fired in `phase1_1112_0027b`; verified with a nested terminal (`script` + `sh -c` wrapper) and live trial containers. |
 | 2026-11-12 | Review scope: **core code only** (`grpo/rollout_only.py`, `grpo/dispatch.py`, `grpo/command_timeout.patch`); shell scripts, the tracker and tests are not reviewed | User's instruction. |
+| 2026-11-12 | Full TB 2.1 baseline on **Tmax's 88 tasks** (all 89 but configure-git-webserver, paper §H), 5 attempts, extendable to 8 | Reproduces the setting of Tmax's 43.6 ± 1.9 (Table 3; they ran 3 trials, default timeouts). Every task checked: list, dataset, limits and Tmax records agree on 89 names; 89/89 agent limits match task.toml; all 445 Tmax trials ran multiplier 1.0, no overrides. Run `tb21full_1112_1454b`, started 3:25 PM PT, cap $250. |
+| 2026-11-12 | Extension: `touch $DATA/trials/$RUN/extend` before the 5th attempts finish queues attempts 6-8 into the same run | The extra attempts fill slots freed while the 200- and 120-min tasks run, ~+30-45 min. |
 
 ## Timeout settings: ours vs Tmax evaluation
 
@@ -155,16 +157,6 @@ snapshot" with final_status.json). Host and boxes torn down after the backup. Sp
 rec`; the check looked at the outer terminal; fixed and tested since, not yet run), and context-limit stops were
 scored 0 without the verifier (Tmax grades them; `HARBOR_TERMINUS_2_STOP_AT_CONTEXT` added, not yet run). Per-task
 results differ a lot from Tmax's 5-attempt eval (TB 2.1 here vs TB 2.0 there; different harness).
-
-## Standing requirement: rollout statistics on every run (2026-11-12)
-
-Every rollout from now on (baselines, evals, each GRPO step) keeps the statistics the Phase 1 dashboard shows
-(`monitor/phase1.py` + `monitor/phase1.html`): success rate (top metrics and trajectory panel), timeouts, context-limit
-stops, 120 s interrupts, model calls and steps per trajectory, agent minutes per trajectory, output tok/s, TTFT/ITL, and
-Tmax reference values in red. In post-training this becomes a **click-into** from the main training dashboard
-(`monitor/server.py`, port 8770): click a step, eval or baseline to open its rollout page. It goes with the Harbor
-run-tracker requirement in PLAN.md (PR #31). Saved run: `monitor/phase1_1112_0027b_status.json` (open it with
-"Open snapshot" on phase1.html).
 
 ## Open questions
 

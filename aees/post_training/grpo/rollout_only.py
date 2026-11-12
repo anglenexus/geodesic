@@ -8,16 +8,19 @@ every engine gets about the same expected minutes. One JSONL row per finished tr
   python3 grpo/rollout_only.py --engines http://127.0.0.1:30001/v1,http://127.0.0.1:30002/v1,... \
       --tasks ../harbor/state/tb21_selected_tasks.txt --attempts 8 --minutes grpo/task_limits.json \
       --out $DATA/trials/$RUN/rollouts.jsonl
+With --extend-to 8 --extend-file $DATA/trials/$RUN/extend, creating that file before the first --attempts have all
+finished queues attempts up to 8 into the same run (they fill the slots that free up while the longest tasks run).
 The engine URLs are as the boxes see them: each box reaches the GPU host's ports 30000-30015 through the tunnels.
 Standard library only (host python3), like grpo/dispatch.py.
 """
 import argparse
 import json
+import os
 import statistics
 import threading
 import time
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 
 try:
     from grpo.infra_filter import infra_cause
@@ -33,10 +36,11 @@ def sampling_params(max_tokens: int, temperature: float, top_p: float, thinking:
             "extra_body": {"chat_template_kwargs": kwargs}}
 
 
-def plan(tasks: list[str], attempts: int, engines: list[str], minutes: dict[str, float]) -> list[dict]:
-    """One entry per trial, longest expected first; each goes to the engine with the fewest expected minutes so far."""
+def plan(tasks: list[str], attempts: int, engines: list[str], minutes: dict[str, float], first: int = 0) -> list[dict]:
+    """One entry per trial (attempts first..attempts-1), longest expected first; each goes to the engine with the
+    fewest expected minutes so far."""
     default = statistics.mean(minutes.values()) if minutes else 1.0
-    trials = sorted(((t, a) for t in tasks for a in range(attempts)), key=lambda ta: -minutes.get(ta[0], default))
+    trials = sorted(((t, a) for t in tasks for a in range(first, attempts)), key=lambda ta: -minutes.get(ta[0], default))
     load = {e: 0.0 for e in engines}
     out = []
     for task, attempt in trials:
@@ -84,6 +88,17 @@ class Runner:
         return row
 
 
+EXTEND_POLL_SEC = 30
+
+
+def extension_requested(path: str, futures: list) -> bool:
+    """True as soon as the file exists; False once every future is done without it."""
+    while not os.path.exists(path):
+        if not wait(futures, timeout=EXTEND_POLL_SEC, return_when=ALL_COMPLETED).not_done:
+            return os.path.exists(path)
+    return True
+
+
 def scored(row: dict) -> bool:
     """Whether the row counts as a policy outcome: the same infrastructure exclusions as GRPO (grpo/infra_filter.py)."""
     return infra_cause({"exit_status": row["exit_status"], "agent_metrics": row.get("agent_metrics") or {}}) is None
@@ -116,21 +131,31 @@ def main(argv=None):
     p.add_argument("--no-thinking", action="store_true")
     p.add_argument("--timeout", type=float, default=None, help="seconds per trial at the driver (default: none)")
     p.add_argument("--out", required=True, help="JSONL, one row per finished trial (appended)")
+    p.add_argument("--extend-to", type=int, default=0, help="attempts per task if --extend-file appears in time")
+    p.add_argument("--extend-file", help="created (e.g. touch) before the first --attempts finish: run --extend-to")
     p.add_argument("--dry-run", action="store_true", help="print the plan and one request body, send nothing")
     a = p.parse_args(argv)
+    if a.extend_to > a.attempts and not a.extend_file:
+        p.error("--extend-to needs --extend-file")
     tasks = [t.strip() for t in open(a.tasks) if t.strip()]
     minutes = json.load(open(a.minutes)) if a.minutes else {}
     trials = plan(tasks, a.attempts, a.engines.split(","), minutes)
+    extra = plan(tasks, a.extend_to, a.engines.split(","), minutes, first=a.attempts) if a.extend_to > a.attempts else []
     params = sampling_params(a.max_tokens, a.temperature, a.top_p, not a.no_thinking)
     if a.dry_run:
         per_engine = {e: sum(t["engine"] == e for t in trials) for e in a.engines.split(",")}
-        print(json.dumps({"trials": len(trials), "per_engine": per_engine,
+        print(json.dumps({"trials": len(trials), "extension_trials": len(extra), "per_engine": per_engine,
                           "first": request_body(trials[0], a.model, a.max_seq_len, params)}, indent=1))
         return 0
     runner = Runner(a.dispatcher, a.out, a.timeout)
     print(f"{len(trials)} trials ({len(tasks)} tasks x {a.attempts}) -> {a.dispatcher}", flush=True)
-    with ThreadPoolExecutor(max_workers=len(trials)) as pool:   # the dispatcher queues; it holds every connection
-        futures = [pool.submit(runner.run_one, t, request_body(t, a.model, a.max_seq_len, params)) for t in trials]
+    with ThreadPoolExecutor(max_workers=len(trials) + len(extra)) as pool:   # the dispatcher queues every connection
+        submit = lambda ts: [pool.submit(runner.run_one, t, request_body(t, a.model, a.max_seq_len, params)) for t in ts]
+        futures = submit(trials)
+        if extra and extension_requested(a.extend_file, futures):
+            print(f"{a.extend_file} found: queuing attempts {a.attempts + 1}-{a.extend_to} ({len(extra)} trials)",
+                  flush=True)
+            futures += submit(extra)
     lost = [f.exception() for f in futures if f.exception()]
     for e in lost:                                     # e.g. a failed write: the row is missing from --out
         print(f"driver error, row not written: {e!r}", flush=True)

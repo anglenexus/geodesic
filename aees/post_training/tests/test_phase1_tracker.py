@@ -267,8 +267,9 @@ def test_server_serves_page_and_status_with_nothing_live(tmp_path):
         assert r.status == 200
         s = json.loads(r.read())
         assert set(s) == {"run", "generated", "planned", "sources", "progress", "outcomes", "overall", "tasks",
-                          "behaviour", "serving", "reference", "settings"}
+                          "behaviour", "serving", "reference", "settings", "attempts"}
         assert s["settings"] == {"thinking": True, "max_model_calls": 64}
+        assert s["attempts"]["attempts"] is None and s["overall"]["tmax"]["label"] == "Tmax released eval, TB 2.0, our 20 tasks"
         assert s["behaviour"]["by_outcome"]["passed"] == {"n": 1, "calls": 3, "commands": 3, "agent_min": 8,
                                                          "output_tokens": 800}
         assert s["behaviour"]["by_outcome"]["failed"]["n"] == 0
@@ -374,3 +375,61 @@ def test_context_stops_include_engine_refusals():
     assert p1.context_stop({"exit_status": "SequenceLengthLimitExceeded"})
     assert p1.context_stop({"exit_status": "AgentError", "agent_metrics": {"exception_type": "ContextLengthExceededError"}})
     assert not p1.context_stop({"exit_status": "AgentError", "agent_metrics": {"exception_type": "RewardFileNotFoundError"}})
+
+
+# ---- full TB 2.1 reference, attempts ----
+
+TB21 = json.loads((p1.HERE / "tb21_reference.json").read_text())
+
+
+def test_tb21_reference_covers_all_tasks_and_keeps_the_20():
+    names = [t.strip() for t in (p1.HERE.parents[1] / "harbor/state/tb21_all_tasks.txt").read_text().splitlines()]
+    limits = json.loads((p1.HERE.parent / "grpo/task_limits_tb21.json").read_text())
+    assert len(names) == 89 and list(TB21["tasks"]) == names and list(limits) == names
+    assert all(TB21["tasks"][t]["limit_min"] == limits[t] for t in names)
+    old = json.loads((p1.HERE / "phase1_reference.json").read_text())
+    for t, v in old["tasks"].items():                  # same derivation: the 20 tasks' entries are unchanged
+        assert TB21["tasks"][t]["tmax"] == v["tmax"] and TB21["tasks"][t]["ours_nothink"] == v["ours_nothink"]
+        assert TB21["tasks"][t]["limit_min"] == v["limit_min"]
+    assert sum("ours_nothink" in v for v in TB21["tasks"].values()) == 20
+    assert TB21["overall"]["tmax_paper"]["pass_rate"] == 0.436
+
+
+def test_overall_headline_is_the_paper_number_with_tb21_reference():
+    o = p1.overall([row(A, 0, T0, T0 + 1, 1.0, "Submitted")], TB21["tasks"], TB21["overall"])
+    assert o["tmax"]["rate"] == 0.436 and o["tmax"]["n"] is None and o["tmax"]["label"] == "Tmax paper, TB 2.1, all tasks"
+    rec = o["tmax_records"]
+    assert rec["n"] == sum(v["tmax"]["n"] for v in TB21["tasks"].values()) and rec["tasks"] == 89
+    assert o["ours_nothink"]["rate"] == pytest.approx(117 / 480) and "20 tasks only" in o["ours_nothink"]["label"]
+    o20 = p1.overall([], REFERENCE, {})                # the 20-task reference: records are the headline, as before
+    assert o20["tmax"]["rate"] == 0.24 and o20["tmax"]["n"] == 100 and o20["ours_nothink"]["label"] == "thinking off"
+
+
+def test_attempts_and_extension(tmp_path):
+    ext = tmp_path / "extend"
+    a = p1.attempts({"attempts": 5, "extend_attempts": 8}, ext, 445)
+    assert a == {"attempts": 5, "extend_attempts": 8, "extend_possible": True, "extend_requested": False, "planned": 445}
+    ext.touch()
+    a = p1.attempts({"attempts": 5, "extend_attempts": 8}, ext, 445)
+    assert a["extend_requested"] and a["planned"] == 712
+    assert p1.attempts({"attempts": 8, "extend_attempts": 8}, ext, 160)["extend_possible"] is False
+    assert p1.attempts(None, ext, 160) == {"attempts": None, "extend_attempts": None, "extend_possible": False,
+                                           "extend_requested": False, "planned": 160}
+
+
+def test_server_with_tb21_reference_and_extension(tmp_path):
+    root = make_data(tmp_path, run="full")
+    (tmp_path / "monitor" / "full").mkdir(parents=True)
+    (tmp_path / "monitor" / "full" / "settings.json").write_text(json.dumps({"tasks": 89, "attempts": 5,
+                                                                            "extend_attempts": 8}))
+    live = p1.Live([], f"http://127.0.0.1:{free_port()}")
+    tracker = p1.Tracker("full", tmp_path, live, 445, p1.HERE / "tb21_reference.json")
+    s = tracker.snapshot()
+    assert len(s["tasks"]) == 89 and s["planned"] == 445 and not s["attempts"]["extend_requested"]
+    assert s["sources"]["reference"] == "tb21_reference.json" and s["reference"]["tmax_paper"]["pass_rate"] == 0.436
+    (root / "extend").touch()
+    s = tracker.snapshot()
+    assert s["planned"] == 712 and s["progress"]["planned"] == 712
+    text = p1.summary_text(s)
+    assert "vs Tmax paper, TB 2.1, all tasks 43.6% ± 1.9 (released records" in text
+    assert "extension to 8 attempts requested" in text

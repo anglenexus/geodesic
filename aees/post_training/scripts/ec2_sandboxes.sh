@@ -36,7 +36,7 @@ prepare_box() {       # prepare_box <i> <ip>: copy what the box needs, then scri
   rsync -az -e "$rsh" "$HERE/configs/pins.sh" "ubuntu@$2:geodesic/aees/post_training/configs/"
   rsync -az -e "$rsh" "$HERE/grpo/harbor_parser.patch" "$HERE/grpo/command_timeout.patch" "ubuntu@$2:geodesic/aees/post_training/grpo/"
   rsync -az -e "$rsh" "$STATE/tunnel_key.pub" "$STATE/sync_key.pub" "ubuntu@$2:"
-  ssh_box "$2" 'bash geodesic/aees/post_training/scripts/ec2_box.sh prepare'
+  ssh_box "$2" "BOX_TASK_LISTS='${BOX_TASK_LISTS:-tb21_selected_tasks.txt}' bash geodesic/aees/post_training/scripts/ec2_box.sh prepare"
 }
 
 case "${1:-}" in
@@ -54,7 +54,7 @@ up)
   launch() {
     aws ec2 run-instances --region "$REGION" --image-id "$AMI" --instance-type "$TYPE" --key-name "$KEY_NAME" \
       --count "$N" --security-group-ids "$SG" --instance-initiated-shutdown-behavior terminate "$@" \
-      --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=200,VolumeType=gp3,DeleteOnTermination=true}' \
+      --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=${BOX_DISK_GB:-200},VolumeType=gp3,DeleteOnTermination=true}" \
       --user-data "$(printf '#!/bin/bash\nshutdown -h +%s\n' "$TTL_MIN")" \
       --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=aees-grpo-box},{Key=Project,Value=aees}]' \
       --query 'Instances[].InstanceId' --output text

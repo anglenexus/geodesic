@@ -4,12 +4,15 @@
 # 120 s per command), and sets the host up for serving only (Miles image + weights; no torch_dist, no Q adapter).
 #
 #   bash scripts/phase1_kickoff.sh            # then follow the printed steps
+#   FULL=1 bash scripts/phase1_kickoff.sh     # all 89 TB 2.1 tasks: every task image on the boxes, 600 GB disks, 8 h TTL
 # Spend: ~$36/h for the host + ~$3.70/h for the boxes from the moment they exist. Raise the budget guard first.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)                   # aees/post_training
 STATE=${STATE:-$HERE/state}
 STAMP=$(date +%m%d_%H%M)
-RUN=${RUN:-phase1_$STAMP}
+FULL=${FULL:-}
+RUN=${RUN:-$([ -n "$FULL" ] && echo tb21full || echo phase1)_$STAMP}
+[ -z "$FULL" ] || export BOX_TASK_LISTS=tb21_all_tasks.txt BOX_DISK_GB=${BOX_DISK_GB:-600} TTL_MIN=${TTL_MIN:-480}
 [ ! -f "$STATE/nebius.env" ] || { echo "state/nebius.env exists (a host from an earlier run?): move it away first"; exit 1; }
 PROJECT=${PROJECT:-project-e00qzjr2pr00d8qnh3d9xa} PLATFORM=gpu-h100-sxm PRESET=${PRESET:-8gpu-128vcpu-1600gb} \
   NAME=${NAME:-aees-h100x8-$(date +%m%d)} DISK_GB=${DISK_GB:-512} bash "$HERE/scripts/nebius_up.sh"
@@ -20,6 +23,6 @@ cat <<NEXT
 Host $NEBIUS_INSTANCE_ID ($H200_IP) and boxes are up; run $RUN. Next:
   1. laptop: bash scripts/teardown_watch.sh $RUN $NEBIUS_INSTANCE_ID &      (deletes the host on BACKUP_OK)
   2. host (ssh $H200_USER@$H200_IP), once: aws configure. Wait for SETUP_DONE in ~/setup.log, then in
-     geodesic/aees/post_training:   RUN=$RUN NEBIUS_INSTANCE_ID=$NEBIUS_INSTANCE_ID bash scripts/phase1.sh
+     geodesic/aees/post_training:   RUN=$RUN ${FULL:+FULL=1 }NEBIUS_INSTANCE_ID=$NEBIUS_INSTANCE_ID bash scripts/phase1.sh
   3. laptop: PORT=8771 bash scripts/tunnel.sh $H200_USER@$H200_IP     ->  http://localhost:8771
 NEXT

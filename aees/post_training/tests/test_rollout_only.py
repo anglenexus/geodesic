@@ -2,8 +2,11 @@
 import json
 import socket
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import pytest
 
 from grpo import rollout_only
 
@@ -129,3 +132,48 @@ def test_dry_run_sends_nothing(tmp_path, capsys):
                               "--out", str(tmp_path / "x.jsonl"), "--dry-run"]) == 0
     shown = json.loads(capsys.readouterr().out)
     assert shown["trials"] == 4 and sum(shown["per_engine"].values()) == 4 and not (tmp_path / "x.jsonl").exists()
+
+
+def test_extension_attempts_continue_the_numbering():
+    trials = rollout_only.plan(["a", "b"], 8, ENGINES[:2], {}, first=5)
+    assert sorted((t["task"], t["attempt"]) for t in trials) == [(t, a) for t in "ab" for a in (5, 6, 7)]
+
+
+def run_with_extension(tmp_path, create: bool) -> list[dict]:
+    fake = FakeDispatcher()
+    tasks = tmp_path / "tasks.txt"
+    tasks.write_text("ok1\nok2\n")
+    out, flag = tmp_path / "rollouts.jsonl", tmp_path / "extend"
+    if create:
+        flag.touch()
+    rc = rollout_only.main(["--dispatcher", f"http://127.0.0.1:{fake.port}", "--engines", ENGINES[0], "--tasks",
+                            str(tasks), "--attempts", "2", "--extend-to", "3", "--extend-file", str(flag), "--out", str(out)])
+    fake.server.shutdown()
+    assert rc == 0
+    return [json.loads(l) for l in out.read_text().splitlines()]
+
+
+def test_extension_runs_only_when_requested(tmp_path):
+    assert sorted(r["attempt"] for r in run_with_extension(tmp_path, create=False)) == [0, 0, 1, 1]
+    (tmp_path / "rollouts.jsonl").unlink()
+    assert sorted(r["attempt"] for r in run_with_extension(tmp_path, create=True)) == [0, 0, 1, 1, 2, 2]
+
+
+def test_extension_requested_while_trials_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(rollout_only, "EXTEND_POLL_SEC", 0.05)
+    flag = tmp_path / "extend"
+    gate = threading.Event()
+    with ThreadPoolExecutor(1) as pool:
+        running = [pool.submit(gate.wait)]
+        threading.Timer(0.2, flag.touch).start()
+        assert rollout_only.extension_requested(str(flag), running)
+        gate.set()
+        assert not rollout_only.extension_requested(str(tmp_path / "never"), running)
+
+
+def test_extend_to_needs_a_file(tmp_path):
+    tasks = tmp_path / "tasks.txt"
+    tasks.write_text("a\n")
+    with pytest.raises(SystemExit):
+        rollout_only.main(["--engines", ENGINES[0], "--tasks", str(tasks), "--attempts", "5", "--extend-to", "8",
+                           "--out", str(tmp_path / "x.jsonl"), "--dry-run"])

@@ -1,0 +1,1409 @@
+{
+ "_doc": "Per-task references for the phase 1 tracker, all 89 TB 2.1 tasks. tmax: Tmax's released base Qwen3.6-27B eval (thinking on, TB 2.0 on Daytona, 5 attempts; github.com/hamishivi/tmax evaluation_assets/v1.0); tasks missing from those records have no tmax entry. ours_nothink: auxr_1103_0033 steps 1-3 (thinking off, 48k, 64 trials on one H200, TB 2.1; 24 attempts), our 20 training tasks only. limit_min: TB 2.1 agent time limit (task.toml agent.timeout_sec/60).",
+ "tasks": {
+  "adaptive-rejection-sampler": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 3,
+    "steps_median": 34,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 30921,
+    "steps_mean": 38.6,
+    "cmd_timeouts": 8,
+    "commands": 193
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 24
+   }
+  },
+  "bn-fit-modify": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 30,
+    "agent_min_median": 7.2,
+    "output_tokens_median": 12773,
+    "steps_mean": 30.6,
+    "cmd_timeouts": 0,
+    "commands": 153
+   }
+  },
+  "break-filter-js-from-html": {
+   "limit_min": 20.0,
+   "tmax": {
+    "n": 5,
+    "passed": 2,
+    "timeouts": 2,
+    "steps_median": 31,
+    "agent_min_median": 16.4,
+    "output_tokens_median": 16736,
+    "steps_mean": 31.4,
+    "cmd_timeouts": 0,
+    "commands": 155
+   }
+  },
+  "build-cython-ext": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 50,
+    "agent_min_median": 6.8,
+    "output_tokens_median": 7512,
+    "steps_mean": 47.8,
+    "cmd_timeouts": 0,
+    "commands": 239
+   }
+  },
+  "build-pmars": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 26,
+    "agent_min_median": 2.7,
+    "output_tokens_median": 4129,
+    "steps_mean": 25.4,
+    "cmd_timeouts": 0,
+    "commands": 127
+   }
+  },
+  "build-pov-ray": {
+   "limit_min": 200.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 64,
+    "agent_min_median": 9.2,
+    "output_tokens_median": 9055,
+    "steps_mean": 52.2,
+    "cmd_timeouts": 0,
+    "commands": 259
+   }
+  },
+  "caffe-cifar-10": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 3,
+    "steps_median": 29,
+    "agent_min_median": 20.0,
+    "output_tokens_median": 3818,
+    "steps_mean": 39.3,
+    "cmd_timeouts": 17,
+    "commands": 118
+   }
+  },
+  "cancel-async-tasks": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 11,
+    "agent_min_median": 1.4,
+    "output_tokens_median": 4650,
+    "steps_mean": 15.4,
+    "cmd_timeouts": 0,
+    "commands": 77
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 8,
+    "timeouts": 3
+   }
+  },
+  "chess-best-move": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 30,
+    "agent_min_median": 12.7,
+    "output_tokens_median": 29663,
+    "steps_mean": 35.6,
+    "cmd_timeouts": 0,
+    "commands": 178
+   }
+  },
+  "circuit-fibsqrt": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 13,
+    "agent_min_median": 31.4,
+    "output_tokens_median": 72981,
+    "steps_mean": 12.6,
+    "cmd_timeouts": 0,
+    "commands": 55
+   }
+  },
+  "cobol-modernization": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 28,
+    "agent_min_median": 9.9,
+    "output_tokens_median": 27782,
+    "steps_mean": 28.6,
+    "cmd_timeouts": 0,
+    "commands": 143
+   }
+  },
+  "code-from-image": {
+   "limit_min": 20.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 15,
+    "agent_min_median": 3.2,
+    "output_tokens_median": 5112,
+    "steps_mean": 21,
+    "cmd_timeouts": 0,
+    "commands": 105
+   }
+  },
+  "compile-compcert": {
+   "limit_min": 40.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 64,
+    "agent_min_median": 26.6,
+    "output_tokens_median": 8499,
+    "steps_mean": 64,
+    "cmd_timeouts": 37,
+    "commands": 320
+   }
+  },
+  "configure-git-webserver": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 2,
+    "steps_median": 31,
+    "agent_min_median": 10.5,
+    "output_tokens_median": 4837,
+    "steps_mean": 31.4,
+    "cmd_timeouts": 8,
+    "commands": 157
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 15,
+    "timeouts": 1
+   }
+  },
+  "constraints-scheduling": {
+   "limit_min": 20.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 7,
+    "agent_min_median": 4.9,
+    "output_tokens_median": 11223,
+    "steps_mean": 7.6,
+    "cmd_timeouts": 0,
+    "commands": 38
+   }
+  },
+  "count-dataset-tokens": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 3,
+    "timeouts": 0,
+    "steps_median": 13,
+    "agent_min_median": 3.7,
+    "output_tokens_median": 3980,
+    "steps_mean": 13,
+    "cmd_timeouts": 0,
+    "commands": 65
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 4,
+    "timeouts": 9
+   }
+  },
+  "crack-7z-hash": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 3,
+    "steps_median": 2,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 428,
+    "steps_mean": 2.3,
+    "cmd_timeouts": 0,
+    "commands": 7
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 23,
+    "timeouts": 1
+   }
+  },
+  "custom-memory-heap-crash": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 2,
+    "timeouts": 0,
+    "steps_median": 20,
+    "agent_min_median": 19.4,
+    "output_tokens_median": 45296,
+    "steps_mean": 22.8,
+    "cmd_timeouts": 0,
+    "commands": 105
+   }
+  },
+  "db-wal-recovery": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 40,
+    "agent_min_median": 13.3,
+    "output_tokens_median": 42508,
+    "steps_mean": 38.4,
+    "cmd_timeouts": 0,
+    "commands": 186
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 24
+   }
+  },
+  "distribution-search": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 7,
+    "agent_min_median": 5.0,
+    "output_tokens_median": 10381,
+    "steps_mean": 7.6,
+    "cmd_timeouts": 0,
+    "commands": 38
+   }
+  },
+  "dna-assembly": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 24,
+    "agent_min_median": 19.9,
+    "output_tokens_median": 43343,
+    "steps_mean": 24,
+    "cmd_timeouts": 3,
+    "commands": 117
+   }
+  },
+  "dna-insert": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 20,
+    "agent_min_median": 8.5,
+    "output_tokens_median": 17465,
+    "steps_mean": 21,
+    "cmd_timeouts": 0,
+    "commands": 104
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 8
+   }
+  },
+  "extract-elf": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 22,
+    "agent_min_median": 8.6,
+    "output_tokens_median": 21414,
+    "steps_mean": 24.4,
+    "cmd_timeouts": 0,
+    "commands": 122
+   }
+  },
+  "extract-moves-from-video": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 3,
+    "steps_median": 60,
+    "agent_min_median": 30.0,
+    "output_tokens_median": 6904,
+    "steps_mean": 49.8,
+    "cmd_timeouts": 40,
+    "commands": 249
+   }
+  },
+  "feal-differential-cryptanalysis": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 6,
+    "agent_min_median": 19.0,
+    "output_tokens_median": 54373,
+    "steps_mean": 8,
+    "cmd_timeouts": 0,
+    "commands": 30
+   }
+  },
+  "feal-linear-cryptanalysis": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 11,
+    "agent_min_median": 20.8,
+    "output_tokens_median": 48455,
+    "steps_mean": 11.2,
+    "cmd_timeouts": 1,
+    "commands": 47
+   }
+  },
+  "filter-js-from-html": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 29,
+    "agent_min_median": 4.8,
+    "output_tokens_median": 12133,
+    "steps_mean": 24.2,
+    "cmd_timeouts": 0,
+    "commands": 121
+   }
+  },
+  "financial-document-processor": {
+   "limit_min": 20.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 35,
+    "agent_min_median": 12.6,
+    "output_tokens_median": 14445,
+    "steps_mean": 34.6,
+    "cmd_timeouts": 8,
+    "commands": 173
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 15,
+    "timeouts": 15
+   }
+  },
+  "fix-code-vulnerability": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 38,
+    "agent_min_median": 3.6,
+    "output_tokens_median": 5111,
+    "steps_mean": 38.6,
+    "cmd_timeouts": 0,
+    "commands": 193
+   }
+  },
+  "fix-git": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 12,
+    "agent_min_median": 1.1,
+    "output_tokens_median": 1848,
+    "steps_mean": 12.6,
+    "cmd_timeouts": 0,
+    "commands": 63
+   }
+  },
+  "fix-ocaml-gc": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 38,
+    "agent_min_median": 11.3,
+    "output_tokens_median": 20976,
+    "steps_mean": 41.2,
+    "cmd_timeouts": 0,
+    "commands": 205
+   }
+  },
+  "gcode-to-text": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 25,
+    "agent_min_median": 12.1,
+    "output_tokens_median": 26024,
+    "steps_mean": 25.6,
+    "cmd_timeouts": 0,
+    "commands": 127
+   }
+  },
+  "git-leak-recovery": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 10,
+    "agent_min_median": 1.1,
+    "output_tokens_median": 1883,
+    "steps_mean": 10.8,
+    "cmd_timeouts": 0,
+    "commands": 54
+   }
+  },
+  "git-multibranch": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 32,
+    "agent_min_median": 4.5,
+    "output_tokens_median": 6158,
+    "steps_mean": 33.4,
+    "cmd_timeouts": 0,
+    "commands": 167
+   }
+  },
+  "gpt2-codegolf": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 1,
+    "steps_median": 27,
+    "agent_min_median": 12.5,
+    "output_tokens_median": 38168,
+    "steps_mean": 31,
+    "cmd_timeouts": 0,
+    "commands": 154
+   }
+  },
+  "headless-terminal": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 15,
+    "agent_min_median": 3.3,
+    "output_tokens_median": 6167,
+    "steps_mean": 20.6,
+    "cmd_timeouts": 0,
+    "commands": 103
+   }
+  },
+  "hf-model-inference": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 3,
+    "steps_median": 4,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 1066,
+    "steps_mean": 6.5,
+    "cmd_timeouts": 0,
+    "commands": 26
+   }
+  },
+  "install-windows-3.11": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 4,
+    "steps_median": 9,
+    "agent_min_median": 33.8,
+    "output_tokens_median": 7846,
+    "steps_mean": 29,
+    "cmd_timeouts": 0,
+    "commands": 58
+   }
+  },
+  "kv-store-grpc": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 5,
+    "steps_median": 7,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 1277,
+    "steps_mean": 6.5,
+    "cmd_timeouts": 0,
+    "commands": 26
+   }
+  },
+  "large-scale-text-editing": {
+   "limit_min": 20.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 21,
+    "agent_min_median": 9.8,
+    "output_tokens_median": 8932,
+    "steps_mean": 30,
+    "cmd_timeouts": 1,
+    "commands": 150
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 1,
+    "timeouts": 20
+   }
+  },
+  "largest-eigenval": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 1,
+    "steps_median": 39,
+    "agent_min_median": 13.7,
+    "output_tokens_median": 38493,
+    "steps_mean": 37.2,
+    "cmd_timeouts": 0,
+    "commands": 186
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 1,
+    "timeouts": 24
+   }
+  },
+  "llm-inference-batching-scheduler": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 25,
+    "agent_min_median": 18.7,
+    "output_tokens_median": 39006,
+    "steps_mean": 25.6,
+    "cmd_timeouts": 0,
+    "commands": 128
+   }
+  },
+  "log-summary-date-ranges": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 3,
+    "timeouts": 0,
+    "steps_median": 12,
+    "agent_min_median": 2.4,
+    "output_tokens_median": 4335,
+    "steps_mean": 11.6,
+    "cmd_timeouts": 0,
+    "commands": 58
+   }
+  },
+  "mailman": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 4,
+    "steps_median": 26,
+    "agent_min_median": 30.0,
+    "output_tokens_median": 4844,
+    "steps_mean": 27.8,
+    "cmd_timeouts": 0,
+    "commands": 110
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 24
+   }
+  },
+  "make-doom-for-mips": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 46,
+    "agent_min_median": 12.6,
+    "output_tokens_median": 21283,
+    "steps_mean": 43.8,
+    "cmd_timeouts": 0,
+    "commands": 219
+   }
+  },
+  "make-mips-interpreter": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 32,
+    "agent_min_median": 6.6,
+    "output_tokens_median": 11148,
+    "steps_mean": 33,
+    "cmd_timeouts": 0,
+    "commands": 165
+   }
+  },
+  "mcmc-sampling-stan": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 23,
+    "agent_min_median": 15.9,
+    "output_tokens_median": 3550,
+    "steps_mean": 21.4,
+    "cmd_timeouts": 20,
+    "commands": 107
+   }
+  },
+  "merge-diff-arc-agi-task": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 27,
+    "agent_min_median": 7.0,
+    "output_tokens_median": 7807,
+    "steps_mean": 27.8,
+    "cmd_timeouts": 5,
+    "commands": 139
+   }
+  },
+  "model-extraction-relu-logits": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 18,
+    "agent_min_median": 13.7,
+    "output_tokens_median": 21663,
+    "steps_mean": 18,
+    "cmd_timeouts": 3,
+    "commands": 90
+   }
+  },
+  "modernize-scientific-stack": {
+   "limit_min": 10.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 12,
+    "agent_min_median": 1.8,
+    "output_tokens_median": 2394,
+    "steps_mean": 12,
+    "cmd_timeouts": 0,
+    "commands": 60
+   }
+  },
+  "mteb-leaderboard": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 37,
+    "agent_min_median": 12.0,
+    "output_tokens_median": 10696,
+    "steps_mean": 37.4,
+    "cmd_timeouts": 17,
+    "commands": 186
+   }
+  },
+  "mteb-retrieve": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 8,
+    "agent_min_median": 1.9,
+    "output_tokens_median": 2319,
+    "steps_mean": 7.4,
+    "cmd_timeouts": 0,
+    "commands": 37
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 1,
+    "timeouts": 0
+   }
+  },
+  "multi-source-data-merger": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 8,
+    "agent_min_median": 1.6,
+    "output_tokens_median": 3171,
+    "steps_mean": 7.4,
+    "cmd_timeouts": 0,
+    "commands": 37
+   }
+  },
+  "nginx-request-logging": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 13,
+    "agent_min_median": 1.4,
+    "output_tokens_median": 2367,
+    "steps_mean": 12.6,
+    "cmd_timeouts": 0,
+    "commands": 63
+   }
+  },
+  "openssl-selfsigned-cert": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 10,
+    "agent_min_median": 1.4,
+    "output_tokens_median": 3270,
+    "steps_mean": 10.4,
+    "cmd_timeouts": 0,
+    "commands": 52
+   }
+  },
+  "overfull-hbox": {
+   "limit_min": 12.5,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 25,
+    "agent_min_median": 8.4,
+    "output_tokens_median": 18624,
+    "steps_mean": 27.8,
+    "cmd_timeouts": 0,
+    "commands": 139
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 8,
+    "timeouts": 14
+   }
+  },
+  "password-recovery": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 64,
+    "agent_min_median": 8.8,
+    "output_tokens_median": 11587,
+    "steps_mean": 53.2,
+    "cmd_timeouts": 0,
+    "commands": 266
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 2,
+    "timeouts": 22
+   }
+  },
+  "path-tracing": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 29,
+    "agent_min_median": 11.5,
+    "output_tokens_median": 24588,
+    "steps_mean": 24.4,
+    "cmd_timeouts": 0,
+    "commands": 122
+   }
+  },
+  "path-tracing-reverse": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 20,
+    "agent_min_median": 2.8,
+    "output_tokens_median": 2579,
+    "steps_mean": 20.6,
+    "cmd_timeouts": 0,
+    "commands": 103
+   }
+  },
+  "polyglot-c-py": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 16,
+    "agent_min_median": 7.9,
+    "output_tokens_median": 9983,
+    "steps_mean": 18.4,
+    "cmd_timeouts": 7,
+    "commands": 92
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 4,
+    "timeouts": 17
+   }
+  },
+  "polyglot-rust-c": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 1,
+    "steps_median": 3,
+    "agent_min_median": 12.9,
+    "output_tokens_median": 49152,
+    "steps_mean": 3.2,
+    "cmd_timeouts": 0,
+    "commands": 3
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 2,
+    "timeouts": 24
+   }
+  },
+  "portfolio-optimization": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 19,
+    "agent_min_median": 7.4,
+    "output_tokens_median": 8778,
+    "steps_mean": 21.2,
+    "cmd_timeouts": 0,
+    "commands": 106
+   }
+  },
+  "protein-assembly": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 60,
+    "agent_min_median": 12.2,
+    "output_tokens_median": 26480,
+    "steps_mean": 53.2,
+    "cmd_timeouts": 0,
+    "commands": 265
+   }
+  },
+  "prove-plus-comm": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 9,
+    "agent_min_median": 1.8,
+    "output_tokens_median": 3216,
+    "steps_mean": 8.4,
+    "cmd_timeouts": 0,
+    "commands": 42
+   }
+  },
+  "pypi-server": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 3,
+    "timeouts": 3,
+    "steps_median": 11,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 1027,
+    "steps_mean": 9.3,
+    "cmd_timeouts": 0,
+    "commands": 28
+   }
+  },
+  "pytorch-model-cli": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 23,
+    "agent_min_median": 5.3,
+    "output_tokens_median": 7404,
+    "steps_mean": 23.8,
+    "cmd_timeouts": 0,
+    "commands": 119
+   }
+  },
+  "pytorch-model-recovery": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 11,
+    "agent_min_median": 8.5,
+    "output_tokens_median": 9772,
+    "steps_mean": 13.8,
+    "cmd_timeouts": 16,
+    "commands": 69
+   }
+  },
+  "qemu-alpine-ssh": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 3,
+    "steps_median": 41,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 9330,
+    "steps_mean": 35.2,
+    "cmd_timeouts": 11,
+    "commands": 141
+   }
+  },
+  "qemu-startup": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 3,
+    "timeouts": 3,
+    "steps_median": 3,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 891,
+    "steps_mean": 2.3,
+    "cmd_timeouts": 0,
+    "commands": 7
+   }
+  },
+  "query-optimize": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 22,
+    "agent_min_median": 8.1,
+    "output_tokens_median": 7388,
+    "steps_mean": 22.6,
+    "cmd_timeouts": 12,
+    "commands": 113
+   }
+  },
+  "raman-fitting": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 15,
+    "agent_min_median": 6.6,
+    "output_tokens_median": 11624,
+    "steps_mean": 18.8,
+    "cmd_timeouts": 0,
+    "commands": 94
+   }
+  },
+  "regex-chess": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 14,
+    "agent_min_median": 20.2,
+    "output_tokens_median": 46964,
+    "steps_mean": 14.4,
+    "cmd_timeouts": 0,
+    "commands": 69
+   }
+  },
+  "regex-log": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 15,
+    "agent_min_median": 8.5,
+    "output_tokens_median": 18575,
+    "steps_mean": 16,
+    "cmd_timeouts": 5,
+    "commands": 80
+   }
+  },
+  "reshard-c4-data": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 27,
+    "agent_min_median": 9.8,
+    "output_tokens_median": 14386,
+    "steps_mean": 29,
+    "cmd_timeouts": 0,
+    "commands": 145
+   }
+  },
+  "rstan-to-pystan": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 3,
+    "steps_median": 37,
+    "agent_min_median": 30.0,
+    "output_tokens_median": 16490,
+    "steps_mean": 37.8,
+    "cmd_timeouts": 8,
+    "commands": 189
+   }
+  },
+  "sam-cell-seg": {
+   "limit_min": 120.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 55,
+    "agent_min_median": 43.8,
+    "output_tokens_median": 15881,
+    "steps_mean": 53.2,
+    "cmd_timeouts": 31,
+    "commands": 266
+   }
+  },
+  "sanitize-git-repo": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 21,
+    "agent_min_median": 3.0,
+    "output_tokens_median": 5926,
+    "steps_mean": 26,
+    "cmd_timeouts": 0,
+    "commands": 130
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 5,
+    "timeouts": 2
+   }
+  },
+  "schemelike-metacircular-eval": {
+   "limit_min": 40.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 34,
+    "agent_min_median": 18.2,
+    "output_tokens_median": 37548,
+    "steps_mean": 32,
+    "cmd_timeouts": 0,
+    "commands": 156
+   }
+  },
+  "sparql-university": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 31,
+    "agent_min_median": 12.9,
+    "output_tokens_median": 24756,
+    "steps_mean": 30.2,
+    "cmd_timeouts": 5,
+    "commands": 151
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 11,
+    "timeouts": 17
+   }
+  },
+  "sqlite-db-truncate": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 3,
+    "timeouts": 0,
+    "steps_median": 9,
+    "agent_min_median": 9.2,
+    "output_tokens_median": 30038,
+    "steps_mean": 10.2,
+    "cmd_timeouts": 0,
+    "commands": 48
+   }
+  },
+  "sqlite-with-gcov": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 2,
+    "timeouts": 0,
+    "steps_median": 20,
+    "agent_min_median": 2.1,
+    "output_tokens_median": 2874,
+    "steps_mean": 24.6,
+    "cmd_timeouts": 5,
+    "commands": 122
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 17,
+    "timeouts": 3
+   }
+  },
+  "torch-pipeline-parallelism": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 4,
+    "steps_median": 46,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 14751,
+    "steps_mean": 45,
+    "cmd_timeouts": 10,
+    "commands": 180
+   }
+  },
+  "torch-tensor-parallelism": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 2,
+    "steps_median": 42,
+    "agent_min_median": 14.3,
+    "output_tokens_median": 14090,
+    "steps_mean": 39.6,
+    "cmd_timeouts": 10,
+    "commands": 198
+   }
+  },
+  "train-fasttext": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 2,
+    "steps_median": 36,
+    "agent_min_median": 41.3,
+    "output_tokens_median": 7514,
+    "steps_mean": 39.2,
+    "cmd_timeouts": 46,
+    "commands": 157
+   }
+  },
+  "tune-mjcf": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 22,
+    "agent_min_median": 7.1,
+    "output_tokens_median": 8385,
+    "steps_mean": 31,
+    "cmd_timeouts": 0,
+    "commands": 124
+   }
+  },
+  "video-processing": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 26,
+    "agent_min_median": 10.8,
+    "output_tokens_median": 14903,
+    "steps_mean": 24.8,
+    "cmd_timeouts": 0,
+    "commands": 124
+   }
+  },
+  "vulnerable-secret": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 15,
+    "agent_min_median": 3.6,
+    "output_tokens_median": 5066,
+    "steps_mean": 15.6,
+    "cmd_timeouts": 4,
+    "commands": 78
+   }
+  },
+  "winning-avg-corewars": {
+   "limit_min": 60.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 64,
+    "agent_min_median": 21.1,
+    "output_tokens_median": 32822,
+    "steps_mean": 54.4,
+    "cmd_timeouts": 0,
+    "commands": 266
+   }
+  },
+  "write-compressor": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 2,
+    "steps_median": 6,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 41736,
+    "steps_mean": 6.7,
+    "cmd_timeouts": 0,
+    "commands": 16
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 23
+   }
+  }
+ },
+ "overall": {
+  "_doc": "tmax_paper: Tmax paper Table 3, base Qwen3.6-27B on TB 2.1, all 89 tasks (pass rate, mean \u00b1 spread over runs); this is the headline pass-rate reference for the full-set run. tmax: Tmax's released base Qwen3.6-27B eval records over all 89 tasks present (thinking on, TB 2.0, Daytona, 5 attempts). Trials over 1 h (hung, cancelled) left out of time and token statistics; agent minutes capped at the TB 2.1 task limit. pass_rate and timeout_rate count all 445 trials. ours_nothink: our 20 training tasks only (phase1_reference.json).",
+  "tmax_paper": {
+   "pass_rate": 0.436,
+   "pass_rate_pm": 0.019,
+   "label": "Tmax paper, TB 2.1, all tasks"
+  },
+  "tmax": {
+   "pass_rate": 0.3955,
+   "timeout_rate": 0.128,
+   "steps": {
+    "median": 23.0,
+    "mean": 25.8,
+    "p90": 49,
+    "max": 64
+   },
+   "agent_min": {
+    "median": 9.9,
+    "mean": 11.6,
+    "p90": 22.002190983295442,
+    "max": 59.99960710207621
+   },
+   "output_tokens_per_trial": {
+    "median": 10665.0,
+    "mean": 16852.8,
+    "p90": 42508,
+    "max": 86304
+   },
+   "output_tokens_per_call": {
+    "median": 376.5,
+    "mean": 999.3,
+    "p90": 1869.55,
+    "max": 16384.0
+   },
+   "hit_64_rate": 0.057,
+   "cmd_timeout_rate_per_command": 0.0311,
+   "commands": 10852,
+   "tok_s_per_agent_overall": 24.2,
+   "tok_s_per_agent_during_calls": 41.0,
+   "share_time_model_calls": 0.59,
+   "share_time_commands": 0.275,
+   "n_timed": 424
+  },
+  "ours_nothink": {
+   "pass_rate": 0.2437,
+   "timeout_rate": 0.573,
+   "calls": {
+    "median": 12,
+    "mean": 13.2,
+    "p90": 22,
+    "max": 44
+   },
+   "tok_s_per_agent_overall": 7.1,
+   "tok_s_per_agent_during_calls": 9.3,
+   "share_time_model_calls": 0.77,
+   "share_time_commands": 0.13
+  }
+ }
+}

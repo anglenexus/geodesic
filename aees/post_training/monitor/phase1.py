@@ -1,5 +1,6 @@
 """Tracker for the rollout-only baseline (align_tmax_plan.md, Experiment 1): 20 tasks x 8 attempts of base
-Qwen3.6-27B, thinking on, 40 at a time through grpo/dispatch.py, served by 4 SGLang engines. No training.
+Qwen3.6-27B, thinking on, 40 at a time through grpo/dispatch.py, served by 4 SGLang engines. No training. Also the
+full TB 2.1 run (89 tasks x 5, optionally 8): --reference monitor/tb21_reference.json --planned 445.
 
     RUN=<run> python3 monitor/phase1.py [--port 8771] [--data /data]     # on the GPU host
     bash scripts/tunnel.sh user@host                                       # then http://localhost:8771
@@ -12,7 +13,11 @@ Read on every request to /status.json (cheap: trial folders are re-parsed only w
     $DATA/trials/$RUN/<task>__<stamp>__<id>/  Harbor trial folders, synced from the boxes every 60 s:
                                               result.json and agent/trajectory.json (model calls, tokens,
                                               120 s command interrupts)
+    $DATA/trials/$RUN/extend                  exists: extension to settings.json's extend_attempts requested
+    $DATA/monitor/$RUN/settings.json          the launcher's settings (attempts, extend_attempts, ...)
     monitor/phase1_reference.json             per-task references: Tmax's base model and our thinking-off run
+                                              (--reference monitor/tb21_reference.json: all 89 TB 2.1 tasks, with
+                                              the Tmax paper's TB 2.1 pass rate as the headline)
 Sampled every 10 s by a background thread:
     <dispatcher>/status                       live slots per box and the queue
     127.0.0.1:<port>/metrics                  each SGLang engine's Prometheus counters, gauges and latency
@@ -48,6 +53,7 @@ MAX_CALLS = 64                                         # Tmax's step limit: a tr
 INTERRUPT = "Command timed out after 120 seconds and was interrupted"   # grpo/command_timeout.patch's note
 TMAX_OVERALL = {"passed": 24, "n": 100}                # Tmax base Qwen3.6-27B on our 20 tasks (thinking on)
 NOTHINK_OVERALL = {"passed": 117, "n": 480}            # auxr_1103_0033 steps 1-3 (thinking off)
+TMAX_RECORDS = "Tmax released eval, TB 2.0"            # label of the per-task and record-derived references
 
 # Prometheus names differ across SGLang versions: the first one an engine exports is used.
 GEN_TOKENS = ("sglang:generation_tokens_total", "sglang:generation_tokens")
@@ -300,16 +306,34 @@ def outcomes(rows: list[dict]) -> dict:
             "passed_by_status": {s: sum(passed(r) for r in scored if str(r.get("exit_status")) == s) for s in model}}
 
 
-def overall(rows: list[dict]) -> dict:
+def ref_sum(reference: dict, key: str, default: dict) -> dict:
+    """Passed/n summed over the reference tasks that have `key` (the 20-task constants when none do), with the
+    number of tasks it covers."""
+    rs = [v[key] for v in (reference or {}).values() if isinstance(v, dict) and (v.get(key) or {}).get("n")]
+    k, n = (sum(r["passed"] for r in rs), sum(r["n"] for r in rs)) if rs else (default["passed"], default["n"])
+    return {"passed": k, "n": n, "rate": k / n, "tasks": len(rs) if rs else 20}
+
+
+def overall(rows: list[dict], reference: dict | None = None, ref_overall: dict | None = None) -> dict:
+    """Pass/timeout/context-stop rates of the scored rows. "tmax" is the headline pass-rate reference: the Tmax
+    paper's number when the reference has one (tmax_paper), else the released records over the reference tasks;
+    "tmax_records" is always the latter."""
     scored = [r for r in rows if not is_infra(r)]
     k = sum(passed(r) for r in scored)
     timeouts = sum(r.get("exit_status") == "TimeLimitExceeded" for r in scored)
     seqlen = sum(map(context_stop, scored))
+    ntasks = len(reference) if reference else 20
+    records = {**ref_sum(reference, "tmax", TMAX_OVERALL), "label": f"{TMAX_RECORDS}, "
+               + ("our 20 tasks" if ntasks == 20 else f"{ntasks} tasks")}
+    paper = (ref_overall or {}).get("tmax_paper") or {}
+    tmax = {"passed": None, "n": None, "rate": paper["pass_rate"], "pm": paper.get("pass_rate_pm"),
+            "label": paper.get("label", "Tmax paper")} if paper.get("pass_rate") is not None else records
+    nothink = ref_sum(reference, "ours_nothink", NOTHINK_OVERALL)
+    nothink["label"] = "thinking off" + ("" if nothink["tasks"] >= ntasks else f", our {nothink['tasks']} tasks only")
     return {"scored": len(scored), "passed": k, "pass_rate": rate(k, len(scored)),
             "timeouts": timeouts, "timeout_rate": rate(timeouts, len(scored)),
             "seqlen": seqlen, "seqlen_rate": rate(seqlen, len(scored)),
-            "tmax": {**TMAX_OVERALL, "rate": TMAX_OVERALL["passed"] / TMAX_OVERALL["n"]},
-            "ours_nothink": {**NOTHINK_OVERALL, "rate": NOTHINK_OVERALL["passed"] / NOTHINK_OVERALL["n"]}}
+            "tmax": tmax, "tmax_records": records, "ours_nothink": nothink}
 
 
 def used(f: dict) -> bool:
@@ -366,6 +390,18 @@ def outcome_medians(fs: list[dict]) -> dict:
             "commands": quantile([f["commands"] for f in fs], 0.5),
             "agent_min": quantile([f["agent_min"] for f in fs], 0.5),
             "output_tokens": quantile([f["completion_tokens"] for f in fs], 0.5)}
+
+
+def attempts(settings: dict | None, extend_file: Path, planned: int) -> dict:
+    """Attempts per task from settings.json, whether the extension to extend_attempts was requested (the driver's
+    extend file exists), and the trials planned: `planned` scaled to extend_attempts once requested."""
+    st = settings or {}
+    a, e = st.get("attempts"), st.get("extend_attempts")
+    a, e = (a if isinstance(a, int) and a > 0 else None), (e if isinstance(e, int) else None)
+    possible = bool(a and e and e > a)
+    requested = possible and extend_file.exists()
+    return {"attempts": a, "extend_attempts": e if possible else None, "extend_possible": possible,
+            "extend_requested": requested, "planned": round(planned * e / a) if requested else planned}
 
 
 def read_settings(path: Path | None) -> dict | None:
@@ -731,6 +767,7 @@ class Tracker:
         self.folders = Folders(self.root)
         ref = json.loads((reference or HERE / "phase1_reference.json").read_text())
         self.reference, self.reference_overall = ref["tasks"], ref.get("overall") or {}
+        self.reference_name = (reference or HERE / "phase1_reference.json").name
         self.lock = threading.Lock()                   # one snapshot at a time: Folders' cache isn't thread-safe
 
     def snapshot(self) -> dict:
@@ -740,13 +777,17 @@ class Tracker:
             rows = merge_rows(rollouts, dispatch)
             folders = self.folders.refresh()
             history, status, status_t = self.live.view()
-            return {"run": self.run, "generated": now, "planned": self.planned,
+            settings = read_settings(self.settings)
+            att = attempts(settings, self.root / "extend", self.planned)
+            planned = att["planned"]
+            return {"run": self.run, "generated": now, "planned": planned,
                     "sources": {"rollouts": len(rollouts), "dispatch": len(dispatch), "folders": len(folders),
-                                "dispatcher_t": status_t},
-                    "progress": progress(rows, status, self.planned, now), "outcomes": outcomes(rows),
-                    "overall": overall(rows), "tasks": per_task(rows, folders, self.reference),
+                                "dispatcher_t": status_t, "reference": self.reference_name},
+                    "progress": progress(rows, status, planned, now), "outcomes": outcomes(rows),
+                    "overall": overall(rows, self.reference, self.reference_overall),
+                    "tasks": per_task(rows, folders, self.reference),
                     "behaviour": behaviour(folders), "serving": serving(history),
-                    "reference": self.reference_overall, "settings": read_settings(self.settings)}
+                    "reference": self.reference_overall, "settings": settings, "attempts": att}
 
 
 def summary_text(s: dict) -> str:
@@ -758,9 +799,16 @@ def summary_text(s: dict) -> str:
     tm = (s.get("reference") or {}).get("tmax") or {}
     d = p.get("dispatcher")
     live = f"{d['running']} running, {d['waiting']} waiting" if d else "dispatcher not answering"
+    t = o["tmax"]
+    pm = f" ± {100 * t['pm']:.1f}" if t.get("pm") else ""
+    head = (f"vs Tmax {pc(t['rate'])}" if t.get("n") is not None else              # released records
+            f"vs {t.get('label', 'Tmax')} {pc(t['rate'])}{pm} (released records {pc(o['tmax_records']['rate'])})")
+    att = s.get("attempts") or {}
+    ext = (f"; extension to {att['extend_attempts']} attempts "
+           + ("requested" if att["extend_requested"] else "not requested")) if att.get("extend_possible") else ""
     return (f"{s['run']}: {p['done']}/{p['planned']} trials done ({live}; {o['scored']} scored, "
-            f"{s['outcomes']['infra_total']} infra errors). Pass rate {pc(o['pass_rate'])} ({o['passed']}/{o['scored']}) "
-            f"vs Tmax {pc(tm.get('pass_rate', o['tmax']['rate']))}, thinking-off {pc(o['ours_nothink']['rate'])}. "
+            f"{s['outcomes']['infra_total']} infra errors{ext}). Pass rate {pc(o['pass_rate'])} ({o['passed']}/{o['scored']}) "
+            f"{head}, {o['ours_nothink']['label']} {pc(o['ours_nothink']['rate'])}. "
             f"Timeouts {pc(o['timeout_rate'])} (Tmax {pc(tm.get('timeout_rate'))}), context limit {o['seqlen']}, "
             f"64-call stops {pc(b['hit_64'])}, 120 s interrupts {b['interrupts']}. "
             f"Median model calls {f(b['calls']['median'], 1)} (Tmax {f((tm.get('steps') or {}).get('median'), 1)}), "
@@ -804,10 +852,12 @@ def main(argv=None):
     ap.add_argument("--run", default=os.environ.get("RUN"), help="run name: $DATA/trials/<run> (env RUN)")
     ap.add_argument("--data", type=Path, default=Path(os.environ.get("DATA", "/data")))
     ap.add_argument("--port", type=int, default=PORT)
-    ap.add_argument("--planned", type=int, default=PLANNED, help="trials in the run (20 tasks x 8)")
+    ap.add_argument("--planned", type=int, default=PLANNED, help="trials in the run (20 tasks x 8); scaled to "
+                    "settings.json's extend_attempts once $DATA/trials/$RUN/extend exists")
     ap.add_argument("--engine-ports", default="30001,30002,30003,30004", help="SGLang ports on this host")
     ap.add_argument("--dispatcher", default="http://127.0.0.1:11000")
-    ap.add_argument("--reference", type=Path, default=HERE / "phase1_reference.json")
+    ap.add_argument("--reference", type=Path, default=HERE / "phase1_reference.json",
+                    help="per-task references; monitor/tb21_reference.json for all 89 TB 2.1 tasks")
     ap.add_argument("--settings-json", type=Path, help="run settings shown on the page "
                     "(default $DATA/monitor/$RUN/settings.json)")
     args = ap.parse_args(argv)
