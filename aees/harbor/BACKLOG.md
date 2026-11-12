@@ -13,7 +13,7 @@ dashboard (`../post_training/monitor`, port 8770): click a step, eval or baselin
 - [ ] Reuse `aees_harbor.status.job_status` (and the job card in `browser/status.html`) on a rollout step's trial dirs,
   so the post-training tracker can link to `/rollout/<run>/<step>` with the same view.
 - [ ] Record reasoning tokens and the `reasoning_effort` setting per trial (the GPT-5.6 Luna runs sent none, so the
-  model's default applied; see PLAN decisions log).
+  model's default applied; see the decisions log below).
 
 ## Next
 - [x] **Ingest pilot batch into the ledger** (`aees_harbor/ingest.py`, 2026-10-13): batch 1 → `state/ledger.sqlite`, 40 trials held.
@@ -44,5 +44,6 @@ dashboard (`../post_training/monitor`, port 8770): click a step, eval or baselin
 - [ ] Investigate `RuntimeError: Command timed out after 120 seconds` (harness command timeout, 4.5% of trials at 20-way on the Mac; likely CPU contention).
 
 ## Decisions log
+- 2026-11-12: **GPT-5.6 Luna runs used the model's default reasoning.** terminus-2 sends `reasoning_effort` only if set, and our plans never set it. Billed completion tokens per step are ~1.5x the visible reply (median; >2x on 28% of steps), consistent with hidden reasoning on many steps; the API returns no reasoning text, so trajectories have none. Future runs set `reasoning_effort` explicitly in `agent_kwargs` (which makes them separate scenarios in the ledger).
 - 2026-10-12: no automatic failure classifier until real error data is collected (PLAN §5a).
 - 2026-10-13: keep crack-7z-hash (2.1 gave it more resources; the pilot measures its real pass rate).
