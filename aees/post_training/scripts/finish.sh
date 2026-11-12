@@ -25,7 +25,7 @@ rsync -a "$DATA/monitor/$RUN/" "$RUN_DIR/monitor/"       # dashboard history, pr
 mkdir -p "$RUN_DIR/monitor/dashboard"                    # final tracker state: open index.html, "Open snapshot"
 curl -sf "127.0.0.1:${TRACKER_PORT:-8770}/status.json" -o "$RUN_DIR/monitor/dashboard/${RUN}_status.json" \
   || echo "tracker not answering: no dashboard snapshot" >&2
-cp "$HERE/monitor/index.html" "$RUN_DIR/monitor/dashboard/index.html"
+cp "${DASHBOARD_HTML:-$HERE/monitor/index.html}" "$RUN_DIR/monitor/dashboard/index.html"   # phase 1: monitor/phase1.html
 rm -f "$RUN_DIR/trials/$RUN.tar.gz"                      # re-archive: trials may have arrived since
 tar -C "$DATA/trials" -czf "$RUN_DIR/trials/$RUN.tar.gz" "$RUN"   # every trial of the run + dispatch.jsonl
 WITH_OPTIMIZER=1 bash "$HERE/scripts/backup.sh" "$RUN_DIR" "$DEST"

@@ -2,7 +2,7 @@
 # On one EC2 sandbox box (run by scripts/ec2_sandboxes.sh). Same layout as the H200 (DATA=~/data), same scripts.
 #
 #   bash ec2_box.sh prepare            # Docker, Harbor's agent server, 20 training-task images, the H200's keys
-#   bash ec2_box.sh serve <run> [t3]   # (re)start the agent server in tmux "agent" on 127.0.0.1:11000
+#   bash ec2_box.sh serve <run> [t3|phase1]   # (re)start the agent server in tmux "agent" on 127.0.0.1:11000
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)                   # aees/post_training
 export DATA=$HOME/data PATH="$HOME/.local/bin:$PATH"
@@ -29,11 +29,20 @@ prepare)
   sg docker -c "docker images --format '{{.Repository}}' | grep -c . | sed 's/^/task images: /'"
   echo "prepared: $(nproc) vCPU, $(free -g | awk '/Mem/{print $2}') GB RAM, disk free $(df -h ~ | tail -1 | awk '{print $4}')" ;;
 serve)
-  RUN=${2:?usage: ec2_box.sh serve <run> [t3]}
-  # Verifier cap: no passing trial in the ledger (6,394 trials on these tasks) needed over 4.5 min; mailman's
-  # verifier hangs to its 30-min limit on failures, which held a whole step (integration_issues.md).
-  t3="HARBOR_VERIFIER_TIMEOUT_SEC=${VERIFIER_TIMEOUT_SEC:-600}"
+  RUN=${2:?usage: ec2_box.sh serve <run> [t3|phase1]}
+  # Verifier: each task's own task.toml limit, as Tmax and the TB leaderboard run it. VERIFIER_TIMEOUT_SEC sets a
+  # flat cap (opt-in; auxr_1103_0033 used 600, which cut off 16 verifiers on mailman / large-scale-text-editing).
+  t3=${VERIFIER_TIMEOUT_SEC:+HARBOR_VERIFIER_TIMEOUT_SEC=$VERIFIER_TIMEOUT_SEC}
   [ "${3:-}" = t3 ] && t3="HARBOR_AGENT_MAX_ITERATIONS=2 HARBOR_VERIFIER_TIMEOUT_SEC=60"   # integration test T3
+  # Tmax-aligned rollouts (align_tmax_plan.md): 65k context, 16k tokens per call, 64 model calls, 120 s per command;
+  # a call that hits 16k tokens is kept and the agent told to retry ("recover", as Tmax's format-error path), not
+  # ended ("abort" is for Miles' session server, which phase 1 doesn't use)
+  if [ "${3:-}" = phase1 ]; then
+    SLOTS=${PHASE1_SLOTS:-20}
+    t3="$t3 MAX_LEN=65536 AGENT_MAX_OUTPUT_TOKENS=16384 HARBOR_AGENT_MAX_ITERATIONS=64 HARBOR_TERMINUS_2_COMMAND_TIMEOUT_SEC=120"
+    t3="$t3 HARBOR_RESPONSE_LENGTH_POLICY=recover"
+    t3="$t3 HARBOR_TERMINUS_2_STOP_AT_CONTEXT=1"            # at the 65k limit the agent stops and the verifier grades
+  fi
   # The box's scheduled shutdown (user-data: TTL_MIN), epoch seconds, where the H200's read-only key can fetch it
   # (scripts/box_check.sh, before a launch). Empty when none is scheduled.
   sudo sed -n 's/^USEC=//p' /run/systemd/shutdown/scheduled 2>/dev/null | cut -c1-10 > "$DATA/trials/shutdown_at" || true

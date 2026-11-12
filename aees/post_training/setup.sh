@@ -95,9 +95,10 @@ if [ ! -d "$DATA/src/harbor/.git" ]; then
   git clone https://github.com/harbor-framework/harbor.git "$DATA/src/harbor"
 fi
 git -C "$DATA/src/harbor" fetch origin "$HARBOR_REF"
-git -C "$DATA/src/harbor" checkout -- agent_server/trial_runner.py 2>/dev/null || true   # drop an earlier patch
+git -C "$DATA/src/harbor" checkout -- agent_server src 2>/dev/null || true   # drop earlier patches
 git -C "$DATA/src/harbor" checkout --detach "$HARBOR_COMMIT"   # the branch can move; the commit can't
 git -C "$DATA/src/harbor" apply "$HERE/grpo/harbor_parser.patch"   # JSON parser via env var; exception type in replies
+git -C "$DATA/src/harbor" apply "$HERE/grpo/command_timeout.patch"   # Terminus-2 per-command limit (off unless set)
 (cd "$DATA/src/harbor" && uv sync)       # pip can't resolve the branch's uv-workspace dependency
 fi
 

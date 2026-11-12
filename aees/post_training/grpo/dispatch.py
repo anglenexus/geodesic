@@ -29,15 +29,16 @@ class Server(ThreadingHTTPServer):
 class Pool:
     """Free slots per box and the waiting trials, longest expected first."""
 
-    def __init__(self, backends: list[str], slots: int, minutes: dict[str, float]):
+    def __init__(self, backends: list[str], slots: int, minutes: dict[str, float], adapt: bool = True):
         self.free = {b: slots for b in backends}
-        self.slots, self.seed, self.seen = slots, dict(minutes), {}
+        self.slots, self.seed, self.seen, self.adapt = slots, dict(minutes), {}, adapt
         self.waiting, self.seq = [], itertools.count()
         self.cv = threading.Condition()
 
     def expected(self, task: str) -> float:
-        """This run's mean minutes for the task once it has one, else the seed, else the seeds' mean."""
-        if self.seen.get(task):
+        """This run's mean minutes for the task once it has one (unless adapt is off), else the seed, else the
+        seeds' mean."""
+        if self.adapt and self.seen.get(task):
             return statistics.mean(self.seen[task])
         return self.seed.get(task, statistics.mean(self.seed.values()) if self.seed else 0.0)
 
@@ -191,11 +192,13 @@ def main(argv=None):
     p.add_argument("--backends", required=True, help="host:port of each box's agent server, comma-separated")
     p.add_argument("--slots", type=int, default=32, help="trials at once per box (= its --max-concurrent)")
     p.add_argument("--minutes", help="JSON {task: expected minutes}; longest first")
+    p.add_argument("--fixed-order", action="store_true",
+                   help="keep the --minutes order (e.g. time limits) instead of switching to this run's mean minutes")
     p.add_argument("--log", help="JSONL, one row per finished trial")
     p.add_argument("--port", type=int, default=PORT)
     a = p.parse_args(argv)
     minutes = json.load(open(a.minutes)) if a.minutes else {}
-    pool = Pool(a.backends.split(","), a.slots, minutes)
+    pool = Pool(a.backends.split(","), a.slots, minutes, adapt=not a.fixed_order)
     server = Server(("127.0.0.1", a.port), make_handler(Dispatcher(pool, a.log)))
     print(f"dispatching to {a.backends} ({a.slots} each) on 127.0.0.1:{a.port}", flush=True)
     server.serve_forever()

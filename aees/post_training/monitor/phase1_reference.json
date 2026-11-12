@@ -1,0 +1,438 @@
+{
+ "_doc": "Per-task references for the phase 1 tracker (align_tmax_plan.md). tmax: Tmax's released base Qwen3.6-27B eval (thinking on, TB 2.0 on Daytona, 5 attempts; github.com/hamishivi/tmax evaluation_assets/v1.0). ours_nothink: auxr_1103_0033 steps 1-3 (thinking off, 48k, 64 trials on one H200, TB 2.1; 24 attempts). limit_min: TB 2.1 agent time limit.",
+ "tasks": {
+  "password-recovery": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 64,
+    "agent_min_median": 8.8,
+    "output_tokens_median": 11587,
+    "steps_mean": 53.2,
+    "cmd_timeouts": 0,
+    "commands": 266
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 2,
+    "timeouts": 22
+   }
+  },
+  "crack-7z-hash": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 3,
+    "steps_median": 2,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 428,
+    "steps_mean": 2.3,
+    "cmd_timeouts": 0,
+    "commands": 7
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 23,
+    "timeouts": 1
+   }
+  },
+  "large-scale-text-editing": {
+   "limit_min": 20.0,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 21,
+    "agent_min_median": 9.8,
+    "output_tokens_median": 8932,
+    "steps_mean": 30,
+    "cmd_timeouts": 1,
+    "commands": 150
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 1,
+    "timeouts": 20
+   }
+  },
+  "count-dataset-tokens": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 3,
+    "timeouts": 0,
+    "steps_median": 13,
+    "agent_min_median": 3.7,
+    "output_tokens_median": 3980,
+    "steps_mean": 13,
+    "cmd_timeouts": 0,
+    "commands": 65
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 4,
+    "timeouts": 9
+   }
+  },
+  "financial-document-processor": {
+   "limit_min": 20.0,
+   "tmax": {
+    "n": 5,
+    "passed": 5,
+    "timeouts": 0,
+    "steps_median": 35,
+    "agent_min_median": 12.6,
+    "output_tokens_median": 14445,
+    "steps_mean": 34.6,
+    "cmd_timeouts": 8,
+    "commands": 173
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 15,
+    "timeouts": 15
+   }
+  },
+  "sparql-university": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 31,
+    "agent_min_median": 12.9,
+    "output_tokens_median": 24756,
+    "steps_mean": 30.2,
+    "cmd_timeouts": 5,
+    "commands": 151
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 11,
+    "timeouts": 17
+   }
+  },
+  "mailman": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 4,
+    "steps_median": 26,
+    "agent_min_median": 30.0,
+    "output_tokens_median": 4844,
+    "steps_mean": 27.8,
+    "cmd_timeouts": 0,
+    "commands": 110
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 24
+   }
+  },
+  "cancel-async-tasks": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 11,
+    "agent_min_median": 1.4,
+    "output_tokens_median": 4650,
+    "steps_mean": 15.4,
+    "cmd_timeouts": 0,
+    "commands": 77
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 8,
+    "timeouts": 3
+   }
+  },
+  "configure-git-webserver": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 2,
+    "steps_median": 31,
+    "agent_min_median": 10.5,
+    "output_tokens_median": 4837,
+    "steps_mean": 31.4,
+    "cmd_timeouts": 8,
+    "commands": 157
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 15,
+    "timeouts": 1
+   }
+  },
+  "sqlite-with-gcov": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 2,
+    "timeouts": 0,
+    "steps_median": 20,
+    "agent_min_median": 2.1,
+    "output_tokens_median": 2874,
+    "steps_mean": 24.6,
+    "cmd_timeouts": 5,
+    "commands": 122
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 17,
+    "timeouts": 3
+   }
+  },
+  "write-compressor": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 2,
+    "steps_median": 6,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 41736,
+    "steps_mean": 6.7,
+    "cmd_timeouts": 0,
+    "commands": 16
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 23
+   }
+  },
+  "sanitize-git-repo": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 0,
+    "steps_median": 21,
+    "agent_min_median": 3.0,
+    "output_tokens_median": 5926,
+    "steps_mean": 26,
+    "cmd_timeouts": 0,
+    "commands": 130
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 5,
+    "timeouts": 2
+   }
+  },
+  "polyglot-c-py": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 16,
+    "agent_min_median": 7.9,
+    "output_tokens_median": 9983,
+    "steps_mean": 18.4,
+    "cmd_timeouts": 7,
+    "commands": 92
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 4,
+    "timeouts": 17
+   }
+  },
+  "largest-eigenval": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 1,
+    "timeouts": 1,
+    "steps_median": 39,
+    "agent_min_median": 13.7,
+    "output_tokens_median": 38493,
+    "steps_mean": 37.2,
+    "cmd_timeouts": 0,
+    "commands": 186
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 1,
+    "timeouts": 24
+   }
+  },
+  "overfull-hbox": {
+   "limit_min": 12.5,
+   "tmax": {
+    "n": 5,
+    "passed": 4,
+    "timeouts": 0,
+    "steps_median": 25,
+    "agent_min_median": 8.4,
+    "output_tokens_median": 18624,
+    "steps_mean": 27.8,
+    "cmd_timeouts": 0,
+    "commands": 139
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 8,
+    "timeouts": 14
+   }
+  },
+  "db-wal-recovery": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 40,
+    "agent_min_median": 13.3,
+    "output_tokens_median": 42508,
+    "steps_mean": 38.4,
+    "cmd_timeouts": 0,
+    "commands": 186
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 24
+   }
+  },
+  "dna-insert": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 20,
+    "agent_min_median": 8.5,
+    "output_tokens_median": 17465,
+    "steps_mean": 21,
+    "cmd_timeouts": 0,
+    "commands": 104
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 8
+   }
+  },
+  "mteb-retrieve": {
+   "limit_min": 30.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 0,
+    "steps_median": 8,
+    "agent_min_median": 1.9,
+    "output_tokens_median": 2319,
+    "steps_mean": 7.4,
+    "cmd_timeouts": 0,
+    "commands": 37
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 1,
+    "timeouts": 0
+   }
+  },
+  "adaptive-rejection-sampler": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 3,
+    "steps_median": 34,
+    "agent_min_median": 15.0,
+    "output_tokens_median": 30921,
+    "steps_mean": 38.6,
+    "cmd_timeouts": 8,
+    "commands": 193
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 0,
+    "timeouts": 24
+   }
+  },
+  "polyglot-rust-c": {
+   "limit_min": 15.0,
+   "tmax": {
+    "n": 5,
+    "passed": 0,
+    "timeouts": 1,
+    "steps_median": 3,
+    "agent_min_median": 12.9,
+    "output_tokens_median": 49152,
+    "steps_mean": 3.2,
+    "cmd_timeouts": 0,
+    "commands": 3
+   },
+   "ours_nothink": {
+    "n": 24,
+    "passed": 2,
+    "timeouts": 24
+   }
+  }
+ },
+ "overall": {
+  "_doc": "Tmax's released base Qwen3.6-27B eval on our 20 tasks (thinking on, TB 2.0, Daytona, 16 trials at once). Trials over 1 h (hung, cancelled) left out of time and token statistics; agent minutes capped at the task limit. pass_rate and timeout_rate count all 100 trials.",
+  "tmax": {
+   "pass_rate": 0.24,
+   "timeout_rate": 0.16,
+   "steps": {
+    "median": 23.5,
+    "mean": 25.4,
+    "p90": 47,
+    "max": 64
+   },
+   "agent_min": {
+    "median": 9.9,
+    "mean": 9.9,
+    "p90": 15.0,
+    "max": 30.0
+   },
+   "output_tokens_per_trial": {
+    "median": 10332.5,
+    "mean": 15885.8,
+    "p90": 40702,
+    "max": 56543
+   },
+   "output_tokens_per_call": {
+    "median": 397.6,
+    "mean": 1259.6,
+    "p90": 1379.0975609756097,
+    "max": 16384.0
+   },
+   "hit_64_rate": 0.053,
+   "cmd_timeout_rate_per_command": 0.0178,
+   "commands": 2364,
+   "tok_s_per_agent_overall": 26.6,
+   "tok_s_per_agent_during_calls": 47.8,
+   "share_time_model_calls": 0.557,
+   "share_time_commands": 0.196,
+   "n_timed": 94
+  },
+  "ours_nothink": {
+   "pass_rate": 0.2437,
+   "timeout_rate": 0.573,
+   "calls": {
+    "median": 12,
+    "mean": 13.2,
+    "p90": 22,
+    "max": 44
+   },
+   "tok_s_per_agent_overall": 7.1,
+   "tok_s_per_agent_during_calls": 9.3,
+   "share_time_model_calls": 0.77,
+   "share_time_commands": 0.13
+  }
+ }
+}

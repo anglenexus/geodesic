@@ -14,17 +14,24 @@ STATE=${STATE:-$HERE/state}
 N=(nebius --profile "${NEBIUS_PROFILE:-aees}")
 command -v nebius >/dev/null || N[0]=$HOME/.nebius/bin/nebius
 PROJECT=${PROJECT:-project-u00wkf1akc00c0hjpbz059}       # default-project-us-central1
-SUBNET=${SUBNET:-vpcsubnet-u00zdx57rq9phnvedk}
+if [ -z "${SUBNET:-}" ] && [ "$PROJECT" = project-u00wkf1akc00c0hjpbz059 ]; then SUBNET=vpcsubnet-u00zdx57rq9phnvedk; fi
 NAME=${NAME:-aees-h200-$(date +%m%d)}
+PLATFORM=${PLATFORM:-gpu-h200-sxm}                       # phase 1 (align_tmax_plan.md): gpu-h100-sxm in eu-north1
+PRESET=${PRESET:-1gpu-16vcpu-200gb}                      #   with 8gpu-128vcpu-1600gb
 SSH_USER=${SSH_USER:-willzou1211}
 PUBKEY=${PUBKEY:-$HOME/.ssh/id_rsa.pub}
 DISK_GB=${DISK_GB:-1536}                                 # weights 52 GB, Miles image, 4.5 GB per checkpoint, trials
 mkdir -p "$STATE"
+if [ -z "${SUBNET:-}" ]; then                            # another project: its first subnet
+  SUBNET=$("${N[@]}" vpc subnet list --parent-id "$PROJECT" --format json | python3 -c \
+    'import json,sys; d=json.load(sys.stdin); print((d.get("items") or [{}])[0].get("metadata", {}).get("id", ""))')
+  [ -n "$SUBNET" ] || { echo "no subnet found in $PROJECT: set SUBNET"; exit 1; }
+fi
 # Only the first key: ~/.ssh/id_rsa.pub here holds two lines, and a bare second line breaks the YAML.
 user_data=$(printf '#cloud-config\nusers:\n  - name: %s\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    shell: /bin/bash\n    ssh_authorized_keys:\n      - %s\n' \
   "$SSH_USER" "$(head -1 "$PUBKEY")")
 "${N[@]}" compute instance create --parent-id "$PROJECT" --name "$NAME" \
-  --resources-platform gpu-h200-sxm --resources-preset 1gpu-16vcpu-200gb \
+  --resources-platform "$PLATFORM" --resources-preset "$PRESET" \
   --boot-disk-managed-disk-name "$NAME-boot" --boot-disk-managed-disk-type network_ssd \
   --boot-disk-managed-disk-size-gibibytes "$DISK_GB" \
   --boot-disk-managed-disk-source-image-family-image-family ubuntu24.04-cuda13.0 --boot-disk-attach-mode READ_WRITE \

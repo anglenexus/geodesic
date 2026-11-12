@@ -70,7 +70,7 @@ def test_up_launches_spot_boxes_and_prepares_each(tmp_path):
     prep = [c for c in calls(tmp_path, "ssh") if "ec2_box.sh prepare" in c]
     assert sorted(c.split("ubuntu@")[1].split()[0] for c in prep) == ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
     copied = " ".join(calls(tmp_path, "rsync"))
-    for f in ["ec2_box.sh", "agent_server.sh", "bake_tools.py", "setup.sh", "pins.sh", "harbor_parser.patch",
+    for f in ["ec2_box.sh", "agent_server.sh", "bake_tools.py", "setup.sh", "pins.sh", "harbor_parser.patch", "command_timeout.patch",
               "tunnel_key.pub", "sync_key.pub"]:
         assert f in copied
     assert (tmp_path / "state" / "tunnel_key").exists() and (tmp_path / "state" / "sync_key").exists()
@@ -194,10 +194,56 @@ def test_box_serve_t3_sets_the_short_trial_env(box, tmp_path):
     subprocess.run(["bash", str(root / "scripts/ec2_box.sh"), "serve", "real_run"], env=env, capture_output=True)
     new = [c for c in calls(tmp_path, "tmux") if c.startswith("new")][0]
     assert "HARBOR_AGENT_MAX_ITERATIONS" not in new and "RUN=real_run" in new
+    assert "HARBOR_VERIFIER_TIMEOUT_SEC" not in new           # each task's own verifier limit
+    (tmp_path / "log").unlink()
+    (tmp_path / "up").unlink()
+    env["VERIFIER_TIMEOUT_SEC"] = "600"
+    subprocess.run(["bash", str(root / "scripts/ec2_box.sh"), "serve", "capped_run"], env=env, capture_output=True)
+    new = [c for c in calls(tmp_path, "tmux") if c.startswith("new")][0]
     assert "HARBOR_VERIFIER_TIMEOUT_SEC=600" in new
 
 
 # ---- H200: scripts/links.sh ----
+
+def test_box_serve_phase1_sets_the_tmax_aligned_env(box, tmp_path):      # align_tmax_plan.md
+    root, home, env = box
+    r = subprocess.run(["bash", str(root / "scripts/ec2_box.sh"), "serve", "p1", "phase1"], env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    new = [c for c in calls(tmp_path, "tmux") if c.startswith("new")][0]
+    for kv in ["MAX_LEN=65536", "AGENT_MAX_OUTPUT_TOKENS=16384", "HARBOR_AGENT_MAX_ITERATIONS=64",
+               "HARBOR_TERMINUS_2_COMMAND_TIMEOUT_SEC=120", "HARBOR_RESPONSE_LENGTH_POLICY=recover", "HARBOR_TERMINUS_2_STOP_AT_CONTEXT=1",
+               "CONCURRENCY=20"]:
+        assert kv in new
+    assert "HARBOR_VERIFIER_TIMEOUT_SEC" not in new
+
+
+def test_agent_server_takes_the_output_cap_from_the_env():
+    text = (HERE / "scripts/agent_server.sh").read_text()
+    assert "AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-8192}" in text and "MAX_LEN=${MAX_LEN:-49152}" in text
+
+
+def test_phase1_serve_starts_four_tp2_engines(tmp_path):
+    env = stubs(tmp_path, {"nvidia-smi": "for i in 0 1 2 3 4 5 6 7; do echo GPU $i; done",
+                           "docker": 'case "$1" in ps) echo id ;; esac', "curl": "exit 0"})
+    env.update({"DATA": str(tmp_path / "data"), "RUN": "p1"})
+    r = sh("scripts/phase1_serve.sh", "start", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    runs = [c for c in calls(tmp_path, "docker") if c.startswith("run")]
+    assert len(runs) == 4
+    for i, gpus in enumerate(["0,1", "2,3", "4,5", "6,7"], start=1):
+        assert f'device={gpus}' in runs[i - 1] and f"--port 3000{i}" in runs[i - 1]
+        assert "--tp-size 2" in runs[i - 1] and "--context-length 65536" in runs[i - 1]
+        assert "--reasoning-parser qwen3" in runs[i - 1] and "--served-model-name model" in runs[i - 1]
+    assert r.stdout.count(": up") == 4
+
+
+def test_phase1_serve_refuses_too_few_gpus(tmp_path):
+    env = stubs(tmp_path, {"nvidia-smi": "echo GPU 0", "docker": "", "curl": "exit 0"})
+    env.update({"DATA": str(tmp_path / "data"), "RUN": "p1"})
+    r = sh("scripts/phase1_serve.sh", "start", env=env)
+    assert r.returncode == 1 and "need 8 GPUs" in r.stdout
+
 
 def test_links_start_tunnels_sync_and_dispatcher(tmp_path):
     env = stubs(tmp_path, {"curl": "exit 0"})

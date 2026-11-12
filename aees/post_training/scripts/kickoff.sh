@@ -29,7 +29,7 @@ if [ -n "$old" ]; then
   for f in $old kickoff.log up.log box_1.log box_2.log box_3.log; do [ ! -f "$STATE/$f" ] || mv "$STATE/$f" "$STATE/old_$STAMP/"; done
   echo "previous run's state moved to state/old_$STAMP"
 fi
-[ -f "$STATE/run.env" ] || printf 'RUN_T3=t3_%s\nRUN=grpo10h_%s\nH200=%s\nH200_USER=%s\n' "$STAMP" "$STAMP" "$H200" "$HU" > "$STATE/run.env"
+[ -f "$STATE/run.env" ] || printf 'RUN_T3=t3_%s\nRUN=%s\nH200=%s\nH200_USER=%s\n' "$STAMP" "${RUN_NAME:-grpo10h_$STAMP}" "$H200" "$HU" > "$STATE/run.env"
 source "$STATE/run.env"
 SSH_H=(ssh ${H200_KEY:+-i "$H200_KEY"} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -x "$HU@$H200")
 T0=$(date +%s); el() { echo "[$(( ($(date +%s) - T0) / 60 ))m$(( ($(date +%s) - T0) % 60 ))s] $*"; }
@@ -51,7 +51,7 @@ tar --no-xattrs -C "$HERE/.." -czf - harbor/state/tb21_selected_tasks.txt harbor
 tar --no-xattrs -C "$HERE" -czf - data/grpo_train.jsonl data/grpo_val.jsonl | "${SSH_H[@]}" 'tar -xzf - -C geodesic/aees/post_training'
 "${SSH_H[@]}" 'PHASE=pre bash ~/geodesic/aees/post_training/scripts/h200_setup.sh > ~/setup.log 2>&1' \
   || { "${SSH_H[@]}" tail -20 setup.log; exit 1; }       # before any tmux: sessions then get the docker group
-"${SSH_H[@]}" "tmux kill-session -t setup 2>/dev/null; tmux new -d -s setup 'PHASE=main bash ~/geodesic/aees/post_training/scripts/h200_setup.sh 2>&1 | tee -a ~/setup.log'"
+"${SSH_H[@]}" "tmux kill-session -t setup 2>/dev/null; tmux new -d -s setup 'PHASE=main SERVE_ONLY=${SERVE_ONLY:-0} bash ~/geodesic/aees/post_training/scripts/h200_setup.sh 2>&1 | tee -a ~/setup.log'"
 
 el "4/5 waiting for the boxes"
 if [ -f "$STATE/up.pid" ]; then
@@ -63,10 +63,13 @@ tail -3 "$STATE/up.log"
 [ -f "$STATE/boxes.env" ] || { echo "boxes failed: see state/up.log"; exit 1; }
 bash "$HERE/scripts/ec2_sandboxes.sh" allow "$H200" "$HU"
 (source "$STATE/boxes.env"; echo $BOX_IDS) | "${SSH_H[@]}" 'cat > ~/aees_box_ids'   # finish.sh terminates these
-bash "$HERE/scripts/ec2_sandboxes.sh" serve "$RUN"
+bash "$HERE/scripts/ec2_sandboxes.sh" serve "$RUN" ${SERVE_MODE:-}
 
 el "5/5 H200: links + tracker for $RUN"
-"${SSH_H[@]}" "cd geodesic/aees/post_training && RUN=$RUN SLOTS=32 bash scripts/links.sh start && \
+if [ "${NO_TRACKER:-0}" = 1 ]; then                    # phase 1: scripts/phase1.sh starts links and its own tracker
+  el "    skipped (NO_TRACKER=1)"; exit 0
+fi
+"${SSH_H[@]}" "cd geodesic/aees/post_training && RUN=$RUN SLOTS=${BOX_SLOTS:-32} bash scripts/links.sh start && \
   (tmux kill-session -t tracker 2>/dev/null; tmux new -d -s tracker 'RUN=$RUN python3 monitor/server.py')"
 # The dashboard on this laptop: a background tunnel to the H200's tracker (replaces an older one on the port).
 pkill -f "ssh .*-L 8770:127.0.0.1:8770" 2>/dev/null || true

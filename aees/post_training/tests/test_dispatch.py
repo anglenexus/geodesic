@@ -205,3 +205,10 @@ def test_seed_minutes_cover_the_training_tasks():
     minutes = json.loads((Path(__file__).resolve().parents[1] / "grpo/task_minutes.json").read_text())
     tasks = read_list(STATE / LISTS["train"])
     assert sorted(minutes) == sorted(tasks) and all(m > 0 for m in minutes.values())
+
+
+def test_fixed_order_keeps_the_seed_minutes():                       # phase 1: longest time limit first throughout
+    pool = dispatch.Pool(["a:1"], 1, {"x": 10.0, "y": 20.0}, adapt=False)
+    pool.acquire("x")
+    pool.release("a:1", "x", 2.0)
+    assert pool.expected("x") == 10.0 and pool.expected("new") == 15.0
