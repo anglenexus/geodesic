@@ -1,0 +1,5 @@
+crack-7z-hash
+mteb-retrieve
+largest-eigenval
+password-recovery
+polyglot-c-py

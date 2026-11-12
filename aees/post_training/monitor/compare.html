@@ -6,12 +6,15 @@
 <title>Auxiliary Reward vs Vanilla</title>
 <style>
 :root { --bg:#fbfaf7; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a65; --line:#e4e2dc;
-        --vanilla:#8a8780; --aux:#c2410c; --good:#15803d; --bad:#b91c1c; }
+        --vanilla:#8a8780; --aux:#c2410c; --good:#15803d; --bad:#b91c1c;
+        --st-roll:#d3d0c7; --st-hand:#eda100; --st-teacher:#6250d6; --st-logp:#1baf7a; --st-actor:#2a78d6; --st-other:#e87ba4; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
         --bg:#151513; --panel:#1d1d1a; --ink:#ecebe6; --muted:#a3a19a; --line:#34332f;
-        --vanilla:#9e9b93; --aux:#fb923c; --good:#4ade80; --bad:#f87171; } }
+        --vanilla:#9e9b93; --aux:#fb923c; --good:#4ade80; --bad:#f87171;
+        --st-roll:#4a4844; --st-hand:#c98500; --st-teacher:#9085e9; --st-logp:#199e70; --st-actor:#3987e5; --st-other:#d55181; } }
 :root[data-theme="dark"] { --bg:#151513; --panel:#1d1d1a; --ink:#ecebe6; --muted:#a3a19a; --line:#34332f;
-        --vanilla:#9e9b93; --aux:#fb923c; --good:#4ade80; --bad:#f87171; }
+        --vanilla:#9e9b93; --aux:#fb923c; --good:#4ade80; --bad:#f87171;
+        --st-roll:#4a4844; --st-hand:#c98500; --st-teacher:#9085e9; --st-logp:#199e70; --st-actor:#3987e5; --st-other:#d55181; }
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system, system-ui, sans-serif; }
 main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
@@ -40,6 +43,14 @@ details { margin-top: 8px; }
 .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:3px; background: var(--line); }
 .dot.ok { background: var(--good); } .dot.no { background: var(--bad); } .dot.live { opacity: .45; }
 table.grid td:nth-child(2) { text-align: left; white-space: nowrap; } summary { cursor: pointer; color: var(--muted); }
+h4.ch, .ch h4 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 14px 0 4px; }
+.ch { margin: 14px 0 4px; }
+.toggle button { font: inherit; font-size: 12px; background: none; color: var(--muted); border: 1px solid var(--line); padding: 2px 10px; cursor: pointer; }
+.toggle button:first-child { border-radius: 12px 0 0 12px; } .toggle button:last-child { border-radius: 0 12px 12px 0; border-left: 0; }
+.toggle button.on { background: var(--line); color: var(--ink); }
+.legend i.sw { width: 12px; height: 12px; border-radius: 3px; }
+.explain p { margin: 8px 0; max-width: 900px; }
+table#phases td small { color: var(--muted); }
 .chips span { display: inline-block; border: 1px solid var(--line); border-radius: 12px; padding: 1px 8px; margin: 2px 4px 2px 0; font-size: 12px; }
 </style>
 </head>
@@ -59,9 +70,54 @@ table.grid td:nth-child(2) { text-align: left; white-space: nowrap; } summary { 
     <div class="tablewrap"><table id="table"></table></div>
   </section>
 
-  <section class="hero"><h3 style="margin:0">Time per phase (Miles perf/*, minutes, mean over logged steps)</h3>
-    <div class="tablewrap"><table id="phases"></table></div></section>
+  <section class="hero" id="timing">
+    <h3 style="margin:0">Time per stage</h3>
+    <p class="sub" style="margin:4px 0 10px">One step is the rollout (the trainer idles while trials run on the sandbox boxes), a hand-off (SGLang sleeps, the trainer wakes; after the
+      update the new adapter is synced back), then Miles' <code>train</code> block: the teacher pass (aux only), the policy log-probs pass, advantages, and the update.
+      The six stages are built from Miles' <code>perf/*</code> timers and add up to <code>perf/step_time</code> exactly.</p>
+    <div class="legend" id="stagelegend"></div>
+    <h4 class="ch">Mean minutes per step</h4>
+    <div id="stagemean"></div>
+    <div class="stats" id="stagestats"></div>
+    <div class="ch" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <h4 style="margin:0">Per step, vanilla (v) beside aux (a)</h4>
+      <span class="toggle" id="stagetoggle"><button data-v="train" class="on">training stages</button><button data-v="full">full step</button></span>
+    </div>
+    <div id="stagesteps"></div>
+    <div class="tablewrap"><table id="phases"></table></div>
+    <details><summary>What each stage measures (Miles source, pinned commit 8e99947)</summary><div class="explain">
+      <p><b>Rollout (trainer idle)</b>: <code>perf/train_wait_time</code> is an inverse timer: everything outside the trainer's <code>train</code> block. Minus the hand-off
+        timers below, it is the rollout: 160 Harbor trials on the EC2 boxes, generating with SGLang on the same H200. It is set by the slowest trials (timeouts × concurrency), not by the GPU,
+        and has nothing to do with the method, so its run-to-run differences are noise from which trials ran long.</p>
+      <p><b>Hand-off</b>: <code>sleep</code> + <code>wake_up</code> (trainer and SGLang share the GPU via <code>--colocate</code>, so each frees its memory for the other),
+        <code>update_weights</code> (push the new adapter to SGLang), <code>save_model</code> and <code>data_preprocess</code>.</p>
+      <p><b>Teacher pass</b> (aux only, <code>perf/teacher_log_probs_time</code>): the Q adapter is swapped into the policy's LoRA slots and one forward-only pass runs over all
+        160 trajectories (~2.6 M tokens). It saves each micro-batch's final hidden states for A<sup>Q</sup>. Same model, same tokens, so it costs about one policy log-probs pass (1.03–1.07×; step 1's 1.29× includes first-time warm-up).</p>
+      <p><b>Policy log-probs</b> (<code>perf/log_probs_time</code>): one forward-only pass of the current policy, no gradients, which gives log π(x<sub>t</sub>) of every generated token for the importance ratio, and
+        in the aux run also A<sup>Q</sup> = Q(s,x) − Σ<sub>a</sub> π(a|s)·Q(s,a) from the saved teacher states, computed inside this pass. The exact 248k-vocab baseline adds almost nothing: aux's log-probs pass is within 2% of vanilla's.</p>
+      <p><b>Actor train</b> (<code>perf/actor_train_time</code>): the update itself. For every micro-batch: forward with grad, then backward, then one Adam step on the LoRA weights
+        (one optimizer step per rollout). With <code>--recompute-granularity full</code> only each layer's input is kept, so the backward first <i>re-runs</i> the layer's forward.
+        Per token that is forward + recomputed forward + backward. The base weights are frozen (LoRA), so the backward only computes input gradients (~1 forward's FLOPs) plus small LoRA weight gradients and attention's backward.
+        That is ≈ 3 forward passes, and the measured ratio is 3.0× in both runs. Miles' own MFU uses the same 3× (<code>perf.py</code>: <code>actor_train_tflops = 3 · fwd_flops / time</code>), and log-probs and actor train both run at ~460–480 TFLOP/s, so the time ratio is the work ratio.</p>
+      <p><b>Advantages + swap</b>: what is left of <code>train</code>: GRPO advantages (+ β·A<sup>Q</sup>) and the teacher adapter swap, a few seconds.</p>
+    </div></details>
+  </section>
 
+
+  <section class="hero" id="pipeline">
+    <h3 style="margin:0">Break-even: SFT warm start (one-off) vs auxiliary reward (every step)</h3>
+    <p class="sub" style="margin:4px 0 10px" id="pipeintro"></p>
+    <div class="ch" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <h4 style="margin:0">Extra cost on top of vanilla GRPO, by number of GRPO steps</h4>
+      <span class="toggle" id="pipemetric"><button data-v="usd" class="on">$</button><button data-v="gpuh">GPU-hours</button><button data-v="wall">wall-clock h</button><button data-v="flops">compute</button></span>
+      <label class="sub" style="font-size:12px"><input type="checkbox" id="pipeq"> aux also trains its Q-function (1 epoch, as run)</label>
+    </div>
+    <div class="legend" id="pipelegend"></div>
+    <div id="pipechart"></div>
+    <div class="stats" id="pipestats"></div>
+    <div class="tablewrap"><table id="pipetable"></table></div>
+    <details><summary>How these are counted</summary><div class="explain" id="pipenotes"></div></details>
+  </section>
   <div class="grid" id="grid"></div>
   <p class="foot" id="foot"></p>
 </main>
@@ -77,10 +133,22 @@ const PANELS = [
   ["Step time (s)", "perf/step_time"],
   ["Rollout time: trainer wait (s)", "perf/train_wait_time"],
 ];
-const PHASES = [["rollout (trainer waits)", "perf/train_wait_time"], ["log-probs (policy)", "perf/log_probs_time"],
-                ["teacher pass (aux)", "perf/teacher_log_probs_time"], ["actor train", "perf/actor_train_time"],
-                ["weight sync", "perf/update_weights_time"], ["sleep + wake", ["perf/sleep_time", "perf/wake_up_time"]],
-                ["step total", "perf/step_time"]];
+const HANDOFF = ["perf/sleep_time", "perf/wake_up_time", "perf/update_weights_time", "perf/save_model_time", "perf/data_preprocess_time"];
+const g0 = (m, k) => m[k] || 0, hand = m => HANDOFF.reduce((s, k) => s + g0(m, k), 0);
+const trainParts = m => g0(m, "perf/teacher_log_probs_time") + m["perf/log_probs_time"] + m["perf/actor_train_time"];
+// Six stages that add up to perf/step_time: train_wait (inverse timer: all but the train block) = rollout + hand-off;
+// train = teacher pass + policy log-probs + actor train + the rest (advantages, adapter swap).
+const STAGES = [
+  {key: "roll", name: "rollout (trainer idle)", train: false, f: m => m["perf/train_wait_time"] - hand(m)},
+  {key: "hand", name: "hand-off: sleep, wake, weight sync, save", train: false, f: hand},
+  {key: "teacher", name: "teacher pass (Q adapter, forward)", train: true, f: m => g0(m, "perf/teacher_log_probs_time")},
+  {key: "logp", name: "policy log-probs (forward)", train: true, f: m => m["perf/log_probs_time"]},
+  {key: "actor", name: "actor train (forward + recompute + backward + Adam)", train: true, f: m => m["perf/actor_train_time"]},
+  {key: "other", name: "advantages + adapter swap", train: true, f: m => m["perf/train_time"] - trainParts(m)},
+];
+const timed = run => Object.keys(run.steps).map(Number).sort((a, b) => a - b)
+  .filter(k => "perf/step_time" in run.steps[k] && "perf/train_wait_time" in run.steps[k]);
+let stageView = "train";
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
 function series(run, key) {
@@ -198,13 +266,8 @@ function render(d) {
     const m = run.steps[String(i + 1)]; return `<td>${m && SUCCESS in m ? pct(m[SUCCESS]) : "–"}</td>`; }).join("")}</tr>`;
   document.getElementById("table").innerHTML = rows + row("vanilla", V) + row("aux", A);
   const auxKeys = [...new Set(Object.values(A.steps).flatMap(Object.keys))].filter(k => /opd|aux/i.test(k)).sort();
-  const val = (m, k) => Array.isArray(k) ? (k.every(x => x in m) ? k.reduce((s, x) => s + m[x], 0) : undefined) : m[k];
-  const meanMin = (run, k) => { const v = Object.values(run.steps).map(m => val(m, k)).filter(x => x !== undefined);
-    return v.length ? v.reduce((a, b) => a + b, 0) / v.length / 60 : NaN; };
-  const fm = x => isNaN(x) ? "–" : x.toFixed(1);
-  document.getElementById("phases").innerHTML = `<tr><th>phase (mean min per step)</th><th>vanilla</th><th>aux</th><th>aux − vanilla</th></tr>` +
-    PHASES.map(([n, k]) => { const a = meanMin(V, k), b = meanMin(A, k);
-      return `<tr><td>${n}</td><td>${fm(a)}</td><td>${fm(b)}</td><td>${isNaN(a) || isNaN(b) ? "–" : (b - a >= 0 ? "+" : "") + (b - a).toFixed(1)}</td></tr>`; }).join("");
+  renderStages(V, A);
+  renderPipeline(V, A, d.pipeline);
   const panels = PANELS.concat(auxKeys.map(k => [k + " (aux run)", k]));
   document.getElementById("grid").innerHTML = panels.map(([title, key]) =>
     `<div class="card"><h3>${title}</h3>${chart([{pts: series(V, key), color: cv}, {pts: series(A, key), color: ca}],
@@ -212,6 +275,184 @@ function render(d) {
   const upd = A.updated ? new Date(A.updated * 1000).toLocaleTimeString() : "never";
   document.getElementById("foot").textContent = `Vanilla: ${V.runs.join(" → ")} (Adam restarted at steps 2 and 7). ` +
     `Aux run log last read: ${upd}${A.error ? " — " + A.error : ""}. Refreshes every 60 s.`;
+}
+
+function stageSvg(bars, {W = 640, H = 240, L = 46, B = 34, gap = 6, pairGap = 18, horiz = false, div = 60, unit = "min", lw = 40} = {}) {
+  // bars: [{label, sub, title, parts: [[stage, value]]}], stacked in order; value / div on the axis (default seconds → minutes)
+  const tot = b => b.parts.reduce((s, p) => s + p[1], 0) / div;
+  const hi = Math.max(1, ...bars.map(tot)) * 1.08, step = hi > 400 ? 100 : hi > 160 ? 50 : hi > 60 ? 20 : hi > 24 ? 10 : hi > 10 ? 5 : 2;
+  const ink = css('--muted'), line = css('--line'), panel = css('--panel'), fmt = x => x.toFixed(1);
+  const tip = (b, st, sec) => `<title>${b.title}: ${st.name}\n${fmt(sec / div)} ${unit} (${(100 * sec / div / tot(b)).toFixed(0)}% of ${fmt(tot(b))})</title>`;
+  let g = "";
+  if (horiz) {                                        // one row per run, minutes along x
+    const R = 60, T = 4, rowH = 30, Hh = T + bars.length * (rowH + 12) + 22, X = v => L + lw + v / hi * (W - L - lw - R);
+    for (let v = 0; v <= hi; v += step) g += `<line x1="${X(v)}" x2="${X(v)}" y1="${T}" y2="${Hh - 20}" stroke="${line}"/>` +
+      `<text x="${X(v)}" y="${Hh - 6}" text-anchor="middle" font-size="11" fill="${ink}">${v}</text>`;
+    bars.forEach((b, i) => {
+      const y = T + i * (rowH + 12); let x0 = 0;
+      g += `<text x="${L + lw - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" font-size="12" fill="${css('--ink')}">${b.label}</text>`;
+      for (const [st, sec] of b.parts) { const w = X(x0 + sec / div) - X(x0); if (w > 0)
+        g += `<rect x="${X(x0)}" y="${y}" width="${Math.max(0, w)}" height="${rowH}" rx="3" fill="${css('--st-' + st.key)}" stroke="${panel}" stroke-width="2">${tip(b, st, sec)}</rect>`;
+        if (w > 34) g += `<text x="${X(x0) + w / 2}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" fill="${["roll", "ops"].includes(st.key) ? css('--ink') : "#fff"}" pointer-events="none">${fmt(sec / div)}</text>`;
+        x0 += sec / div; }
+      g += `<text x="${X(x0) + 6}" y="${y + rowH / 2 + 4}" font-size="12" font-weight="600" fill="${css('--ink')}">${fmt(x0)}</text>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${Hh}" role="img">${g}</svg>`;
+  }
+  const T = 8, R = 8, Y = v => T + (hi - v) / hi * (H - T - B);
+  const pairs = Math.ceil(bars.length / 2), slot = (W - L - R) / pairs, bw = Math.min(26, (slot - pairGap - gap) / 2);
+  for (let v = 0; v <= hi; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}"/>` +
+    `<text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="${ink}">${v}</text>`;
+  g += `<text x="12" y="${T + (H - T - B) / 2}" font-size="11" fill="${ink}" transform="rotate(-90 12 ${T + (H - T - B) / 2})" text-anchor="middle">min</text>`;
+  bars.forEach((b, i) => {
+    const p = Math.floor(i / 2), cx = L + p * slot + slot / 2, x = cx + (i % 2 ? gap / 2 : -gap / 2 - bw);
+    let y0 = 0;
+    for (const [st, sec] of b.parts) { if (sec <= 0) continue; const top = Y(y0 + sec / div);
+      g += `<rect x="${x}" y="${top}" width="${bw}" height="${Math.max(0, Y(y0) - top)}" rx="2" fill="${css('--st-' + st.key)}" stroke="${panel}" stroke-width="1.5">${tip(b, st, sec)}</rect>`;
+      y0 += sec / div; }
+    if (!b.parts.length) g += `<text x="${x + bw / 2}" y="${Y(0) - 4}" text-anchor="middle" font-size="10" fill="${ink}">–</text>`;
+    g += `<text x="${x + bw / 2}" y="${H - B + 13}" text-anchor="middle" font-size="10" fill="${ink}">${b.sub}</text>`;
+    if (i % 2 === 0) g += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="11" fill="${css('--ink')}">${b.label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
+}
+
+function renderStages(V, A) {
+  const kv = timed(V), ka = timed(A), mean = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN;
+  const per = (run, ks, f) => ks.map(k => f(run.steps[k]));
+  const avg = (run, ks, f) => mean(per(run, ks, f));
+  const stages = stageView === "train" ? STAGES.filter(s => s.train) : STAGES;
+  document.getElementById("stagelegend").innerHTML = STAGES.map(s =>
+    `<span><i class="sw" style="background:var(--st-${s.key})"></i>${s.name}</span>`).join("");
+  const meanBar = (label, run, ks) => ({label, title: label + ", mean over steps " + (ks.length ? `1–${ks[ks.length - 1]}` : "–"),
+    parts: ks.length ? STAGES.map(s => [s, avg(run, ks, s.f)]) : []});
+  document.getElementById("stagemean").innerHTML = stageSvg([meanBar("vanilla", V, kv), meanBar("aux", A, ka)], {horiz: true});
+  const steps = Math.max(10, ...kv, ...ka), bars = [];
+  for (let k = 1; k <= steps; k++) for (const [run, ks, sub, name] of [[V, kv, "v", "vanilla"], [A, ka, "a", "aux"]]) {
+    const m = ks.includes(k) ? run.steps[k] : null;
+    bars.push({label: String(k), sub, title: `step ${k}, ${name}`, parts: m ? stages.map(s => [s, s.f(m)]) : []});
+  }
+  document.getElementById("stagesteps").innerHTML = stageSvg(bars, {H: 250});
+  document.querySelectorAll("#stagetoggle button").forEach(b => {
+    b.classList.toggle("on", b.dataset.v === stageView);
+    b.onclick = () => { stageView = b.dataset.v; renderStages(V, A); };
+  });
+  // tiles
+  const mm = x => isNaN(x) ? "–" : (x / 60).toFixed(1), tr = m => m["perf/train_time"], st = m => m["perf/step_time"];
+  const ratio = (run, ks, a, b) => mean(per(run, ks, m => a(m) / b(m)));
+  const lp = m => m["perf/log_probs_time"], at = m => m["perf/actor_train_time"], te = m => g0(m, "perf/teacher_log_probs_time");
+  const trV = avg(V, kv, tr), trA = avg(A, ka, tr), sv = avg(V, kv, st), sa = avg(A, ka, st);
+  const later = ka.filter(k => k > 1), sign = x => (x >= 0 ? "+" : "") + x;
+  document.getElementById("stagestats").innerHTML = [
+    ["Training stages per step", `${mm(trV)} → ${mm(trA)} min`, `vanilla → aux, ${sign((100 * (trA / trV - 1)).toFixed(0))}%: the teacher pass`],
+    ["Teacher pass ÷ policy log-probs", ratio(A, later, te, lp).toFixed(2) + "×", `aux steps 2–${ka[ka.length - 1] ?? "–"} (step 1: ${ka.length ? (te(A.steps[1]) / lp(A.steps[1])).toFixed(2) : "–"}× warm-up)`],
+    ["Actor train ÷ log-probs", `${ratio(V, kv, at, lp).toFixed(2)}× · ${ratio(A, ka, at, lp).toFixed(2)}×`, "vanilla · aux: ≈ 3 forward passes"],
+    ["Rollout share of a step", `${(100 * avg(V, kv, STAGES[0].f) / sv).toFixed(0)}% · ${(100 * avg(A, ka, STAGES[0].f) / sa).toFixed(0)}%`, "vanilla · aux: the trainer idles"],
+    ["Step total", `${mm(sv)} → ${mm(sa)} min`, `vanilla → aux, ${sign(((sa - sv) / 60).toFixed(1))} min`],
+  ].map(([t, v, s]) => `<div class="stat"><small>${t}</small><b style="font-size:18px">${v}</b><small>${s}</small></div>`).join("");
+  // table: mean (min–max) minutes per stage, then derived rates
+  const cell = (run, ks, f) => { const xs = per(run, ks, f); if (!xs.length || xs.every(x => x === 0)) return "–";   // no teacher pass in vanilla
+    return `${mm(mean(xs))} <small>${mm(Math.min(...xs))}–${mm(Math.max(...xs))}</small>`; };
+  const diff = f => { const a = avg(V, kv, f), b = avg(A, ka, f); return isNaN(a) || isNaN(b) ? "–" : sign(((b - a) / 60).toFixed(1)); };
+  const share = f => isNaN(sa) ? "–" : (100 * avg(A, ka, f) / sa).toFixed(1) + "%";
+  const row = (name, f, bold) => `<tr${bold ? ' style="font-weight:600"' : ""}><td>${name}</td><td>${cell(V, kv, f)}</td><td>${cell(A, ka, f)}</td><td>${diff(f)}</td><td>${share(f)}</td></tr>`;
+  const rate = (name, f, d = 0) => { const a = avg(V, kv, f), b = avg(A, ka, f);
+    return `<tr><td>${name}</td><td>${isNaN(a) ? "–" : a.toFixed(d)}</td><td>${isNaN(b) ? "–" : b.toFixed(d)}</td><td></td><td></td></tr>`; };
+  document.getElementById("phases").innerHTML =
+    `<tr><th>stage: minutes per step, mean <small>(min–max)</small></th><th>vanilla</th><th>aux</th><th>aux − vanilla</th><th>share of aux step</th></tr>` +
+    STAGES.map(s => row(`<i class="dot" style="background:var(--st-${s.key});border-radius:3px"></i>${s.name}`, s.f)).join("") +
+    row("training stages (perf/train_time)", tr, true) + row("step (perf/step_time)", st, true) +
+    `<tr><th>rates</th><th></th><th></th><th></th><th></th></tr>` +
+    rate("actor train ÷ policy log-probs (time)", m => at(m) / lp(m), 2) +
+    rate("log-probs TFLOP/s", m => m["perf/log_probs_tflops"]) + rate("actor train TFLOP/s (Miles counts 3 × forward)", m => m["perf/actor_train_tflops"]) +
+    rate("actor train tokens/s", m => m["perf/actor_train_tok_per_s"]) + rate("tokens per trajectory (prompt + response)", m => m["rollout/total_lengths"]);
+}
+
+let pipeMetric = "usd", pipeQ = false;
+function renderPipeline(V, A, P) {
+  const el = document.getElementById("pipeline");
+  if (!P) { el.style.display = "none"; return; }
+  const ka = timed(A), mean = xs => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const S = P.sft, B = P.beta_pass, rate = P.grpo.rate_per_h, EP = P.sft_epochs;
+  const epochH = S.train_seconds / 3600, opsH = S.node_hours - epochH;            // measured: one epoch; the node's other hours
+  const teachH = mean(ka.map(k => g0(A.steps[k], "perf/teacher_log_probs_time"))) / 3600;   // per step, steps 1–10 (step 1 has warm-up)
+  const tokStep = mean(ka.map(k => 160 * A.steps[k]["rollout/total_lengths"])) / 1e6;
+  const F = 3 * S.tokens / 1e6;                                                      // one training epoch, 1M-token forward units
+  // per metric: [SFT training (EP epochs), SFT node overhead, Q training (1 epoch) + its overhead, β pass, per step]
+  const M = {
+    usd:   {unit: "$", fmt: x => "$" + x.toFixed(0), sft: EP * epochH * S.rate_per_h, ops: opsH * S.rate_per_h,
+            q: S.node_hours * S.rate_per_h, beta: B.node_hours * B.rate_per_h, step: teachH * rate},
+    gpuh:  {unit: "GPU-h", fmt: x => x.toFixed(1), sft: EP * epochH * S.gpus, ops: opsH * S.gpus,
+            q: S.node_hours * S.gpus, beta: B.node_hours * B.gpus, step: teachH},
+    wall:  {unit: "h", fmt: x => x.toFixed(1), sft: EP * epochH, ops: opsH, q: S.node_hours, beta: B.node_hours, step: teachH},
+    flops: {unit: "× 1M-token forward", fmt: x => x.toFixed(0), sft: EP * F, ops: 0, q: F,
+            beta: B.forward_passes * B.tokens / 1e6, step: tokStep},
+  };
+  const m = M[pipeMetric], auxBase = m.beta + (pipeQ ? m.q : 0);
+  const be = c => (c - auxBase) / m.step;                                            // steps where aux's line meets c
+  const nAll = be(m.sft + m.ops), nTrain = be(m.sft);
+  // chart: aux line vs the SFT path's flat one-off cost (with and without its node overhead)
+  const W = 640, H = 260, L = 56, R = 14, T = 12, Bm = 34;
+  const top = Math.max(nAll, nTrain, 10), xmax = Math.max(50, Math.ceil(top * 1.5 / 50) * 50);
+  const ymax = Math.max(m.sft + m.ops, auxBase + m.step * xmax) * 1.05;
+  const X = n => L + n / xmax * (W - L - R), Y = v => T + (1 - v / ymax) * (H - T - Bm);
+  const ink = css('--muted'), cv = css('--vanilla'), ca = css('--aux');
+  let g = "";
+  for (let i = 0; i <= 4; i++) { const v = ymax * i / 4;
+    g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css('--line')}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="${ink}">${m.fmt(v)}</text>`; }
+  const xstep = xmax > 400 ? 100 : xmax > 150 ? 50 : 25;
+  for (let n = 0; n <= xmax; n += xstep) g += `<text x="${X(n)}" y="${H - 16}" text-anchor="middle" font-size="11" fill="${ink}">${n}</text>`;
+  g += `<text x="${(L + W - R) / 2}" y="${H - 2}" text-anchor="middle" font-size="11" fill="${ink}">GRPO steps</text>`;
+  g += `<line x1="${X(10)}" x2="${X(10)}" y1="${T}" y2="${H - Bm}" stroke="${ink}" stroke-dasharray="2 3"/><text x="${X(10) + 4}" y="${T + 10}" font-size="11" fill="${ink}">this run (10)</text>`;
+  g += `<line x1="${X(0)}" x2="${X(xmax)}" y1="${Y(m.sft + m.ops)}" y2="${Y(m.sft + m.ops)}" stroke="${cv}" stroke-width="2"><title>SFT, ${EP} epochs + node overhead: ${m.fmt(m.sft + m.ops)} ${m.unit}</title></line>`;
+  if (m.ops > 0) g += `<line x1="${X(0)}" x2="${X(xmax)}" y1="${Y(m.sft)}" y2="${Y(m.sft)}" stroke="${cv}" stroke-width="2" stroke-dasharray="6 4"><title>SFT, ${EP} epochs, training only: ${m.fmt(m.sft)} ${m.unit}</title></line>`;
+  g += `<line x1="${X(0)}" x2="${X(xmax)}" y1="${Y(auxBase)}" y2="${Y(auxBase + m.step * xmax)}" stroke="${ca}" stroke-width="2"><title>aux: ${m.fmt(auxBase)} + ${m.step < 1 ? m.step.toFixed(3) : m.step.toFixed(2)} ${m.unit} per step</title></line>`;
+  for (const [n, c, lab] of [[nAll, m.sft + m.ops, "with node overhead"], [nTrain, m.sft, "training only"]]) {
+    if (!(n > 0) || n > xmax || (lab === "training only" && m.ops === 0)) continue;
+    g += `<circle cx="${X(n)}" cy="${Y(c)}" r="5" fill="${ca}" stroke="${css('--panel')}" stroke-width="2"><title>${lab}: aux costs more after ${Math.ceil(n)} steps</title></circle>` +
+         `<text x="${X(n)}" y="${Y(c) - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="${css('--ink')}">${Math.ceil(n)} steps</text>`;
+  }
+  document.getElementById("pipechart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
+  document.getElementById("pipelegend").innerHTML =
+    `<span><i style="background:var(--vanilla)"></i>SFT ${EP} epochs, one-off: with node overhead (solid), training only (dashed)</span>` +
+    `<span><i style="background:var(--aux)"></i>auxiliary reward: β pass${pipeQ ? " + Q training" : ""}, then a teacher pass every step</span>`;
+  document.querySelectorAll("#pipemetric button").forEach(b => { b.classList.toggle("on", b.dataset.v === pipeMetric);
+    b.onclick = () => { pipeMetric = b.dataset.v; renderPipeline(V, A, P); }; });
+  const q = document.getElementById("pipeq"); q.checked = pipeQ; q.onchange = () => { pipeQ = q.checked; renderPipeline(V, A, P); };
+  const f1 = x => x.toFixed(1), steps = n => n > 0 ? `${Math.ceil(n)} steps` : "never cheaper";
+  document.getElementById("pipeintro").innerHTML = `Both paths run the same vanilla GRPO loop. The SFT path first trains a warm-start adapter once, on GPT-5.6 Luna's ${S.trained_trajectories.toLocaleString()} passing trajectories
+    for ${EP} epochs (the default: <code>configs/sft.sh --num-epoch 2</code>, reward PLAN R10). The aux path skips SFT but runs one β calibration pass, then a forward pass of the Q-function on every GRPO step.
+    An epoch is costed as measured in <code>${S.run}</code>, the Q-function run: the same data, loss and LoRA on 8 × H100, ${f1(epochH)} h per epoch. Past the break-even step, the auxiliary reward costs more than the SFT warm start.
+    The Q-function is taken as already trained; tick the box to charge the aux path for training it too.`;
+  const tile = k => { const x = M[k], base = x.beta + (pipeQ ? x.q : 0), a = (x.sft + x.ops - base) / x.step, b = (x.sft - base) / x.step;
+    return x.ops ? `${steps(a)} <small style="display:inline">(${steps(b)} training only)</small>` : steps(b); };
+  document.getElementById("pipestats").innerHTML = [
+    ["Break-even, dollars", tile("usd"), `teacher pass $${M.usd.step.toFixed(2)} per step (H200 + boxes)`],
+    ["Break-even, GPU-hours", tile("gpuh"), `${f1(M.gpuh.sft)} H100-h of SFT vs ${(teachH * 60).toFixed(1)} H200-min per step`],
+    ["Break-even, wall-clock", tile("wall"), `SFT uses 8 GPUs at once: ${f1(M.wall.sft)} h`],
+    ["Break-even, compute", tile("flops"), `${f1(tokStep)}M tokens forward per step vs ${M.flops.sft.toFixed(0)} for SFT`],
+  ].map(([t, v, s]) => `<div class="stat"><small>${t}</small><b style="font-size:18px">${v}</b><small>${s}</small></div>`).join("");
+  const cell = (k, f) => f(M[k]), cols = ["wall", "gpuh", "flops", "usd"];
+  const row = (name, hw, f, bold) => `<tr${bold ? ' style="font-weight:600"' : ""}><td>${name}</td><td style="text-align:left">${hw}</td>${cols.map(k => `<td>${M[k].fmt(f(M[k]))}</td>`).join("")}</tr>`;
+  const r3 = x => x < 10 ? x.toFixed(2) : x.toFixed(1);
+  document.getElementById("pipetable").innerHTML =
+    `<tr><th>cost</th><th style="text-align:left">hardware</th><th>wall h</th><th>GPU-h</th><th>1M-token fwd</th><th>$</th></tr>` +
+    `<tr><th colspan="6" style="text-align:left">SFT path: one-off, before GRPO</th></tr>` +
+    row(`SFT training, ${EP} epochs (${EP} × ${f1(epochH)} h measured)`, S.hardware, x => x.sft) +
+    row("node setup, preflight, eval, backup (measured)", S.hardware, x => x.ops) +
+    row("SFT total", "", x => x.sft + x.ops, true) +
+    `<tr><th colspan="6" style="text-align:left">aux path</th></tr>` +
+    row("β calibration pass, one-off", B.hardware, x => x.beta) +
+    (pipeQ ? row("Q-function training, 1 epoch + node overhead, one-off", S.hardware, x => x.q) : "") +
+    `<tr><td>teacher pass, <b>per GRPO step</b></td><td style="text-align:left">H200 (+ idle boxes)</td>${cols.map(k => `<td>${r3(M[k].step)}</td>`).join("")}</tr>` +
+    row("aux after 10 steps", "", x => x.beta + (pipeQ ? x.q : 0) + 10 * x.step, true) +
+    row("aux after 100 steps", "", x => x.beta + (pipeQ ? x.q : 0) + 100 * x.step, true);
+  document.getElementById("pipenotes").innerHTML = `
+    <p><b>Per-step teacher cost</b> is the mean of <code>perf/teacher_log_probs_time</code> over the aux run's ${ka.length} steps (${(teachH * 60).toFixed(2)} min; step 1's warm-up included). It is the only stage aux adds:
+      its log-probs and actor train match vanilla's (table above), and the A<sup>Q</sup> math runs inside the log-probs pass. The rollout is the same loop in both. Dollars use the whole GRPO rig ($${rate.toFixed(2)}/h: H200 $5.40 + two m7a.8xlarge), since the boxes bill while the H200 runs the teacher pass.</p>
+    <p><b>SFT cost</b> scales the measured epoch: ${S.steps} steps, ${f1(S.tokens / 1e6)}M tokens, ${f1(epochH)} h on 8 × H100 at ${(100 * S.mfu).toFixed(0)}% MFU, so ${EP} epochs ≈ ${f1(EP * epochH)} h. The node overhead (${f1(opsH)} h: setup, preflight T0–T6, held-out eval, backup) is from the run's own timestamps (node up 11:38 PT, deleted 14:09 PT, 2026-10-30) and is paid once whatever the epoch count.</p>
+    <p><b>Compute unit:</b> one forward pass of the 27B model over 1M tokens (≈ 2 × 26.9B FLOPs per token). Training counts 3 per token (forward + recomputed forward + input-gradient backward; LoRA freezes the base), the ratio measured on the H200 (actor train ÷ log-probs ≈ 3.0×); a forward-only pass counts 1. Compute ignores hardware efficiency: Miles' passes run at ~48% MFU, SFT ran at ${(100 * S.mfu).toFixed(0)}%.</p>
+    <p><b>Not measured:</b> GRPO from the SFT adapter. A warm-started policy may write shorter or longer trajectories, which would change every GRPO step's cost on the SFT path; that is not in these lines. Using SGLang to serve Q instead (its per-step cost would be one prefill of the same tokens) is not modelled either.</p>`;
 }
 
 async function load() {

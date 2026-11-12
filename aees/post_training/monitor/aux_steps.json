@@ -1,0 +1,4255 @@
+{
+ "name": "GRPO + auxiliary reward (\u03b2\u00b7A^Q)",
+ "run": "auxr_1103_0033",
+ "updated": 1793763244.927588,
+ "error": null,
+ "steps": {
+  "1": {
+   "rollout/response_lengths": 15913.1,
+   "rollout/rewards": -1.8626451492309571e-10,
+   "rollout/truncated": 0.00625,
+   "rollout/rollout_log_probs": -0.2929192066192627,
+   "rollout/raw_reward": 0.2625,
+   "rollout/total_lengths": 16813.15625,
+   "rollout/teacher_log_probs": -0.5394622325897217,
+   "rollout/log_probs": -0.29326682090759276,
+   "rollout/aux_q": -1.206209373474121,
+   "rollout/opd_reverse_kl": 0.24619548320770263,
+   "rollout/advantages": -0.0014935134910047053,
+   "rollout/returns": 1.6763806343078614e-09,
+   "train/loss": 0.01905909951806766,
+   "train/pg_loss": 0.01905909951806766,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.008536469440373815,
+   "train/train_rollout_kl": 0.000368385952519759,
+   "train/opd_reverse_kl": 0.20107930860254145,
+   "train/grad_norm": 0.33251821994781494,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 0.0,
+   "perf/sleep_time": 33.30021405220032,
+   "perf/update_weights_implementation_time": 0.08768796920776367,
+   "perf/finalize_and_resume_engines_time": 0.39118003845214844,
+   "perf/update_weights_time": 0.5493490695953369,
+   "perf/wake_up_time": 6.84365439414978,
+   "perf/data_preprocess_time": 0.5431785583496094,
+   "perf/train_wait_time": 3201.9470250606537,
+   "perf/teacher_log_probs_time": 402.8011064529419,
+   "perf/log_probs_time": 312.84242367744446,
+   "perf/actor_train_time": 1029.5027120113373,
+   "perf/train_time": 1748.5280740261078,
+   "perf/log_probs_tflops": 473.53032252823203,
+   "perf/actor_train_tflops": 431.685236151751,
+   "perf/actor_train_tok_per_s": 2613.014000462755,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.4364865886266441,
+   "perf/step_time": 4950.4750990867615,
+   "perf/wait_time_ratio": 0.6467959056397098
+  },
+  "2": {
+   "rollout/response_lengths": 15789.61875,
+   "rollout/rewards": 1.8626451492309571e-10,
+   "rollout/truncated": 0.0125,
+   "rollout/rollout_log_probs": -0.29258084297180176,
+   "rollout/raw_reward": 0.25,
+   "rollout/total_lengths": 16689.9,
+   "rollout/teacher_log_probs": -0.534475040435791,
+   "rollout/log_probs": -0.29294238090515134,
+   "rollout/aux_q": -1.2310659408569335,
+   "rollout/opd_reverse_kl": 0.24153289794921876,
+   "rollout/advantages": 0.0016346078366041184,
+   "rollout/returns": 3.7252902984619143e-10,
+   "train/loss": -0.011138758552099727,
+   "train/pg_loss": -0.011138758552099727,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.008479757303509071,
+   "train/train_rollout_kl": 0.0003712658691023941,
+   "train/opd_reverse_kl": 0.20649841828056123,
+   "train/grad_norm": 0.3263786733150482,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 1.0,
+   "perf/save_model_time": 3.7855331897735596,
+   "perf/sleep_time": 26.89962100982666,
+   "perf/update_weights_implementation_time": 0.07059001922607422,
+   "perf/finalize_and_resume_engines_time": 0.5780091285705566,
+   "perf/update_weights_time": 0.6868994235992432,
+   "perf/wake_up_time": 7.604737043380737,
+   "perf/data_preprocess_time": 0.535606861114502,
+   "perf/train_wait_time": 3049.2017860412598,
+   "perf/teacher_log_probs_time": 320.574951171875,
+   "perf/log_probs_time": 310.4546766281128,
+   "perf/actor_train_time": 952.1846039295197,
+   "perf/train_time": 1583.6471643447876,
+   "perf/log_probs_tflops": 469.10999229285875,
+   "perf/actor_train_tflops": 458.85238122714696,
+   "perf/actor_train_tok_per_s": 2804.4813883565594,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.46395589608407173,
+   "perf/step_time": 4632.848950386047,
+   "perf/wait_time_ratio": 0.6581699120121702
+  },
+  "3": {
+   "rollout/response_lengths": 15027.8,
+   "rollout/rewards": 1.8626451492309571e-10,
+   "rollout/truncated": 0.0375,
+   "rollout/rollout_log_probs": -0.2856182098388672,
+   "rollout/raw_reward": 0.21875,
+   "rollout/total_lengths": 15928.1,
+   "rollout/teacher_log_probs": -0.5286538600921631,
+   "rollout/log_probs": -0.28597102165222166,
+   "rollout/aux_q": -1.1490936279296875,
+   "rollout/opd_reverse_kl": 0.24268288612365724,
+   "rollout/advantages": -0.00010817074216902256,
+   "rollout/returns": -1.1175870895385742e-09,
+   "train/loss": 0.03281974713629271,
+   "train/pg_loss": 0.03281974713629271,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.008351651713791392,
+   "train/train_rollout_kl": 0.00036519635449848073,
+   "train/opd_reverse_kl": 0.20448925064848214,
+   "train/grad_norm": 0.3170781433582306,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 2.0,
+   "perf/save_model_time": 3.7169876098632812,
+   "perf/sleep_time": 22.273209810256958,
+   "perf/update_weights_implementation_time": 0.0684356689453125,
+   "perf/finalize_and_resume_engines_time": 0.4839043617248535,
+   "perf/update_weights_time": 0.5919783115386963,
+   "perf/wake_up_time": 7.855911731719971,
+   "perf/data_preprocess_time": 0.5077826976776123,
+   "perf/train_wait_time": 2750.641595840454,
+   "perf/teacher_log_probs_time": 315.42464900016785,
+   "perf/log_probs_time": 296.0945291519165,
+   "perf/actor_train_time": 866.3722393512726,
+   "perf/train_time": 1478.325457572937,
+   "perf/log_probs_tflops": 466.73756510116635,
+   "perf/actor_train_tflops": 478.5417859635815,
+   "perf/actor_train_tok_per_s": 2941.5716296591845,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.4838642931886567,
+   "perf/step_time": 4228.967053413391,
+   "perf/wait_time_ratio": 0.6504287125198307
+  },
+  "4": {
+   "rollout/response_lengths": 16042.3375,
+   "rollout/rewards": -5.587935447692871e-10,
+   "rollout/truncated": 0.025,
+   "rollout/rollout_log_probs": -0.2776504039764404,
+   "rollout/raw_reward": 0.2375,
+   "rollout/total_lengths": 16942.74375,
+   "rollout/teacher_log_probs": -0.5092541217803955,
+   "rollout/log_probs": -0.277981162071228,
+   "rollout/aux_q": -1.137660598754883,
+   "rollout/opd_reverse_kl": 0.23127307891845703,
+   "rollout/advantages": -0.0001762663945555687,
+   "rollout/returns": 3.91155481338501e-09,
+   "train/loss": 0.023134585851845507,
+   "train/pg_loss": 0.023134585851845507,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.008263283897765575,
+   "train/train_rollout_kl": 0.0003648389011888612,
+   "train/opd_reverse_kl": 0.19711776971905326,
+   "train/grad_norm": 0.3114069104194641,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 3.0,
+   "perf/save_model_time": 3.7626898288726807,
+   "perf/sleep_time": 21.53496217727661,
+   "perf/update_weights_implementation_time": 0.07275199890136719,
+   "perf/finalize_and_resume_engines_time": 0.24370360374450684,
+   "perf/update_weights_time": 0.357208251953125,
+   "perf/wake_up_time": 7.8846588134765625,
+   "perf/data_preprocess_time": 0.5336604118347168,
+   "perf/train_wait_time": 4885.827386856079,
+   "perf/teacher_log_probs_time": 334.56013441085815,
+   "perf/log_probs_time": 317.5254261493683,
+   "perf/actor_train_time": 935.4512665271759,
+   "perf/train_time": 1587.9695632457733,
+   "perf/log_probs_tflops": 469.1767599984517,
+   "perf/actor_train_tflops": 477.7658312793369,
+   "perf/actor_train_tok_per_s": 2897.8944141728275,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.48307970806808587,
+   "perf/step_time": 6473.796950101852,
+   "perf/wait_time_ratio": 0.754708160375529
+  },
+  "5": {
+   "rollout/response_lengths": 15419.2375,
+   "rollout/rewards": 1.8626451492309571e-10,
+   "rollout/truncated": 0.00625,
+   "rollout/rollout_log_probs": -0.24507181644439696,
+   "rollout/raw_reward": 0.29375,
+   "rollout/total_lengths": 16330.1125,
+   "rollout/teacher_log_probs": -0.48400068283081055,
+   "rollout/log_probs": -0.24536077976226806,
+   "rollout/aux_q": -1.2798415184020997,
+   "rollout/opd_reverse_kl": 0.23863978385925294,
+   "rollout/advantages": -0.0014300395734608174,
+   "rollout/returns": 2.2351741790771484e-09,
+   "train/loss": -0.00011468437104437578,
+   "train/pg_loss": -0.00011468437104437578,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.007632526206958259,
+   "train/train_rollout_kl": 0.000337148308140504,
+   "train/opd_reverse_kl": 0.1955133774661358,
+   "train/grad_norm": 0.2883099913597107,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 4.0,
+   "perf/save_model_time": 3.827883243560791,
+   "perf/sleep_time": 21.715786457061768,
+   "perf/update_weights_implementation_time": 0.06903457641601562,
+   "perf/finalize_and_resume_engines_time": 0.24666976928710938,
+   "perf/update_weights_time": 0.35646486282348633,
+   "perf/wake_up_time": 7.553363800048828,
+   "perf/data_preprocess_time": 0.5080423355102539,
+   "perf/train_wait_time": 2954.286059617996,
+   "perf/teacher_log_probs_time": 314.1655423641205,
+   "perf/log_probs_time": 304.4078814983368,
+   "perf/actor_train_time": 939.1844727993011,
+   "perf/train_time": 1558.1859338283539,
+   "perf/log_probs_tflops": 469.9921011931843,
+   "perf/actor_train_tflops": 457.0006340247779,
+   "perf/actor_train_tok_per_s": 2782.0072367809958,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.46208355310897664,
+   "perf/step_time": 4512.47199344635,
+   "perf/wait_time_ratio": 0.6546934948091929
+  },
+  "6": {
+   "rollout/response_lengths": 15460.96875,
+   "rollout/rewards": 1.1175870895385742e-09,
+   "rollout/truncated": 0.01875,
+   "rollout/rollout_log_probs": -0.2354682445526123,
+   "rollout/raw_reward": 0.29375,
+   "rollout/total_lengths": 16361.325,
+   "rollout/teacher_log_probs": -0.47080559730529786,
+   "rollout/log_probs": -0.23574154376983641,
+   "rollout/aux_q": -1.2885022163391113,
+   "rollout/opd_reverse_kl": 0.23506407737731932,
+   "rollout/advantages": 0.002304207906126976,
+   "rollout/returns": -7.450580596923829e-10,
+   "train/loss": 0.02754864623820346,
+   "train/pg_loss": 0.02754864623820346,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.007590228932050971,
+   "train/train_rollout_kl": 0.0003291242424437682,
+   "train/opd_reverse_kl": 0.1905682052491433,
+   "train/grad_norm": 0.27127426862716675,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 5.0,
+   "perf/save_model_time": 3.7630252838134766,
+   "perf/sleep_time": 21.24418330192566,
+   "perf/update_weights_implementation_time": 0.06836390495300293,
+   "perf/finalize_and_resume_engines_time": 0.23842239379882812,
+   "perf/update_weights_time": 0.3468029499053955,
+   "perf/wake_up_time": 7.679872989654541,
+   "perf/data_preprocess_time": 0.5068497657775879,
+   "perf/train_wait_time": 2720.065922021866,
+   "perf/teacher_log_probs_time": 313.5486888885498,
+   "perf/log_probs_time": 306.87613463401794,
+   "perf/actor_train_time": 892.8404788970947,
+   "perf/train_time": 1513.689193725586,
+   "perf/log_probs_tflops": 465.9982570825825,
+   "perf/actor_train_tflops": 480.5015473413846,
+   "perf/actor_train_tok_per_s": 2932.00416185624,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.4858458517101968,
+   "perf/step_time": 4233.755115747452,
+   "perf/wait_time_ratio": 0.6424712454210166
+  },
+  "7": {
+   "rollout/response_lengths": 14175.98125,
+   "rollout/rewards": 1.3038516044616698e-09,
+   "rollout/truncated": 0.00625,
+   "rollout/rollout_log_probs": -0.21981434822082518,
+   "rollout/raw_reward": 0.26875,
+   "rollout/total_lengths": 15081.30625,
+   "rollout/teacher_log_probs": -0.46136250495910647,
+   "rollout/log_probs": -0.2200873613357544,
+   "rollout/aux_q": -1.3274588584899902,
+   "rollout/opd_reverse_kl": 0.24127495288848877,
+   "rollout/advantages": 0.0003208875888958573,
+   "rollout/returns": 5.960464477539063e-09,
+   "train/loss": 0.02623244130706319,
+   "train/pg_loss": 0.02623244130706319,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.007183008378581878,
+   "train/train_rollout_kl": 0.00031649693166252446,
+   "train/opd_reverse_kl": 0.20124523404488207,
+   "train/grad_norm": 0.26363298296928406,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 6.0,
+   "perf/save_model_time": 3.7377395629882812,
+   "perf/sleep_time": 21.371500968933105,
+   "perf/update_weights_implementation_time": 0.07034730911254883,
+   "perf/finalize_and_resume_engines_time": 0.25157713890075684,
+   "perf/update_weights_time": 0.365969181060791,
+   "perf/wake_up_time": 6.961619853973389,
+   "perf/data_preprocess_time": 0.46955084800720215,
+   "perf/train_wait_time": 4813.717079639435,
+   "perf/teacher_log_probs_time": 291.57831501960754,
+   "perf/log_probs_time": 282.1546778678894,
+   "perf/actor_train_time": 867.2784190177917,
+   "perf/train_time": 1441.4336864948273,
+   "perf/log_probs_tflops": 459.8404614617143,
+   "perf/actor_train_tflops": 448.80444766961256,
+   "perf/actor_train_tok_per_s": 2782.277233109035,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.4537962059348964,
+   "perf/step_time": 6255.150766134262,
+   "perf/wait_time_ratio": 0.769560520539516
+  },
+  "8": {
+   "rollout/response_lengths": 15149.825,
+   "rollout/rewards": -5.587935447692871e-10,
+   "rollout/truncated": 0.00625,
+   "rollout/rollout_log_probs": -0.200728702545166,
+   "rollout/raw_reward": 0.3375,
+   "rollout/total_lengths": 16050.06875,
+   "rollout/teacher_log_probs": -0.4285451412200928,
+   "rollout/log_probs": -0.20102250576019287,
+   "rollout/aux_q": -1.346445083618164,
+   "rollout/opd_reverse_kl": 0.2275226354598999,
+   "rollout/advantages": 0.0006392369978129864,
+   "rollout/returns": 9.313225746154785e-10,
+   "train/loss": 0.013300291269195595,
+   "train/pg_loss": 0.013300291269195595,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.006703335740572871,
+   "train/train_rollout_kl": 0.0002968615668430136,
+   "train/opd_reverse_kl": 0.1909298238983699,
+   "train/grad_norm": 0.2412514090538025,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 7.0,
+   "perf/save_model_time": 3.906386613845825,
+   "perf/sleep_time": 22.097362995147705,
+   "perf/update_weights_implementation_time": 0.07195138931274414,
+   "perf/finalize_and_resume_engines_time": 0.24307012557983398,
+   "perf/update_weights_time": 0.356367826461792,
+   "perf/wake_up_time": 7.769130229949951,
+   "perf/data_preprocess_time": 0.501030683517456,
+   "perf/train_wait_time": 2575.346839427948,
+   "perf/teacher_log_probs_time": 311.41164112091064,
+   "perf/log_probs_time": 302.66919922828674,
+   "perf/actor_train_time": 904.9817388057709,
+   "perf/train_time": 1519.4869756698608,
+   "perf/log_probs_tflops": 459.99299986018167,
+   "perf/actor_train_tflops": 461.53101310759,
+   "perf/actor_train_tok_per_s": 2837.6384736655464,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.4666643206345703,
+   "perf/step_time": 4094.833815097809,
+   "perf/wait_time_ratio": 0.6289258504050996
+  },
+  "9": {
+   "rollout/response_lengths": 15672.46875,
+   "rollout/rewards": 2.048909664154053e-09,
+   "rollout/truncated": 0.0,
+   "rollout/rollout_log_probs": -0.18372431993484498,
+   "rollout/raw_reward": 0.29375,
+   "rollout/total_lengths": 16572.95625,
+   "rollout/teacher_log_probs": -0.40774974822998045,
+   "rollout/log_probs": -0.1839824438095093,
+   "rollout/aux_q": -1.4231377601623536,
+   "rollout/opd_reverse_kl": 0.22376742362976074,
+   "rollout/advantages": 0.0012447535991668701,
+   "rollout/returns": 0.0,
+   "train/loss": -0.03200575159267739,
+   "train/pg_loss": -0.03200575159267739,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.006242585565831107,
+   "train/train_rollout_kl": 0.0002769682263779078,
+   "train/opd_reverse_kl": 0.18485638077974942,
+   "train/grad_norm": 0.21856549382209778,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 8.0,
+   "perf/sleep_time": 20.24557638168335,
+   "perf/update_weights_implementation_time": 0.12467575073242188,
+   "perf/finalize_and_resume_engines_time": 0.4004952907562256,
+   "perf/update_weights_time": 0.6137862205505371,
+   "perf/wake_up_time": 6.987210035324097,
+   "perf/data_preprocess_time": 0.5219919681549072,
+   "perf/train_wait_time": 3011.274973630905,
+   "perf/teacher_log_probs_time": 310.7257845401764,
+   "perf/log_probs_time": 300.342969417572,
+   "perf/actor_train_time": 952.2505147457123,
+   "perf/train_time": 1566.7224807739258,
+   "perf/log_probs_tflops": 479.3189133004098,
+   "perf/actor_train_tflops": 453.5363231295026,
+   "perf/actor_train_tok_per_s": 2784.6380326799817,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.45858071094995206,
+   "perf/step_time": 4577.997454404831,
+   "perf/wait_time_ratio": 0.6577712206313121
+  },
+  "10": {
+   "rollout/response_lengths": 14467.4125,
+   "rollout/rewards": 9.313225746154785e-10,
+   "rollout/truncated": 0.0,
+   "rollout/rollout_log_probs": -0.165290904045105,
+   "rollout/raw_reward": 0.325,
+   "rollout/total_lengths": 15367.78125,
+   "rollout/teacher_log_probs": -0.40496296882629396,
+   "rollout/log_probs": -0.1655714988708496,
+   "rollout/aux_q": -1.3897464752197266,
+   "rollout/opd_reverse_kl": 0.23939151763916017,
+   "rollout/advantages": 0.0012853018939495086,
+   "rollout/returns": 7.450580596923829e-10,
+   "train/loss": 0.0004726810730811601,
+   "train/pg_loss": 0.0004726810730811601,
+   "train/entropy_loss": 0.0,
+   "train/pg_clipfrac": 0.0,
+   "train/ppo_kl": 0.0,
+   "train/ess_ratio": 1.0,
+   "train/train_rollout_logprob_abs_diff": 0.006031645369395539,
+   "train/train_rollout_kl": 0.0002716181961328651,
+   "train/opd_reverse_kl": 0.18870944181314436,
+   "train/grad_norm": 0.2149314284324646,
+   "train/lr-pg_0": 1e-05,
+   "train/step": 9.0,
+   "perf/sleep_time": 30.338632345199585,
+   "perf/update_weights_implementation_time": 0.12895655632019043,
+   "perf/finalize_and_resume_engines_time": 0.39749765396118164,
+   "perf/update_weights_time": 0.614708662033081,
+   "perf/wake_up_time": 7.95151948928833,
+   "perf/data_preprocess_time": 0.4966604709625244,
+   "perf/train_wait_time": 2922.4662160873413,
+   "perf/teacher_log_probs_time": 291.1626787185669,
+   "perf/log_probs_time": 279.3757688999176,
+   "perf/actor_train_time": 893.3251872062683,
+   "perf/train_time": 1467.2957000732422,
+   "perf/log_probs_tflops": 477.5181174766467,
+   "perf/actor_train_tflops": 448.0126379875901,
+   "perf/actor_train_tok_per_s": 2752.463531997396,
+   "perf/mfu_peak_tflops": 989.0,
+   "perf/actor_train_mfu": 0.45299558947177965,
+   "perf/step_time": 4389.7619161605835,
+   "perf/wait_time_ratio": 0.6657459497583452
+  }
+ },
+ "rollout": {
+  "tasks": 20,
+  "group": 8,
+  "live": {
+   "running": 0,
+   "free": 64,
+   "waiting": 0,
+   "boxes": 2
+  },
+  "steps": [
+   {
+    "step": 1,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 42,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       0,
+       1,
+       1,
+       1,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       1,
+       0,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       0,
+       1,
+       0,
+       0,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       0,
+       0,
+       1,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.2625,
+    "match": true
+   },
+   {
+    "step": 2,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 40,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "count-dataset-tokens": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       0,
+       1,
+       0,
+       1,
+       0,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       0,
+       1,
+       1,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       1,
+       1,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       1,
+       0,
+       1,
+       1,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.25,
+    "match": true
+   },
+   {
+    "step": 3,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 35,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "overfull-hbox": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       1,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       0,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       0,
+       0,
+       1,
+       1,
+       0,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.21875,
+    "match": true
+   },
+   {
+    "step": 4,
+    "closed": true,
+    "sent": [
+     160,
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 38,
+    "groups": {
+     "selected": 20,
+     "dropped": 1,
+     "unused": 1,
+     "cancelled": 18,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 68,
+     "unusable": 92,
+     "running": 0
+    },
+    "per_task": {
+     "crack-7z-hash": {
+      "selected": [
+       0,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [],
+      "dropped": 1,
+      "selected_groups": 0,
+      "running": []
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 2,
+      "running": [],
+      "batch": 2
+     },
+     "configure-git-webserver": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       1,
+       1,
+       0,
+       1,
+       0,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       1,
+       1,
+       0,
+       0,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       0,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       1,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [
+     "sanitize-git-repo"
+    ],
+    "doubled": [
+     "db-wal-recovery"
+    ],
+    "detail": [
+     {
+      "task": "sanitize-git-repo",
+      "batch": 1,
+      "status": "dropped",
+      "passed": 1,
+      "done": 8
+     },
+     {
+      "task": "crack-7z-hash",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 2,
+      "done": 2
+     },
+     {
+      "task": "largest-eigenval",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 1
+     },
+     {
+      "task": "password-recovery",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 2
+     },
+     {
+      "task": "dna-insert",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 1
+     },
+     {
+      "task": "overfull-hbox",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 4,
+      "done": 6
+     },
+     {
+      "task": "polyglot-c-py",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 4,
+      "done": 4
+     },
+     {
+      "task": "polyglot-rust-c",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 2
+     },
+     {
+      "task": "sanitize-git-repo",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 7
+     },
+     {
+      "task": "financial-document-processor",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 3,
+      "done": 3
+     },
+     {
+      "task": "mailman",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 0
+     },
+     {
+      "task": "cancel-async-tasks",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 1,
+      "done": 6
+     },
+     {
+      "task": "sparql-university",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 4,
+      "done": 4
+     },
+     {
+      "task": "large-scale-text-editing",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 1,
+      "done": 1
+     },
+     {
+      "task": "count-dataset-tokens",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 3,
+      "done": 5
+     },
+     {
+      "task": "sqlite-with-gcov",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 6,
+      "done": 6
+     },
+     {
+      "task": "configure-git-webserver",
+      "batch": 2,
+      "status": "unused",
+      "passed": 6,
+      "done": 8
+     },
+     {
+      "task": "write-compressor",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 1
+     },
+     {
+      "task": "adaptive-rejection-sampler",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 0
+     },
+     {
+      "task": "mteb-retrieve",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 2
+     }
+    ],
+    "miles": 0.2375,
+    "match": true
+   },
+   {
+    "step": 5,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 47,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       0,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       0,
+       0,
+       1,
+       1,
+       1,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       0,
+       1,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       1,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       0,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       1,
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.29375,
+    "match": true
+   },
+   {
+    "step": 6,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 47,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       1,
+       1,
+       0,
+       1,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       0,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       0,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       1,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       0,
+       0,
+       1,
+       1,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.29375,
+    "match": true
+   },
+   {
+    "step": 7,
+    "closed": true,
+    "sent": [
+     160,
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 43,
+    "groups": {
+     "selected": 20,
+     "dropped": 1,
+     "unused": 0,
+     "cancelled": 19,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 73,
+     "unusable": 87,
+     "running": 0
+    },
+    "per_task": {
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       0,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       0,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       0,
+       0,
+       1,
+       1,
+       0,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 2,
+      "running": [],
+      "batch": 2
+     },
+     "financial-document-processor": {
+      "selected": [
+       0,
+       1,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [],
+      "dropped": 1,
+      "selected_groups": 0,
+      "running": []
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [
+     "dna-insert"
+    ],
+    "doubled": [
+     "large-scale-text-editing"
+    ],
+    "detail": [
+     {
+      "task": "dna-insert",
+      "batch": 1,
+      "status": "dropped",
+      "passed": 0,
+      "done": 8
+     },
+     {
+      "task": "password-recovery",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 5
+     },
+     {
+      "task": "polyglot-c-py",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 1,
+      "done": 3
+     },
+     {
+      "task": "sanitize-git-repo",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 1,
+      "done": 3
+     },
+     {
+      "task": "financial-document-processor",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 5,
+      "done": 6
+     },
+     {
+      "task": "configure-git-webserver",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 5,
+      "done": 6
+     },
+     {
+      "task": "largest-eigenval",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 4
+     },
+     {
+      "task": "polyglot-rust-c",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 2
+     },
+     {
+      "task": "count-dataset-tokens",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 6
+     },
+     {
+      "task": "db-wal-recovery",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 3
+     },
+     {
+      "task": "write-compressor",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 7
+     },
+     {
+      "task": "crack-7z-hash",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 1,
+      "done": 1
+     },
+     {
+      "task": "sparql-university",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 2,
+      "done": 3
+     },
+     {
+      "task": "adaptive-rejection-sampler",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 5
+     },
+     {
+      "task": "mailman",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 0
+     },
+     {
+      "task": "cancel-async-tasks",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 4
+     },
+     {
+      "task": "overfull-hbox",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 1,
+      "done": 1
+     },
+     {
+      "task": "sqlite-with-gcov",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 3,
+      "done": 5
+     },
+     {
+      "task": "dna-insert",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 0,
+      "done": 1
+     },
+     {
+      "task": "mteb-retrieve",
+      "batch": 2,
+      "status": "cancelled",
+      "passed": 1,
+      "done": 1
+     }
+    ],
+    "miles": 0.26875,
+    "match": true
+   },
+   {
+    "step": 8,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 0,
+    "selected": 20,
+    "passed": 54,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       0,
+       0,
+       1,
+       1,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       0,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       0,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       1,
+       0,
+       0,
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.3375,
+    "match": true
+   },
+   {
+    "step": 9,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 320,
+    "selected": 20,
+    "passed": 47,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       0,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       1,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       0,
+       1,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       0,
+       1,
+       1,
+       0,
+       0,
+       1,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       0,
+       0,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       0,
+       0,
+       1,
+       0,
+       1,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.29375,
+    "match": true
+   },
+   {
+    "step": 10,
+    "closed": true,
+    "sent": [
+     160
+    ],
+    "abandoned": 511,
+    "selected": 20,
+    "passed": 52,
+    "groups": {
+     "selected": 20,
+     "dropped": 0,
+     "unused": 0,
+     "cancelled": 0,
+     "running": 0
+    },
+    "trials": {
+     "selected": 160,
+     "usable": 0,
+     "unusable": 0,
+     "running": 0
+    },
+    "per_task": {
+     "crack-7z-hash": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-rust-c": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "dna-insert": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sanitize-git-repo": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "financial-document-processor": {
+      "selected": [
+       1,
+       1,
+       0,
+       1,
+       1,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "write-compressor": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sparql-university": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       0,
+       1,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "count-dataset-tokens": {
+      "selected": [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mteb-retrieve": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "adaptive-rejection-sampler": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "largest-eigenval": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "password-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "cancel-async-tasks": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "configure-git-webserver": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       0,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "large-scale-text-editing": {
+      "selected": [
+       1,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "db-wal-recovery": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "overfull-hbox": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "mailman": {
+      "selected": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "polyglot-c-py": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     },
+     "sqlite-with-gcov": {
+      "selected": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "dropped": 0,
+      "selected_groups": 1,
+      "running": [],
+      "batch": 1
+     }
+    },
+    "missing": [],
+    "doubled": [],
+    "detail": [],
+    "miles": 0.325,
+    "match": true
+   }
+  ]
+ }
+}

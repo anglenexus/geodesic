@@ -1,0 +1,37 @@
+{
+ "_doc": "Pre-GRPO costs for the pipeline comparison on compare.html (SFT + vanilla GRPO vs Q-function + aux GRPO). The Q-function run is the SFT run: next-token cross-entropy on GPT-5.6 Luna's passing trajectories, LoRA r=64 on the same modules as the GRPO policy (aees/reward/PLAN.md R2-R10). Sources per field.",
+ "sft_epochs": 2,
+ "_sft_epochs_src": "post_training/configs/sft.sh --num-epoch 2 and reward PLAN.md R10; qfunc_1030_1950 ran 1 (budget), so SFT cost = 2 \u00d7 its measured epoch",
+ "sft": {
+  "run": "qfunc_1030_1950",
+  "hardware": "8 \u00d7 H100 80GB (Nebius eu-north1)",
+  "gpus": 8,
+  "rate_per_h": 36.0,
+  "passing_trials": 3316,
+  "trained_trajectories": 2985,
+  "heldout": 331,
+  "epochs": 1,
+  "steps": 93,
+  "tokens": 49674261,
+  "trained_tokens": 13255314,
+  "train_seconds": 3852.6,
+  "mfu": 0.274,
+  "node_hours": 2.52,
+  "_src": "reward/runs/qfunc_1030_1950: data_manifest.json (train split), metrics.jsonl (per-step seconds, tokens, targets, mfu). node_hours: node up 11:38 PT (state/nebius.env written) to deleted 14:09 PT (nebius.env.deleted-1030_1409), 2026-10-30; covers setup, preflight T0-T6, training, eval, backup."
+ },
+ "beta_pass": {
+  "hardware": "1 \u00d7 H100 80GB",
+  "gpus": 1,
+  "rate_per_h": 4.5,
+  "node_hours": 1.24,
+  "trajectories": 328,
+  "tokens": 1897238,
+  "forward_passes": 2,
+  "_src": "aq_check.sh (base policy + Q adapter, two forward passes) on the vanilla run's step-1 trajectories; reward/runs/aq_check/report.json; node lifetime from post_training/state/budget_ledger.json."
+ },
+ "grpo": {
+  "hardware": "1 \u00d7 H200 + 2 \u00d7 m7a.8xlarge sandbox boxes",
+  "rate_per_h": 9.100000000000001,
+  "_src": "scripts/budget_guard.py list prices: H200 $5.40/GPU-h, m7a.8xlarge $1.85/h. Colocated: rollout and training run one after the other on the same H200, the boxes bill throughout."
+ }
+}

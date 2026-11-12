@@ -3,6 +3,7 @@ auxiliary_reward_first_run_plan.md §6). Separate from monitor/server.py. Standa
 
     python3 monitor/compare.py --build-vanilla             # once: monitor/vanilla_steps.json from the S3 train logs
     python3 monitor/compare.py --aux-host <user@h200> --aux-log /data/ckpt/<run>/train.log [--port 8790]
+    python3 monitor/compare.py                             # a finished run: the aux block saved in --aux-json
 
 Both runs are read from Miles' own per-step log lines, so the two curves use the same definitions:
     log_utils.py:N - rollout K: {'rollout/raw_reward': ..., ...}    rollout metrics of step K+1 (success = raw_reward)
@@ -13,8 +14,9 @@ The vanilla run is three Miles runs in sequence (steps 1, 2-6, 7-10; Adam restar
 fetched over ssh (only those lines) every --poll seconds, with the live rollout: the dispatcher's status (running,
 waiting) and its per-trial rows ($DATA/trials/<run>/dispatch.jsonl: task, reward, exit status, queued/start/end).
 select() replays how Miles picks each step's 20 groups of 8 out of what it sent (resubmitted batches, dropped and
-cancelled groups) and the page checks the result against Miles' logged success. Serves monitor/compare.html with
-/data.json on 127.0.0.1.
+cancelled groups) and the page checks the result against Miles' logged success. With --aux-host each refresh saves the
+aux block to --aux-json (default monitor/aux_steps.json, auxr_1103_0033's); without it that file is served, so the
+page outlives the H200. Serves monitor/compare.html with /data.json on 127.0.0.1.
 """
 import argparse
 import ast
@@ -222,13 +224,18 @@ class Aux:
                 self.records.write_text("".join(json.dumps(x) + "\n" for x in rows))
 
 
-def payload(vanilla: dict, aux: Aux | None) -> dict:
-    return {"vanilla": vanilla,
-            "aux": {"name": "GRPO + auxiliary reward (β·A^Q)",
-                    "steps": {str(k): v for k, v in sorted((aux.steps if aux else {}).items())},
-                    "updated": aux.updated if aux else None, "error": aux.error if aux else "no --aux-host",
-                    "rollout": aux.rollout if aux else None},
-            "now": time.time()}
+def aux_block(aux: Aux) -> dict:
+    return {"name": "GRPO + auxiliary reward (β·A^Q)", "run": aux.run,
+            "steps": {str(k): v for k, v in sorted(aux.steps.items())},
+            "updated": aux.updated, "error": aux.error, "rollout": aux.rollout}
+
+
+def payload(vanilla: dict, aux: Aux | None, saved: dict | None = None) -> dict:
+    block = aux_block(aux) if aux else saved or {"name": "GRPO + auxiliary reward (β·A^Q)", "steps": {},
+                                                  "updated": None, "error": "no --aux-host", "rollout": None}
+    pipeline = HERE / "pipeline.json"                    # the SFT / Q-function run's costs, for the pipeline comparison
+    return {"vanilla": vanilla, "aux": block, "now": time.time(),
+            "pipeline": json.loads(pipeline.read_text()) if pipeline.exists() else None}
 
 
 def main():
@@ -239,6 +246,8 @@ def main():
     p.add_argument("--aux-log")
     p.add_argument("--aux-run", help="run name for the trial rows (default: the log's folder name)")
     p.add_argument("--records", type=Path, help="write every aux trial with its selection status here (jsonl)")
+    p.add_argument("--aux-json", type=Path, default=HERE / "aux_steps.json",
+                   help="with --aux-host: saved after each refresh; without: the finished run served from here")
     p.add_argument("--port", type=int, default=8790)
     p.add_argument("--poll", type=float, default=60)
     args = p.parse_args()
@@ -249,11 +258,14 @@ def main():
     vanilla = json.loads(args.vanilla.read_text())
     aux = Aux(args.aux_host, args.aux_log, args.aux_run or Path(args.aux_log).parent.name, args.records) \
         if args.aux_host else None
+    saved = None if aux or not args.aux_json.exists() else json.loads(args.aux_json.read_text())
 
     def loop():
         while aux:
             try:
                 aux.refresh()
+                if aux.updated and not aux.error:        # a good read: keep it for when the host is gone
+                    args.aux_json.write_text(json.dumps(aux_block(aux), indent=1))
             except Exception as e:                       # keep serving the last good data
                 aux.error = repr(e)
             time.sleep(args.poll)
@@ -263,7 +275,7 @@ def main():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path.startswith("/data.json"):
-                body, kind = json.dumps(payload(vanilla, aux)).encode(), "application/json"
+                body, kind = json.dumps(payload(vanilla, aux, saved)).encode(), "application/json"
             else:
                 body, kind = (HERE / "compare.html").read_bytes(), "text/html; charset=utf-8"
             self.send_response(200)
