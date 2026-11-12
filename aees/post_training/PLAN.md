@@ -623,6 +623,12 @@ To re-run phases: `PHASES="co_mps co_mps70" bash proto/bench.sh` on the H200. Kn
 - **Optimization:** loss, gradient norm, adapter weight norm, mean |trainer logprob − SGLang logprob| on sampled tokens (should be ~0 under TITO), policy entropy on assistant tokens, per-step policy change (mean |logprob after update − logprob before|, §3a).
 - **Time:** rollout, train, sync and offload durations; GPU memory peak in each phase.
 - Every training trajectory also goes into the `aees_harbor` ledger, tagged with run ID and step, so it can be browsed in the existing trajectory browser.
+- **Rollout click-into (requirement, 2026-11-12).** Every rollout keeps the same statistics as the Harbor run tracker
+  (`../harbor/aees_harbor/status.py`, port 8766), and the training tracker links to them: click a step, eval or
+  baseline → a rollout page with done/total, pass / fail / no reward, timeouts, exception breakdown (type + message),
+  per-task outcome grid in start order, slowest trials, turns/tokens per trial and time or cost, with each trial
+  linking to its trajectory in the trajectory browser (port 8765). Implementation: reuse
+  `aees_harbor.status.job_status` on the step's trial folders. See `../harbor/BACKLOG.md` ("Standing requirement").
 
 **Training tracker (built 2026-10-24): `monitor/server.py` + `monitor/index.html`.**
 - **How it works.** It runs on the box with the host's python3 (3.10 or later), uses the standard library only, and binds to 127.0.0.1:8770. Every 30 s it re-reads what the run already writes, with no wandb:
