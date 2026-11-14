@@ -63,7 +63,10 @@ The per-task table is in the session scratchpad; regenerate it if you need it.
 
 The host has AWS credentials (copied by the user's request).
 
-## Decision you must get from the user: 5 or 8 attempts
+## Decided: 5 attempts (user, 5:40 PM PT on 2026-11-12)
+
+At the decision point (372/440 done, 44.6%, $115 spent), the user chose to stay at 5 attempts. Do not create the
+`extend` file. The notes below are kept for reference only.
 
 The user chose 5, with the option of extending to 8. To extend, run this before the first 5 attempts have finished:
 
