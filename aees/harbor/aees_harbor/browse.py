@@ -19,10 +19,10 @@ from aees_harbor.ingest import ingest_job
 from aees_harbor.ledger import Ledger
 
 PAGE = Path(__file__).parent / "browser" / "index.html"
-SELECTED_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_selected_tasks.txt"
+SELECTED_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_split1114_train.txt"  # split of 2026-11-14
 # post-training test set (orange) and validation set (green), ../post_training/plan.md §2a
-TEST_CANDIDATES = Path(__file__).resolve().parent.parent / "state" / "tb21_test20_tasks.txt"
-VALIDATION_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_val8_tasks.txt"
+TEST_CANDIDATES = Path(__file__).resolve().parent.parent / "state" / "tb21_split1114_test.txt"
+VALIDATION_TASKS = Path(__file__).resolve().parent.parent / "state" / "tb21_split1114_val.txt"
 
 
 def selected_tasks(path: Path = SELECTED_TASKS) -> list[str]:

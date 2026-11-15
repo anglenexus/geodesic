@@ -87,7 +87,9 @@ def job_status(job: Path, now: dt.datetime) -> dict:
         if not trial.is_dir() or "__" not in trial.name:
             continue
         r = _json(trial / "result.json") or {}
-        task = r.get("task_name") or next((t for t in tasks if t.split("/")[-1] == trial.name.rsplit("__", 1)[0]), trial.name)
+        # trial folders are <task>__<date>-<time>__<id>; a running trial has no result.json yet
+        name = trial.name.split("__", 1)[0]
+        task = r.get("task_name") or next((t for t in tasks if t.split("/")[-1] == name), name)
         if r.get("started_at"):
             starts.append(_ts(r["started_at"]))
         if r.get("finished_at"):

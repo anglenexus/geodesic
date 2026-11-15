@@ -35,7 +35,7 @@
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel); }
   tr.click { cursor: pointer; } tr.click:hover td { background: var(--chip); }
-  /* the tasks selected for collection (state/tb21_selected_tasks.txt) */
+  /* the tasks selected for collection (state/tb21_split1114_train.txt) */
   tr.sel td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
   .selname { color: var(--accent); font-weight: 600; }
   .b-selected { background: var(--accent); } .b-notselected { background: var(--none); }
@@ -139,8 +139,8 @@ function setModels(models) {  // fill the header drop-down with the models prese
   sel.value = MODEL;
 }
 const isSel = t => SELECTED.has(taskName(t));
-let TEST = new Set();  // post-training test set (orange), from state/tb21_test20_tasks.txt
-let VAL = new Set();   // post-training validation set (green), from state/tb21_val8_tasks.txt
+let TEST = new Set();  // post-training test set (orange), from state/tb21_split1114_test.txt
+let VAL = new Set();   // post-training validation set (green), from state/tb21_split1114_val.txt
 const isTest = t => TEST.has(taskName(t));
 const isVal = t => VAL.has(taskName(t));
 const rank = t => isSel(t) ? 0 : isTest(t) ? 1 : isVal(t) ? 2 : 3;  // blue, orange, green, then the rest
@@ -177,9 +177,9 @@ async function pageLedger() {
       stat("raw reward 1 / 0 / none", `${sum("raw_reward_1")} / ${sum("raw_reward_0")} / ${sum("raw_no_reward")}`),
       stat("remaining to target", fmtInt(target - sum("passed") - sum("failed")))),
     el("div", { class: "note", style: "margin:4px 0 8px" },
-      el("span", { class: "selname" }, "Blue"), ` = one of the ${SELECTED.size} tasks selected for collection (state/tb21_selected_tasks.txt); `,
-      el("span", { class: "testname" }, "orange"), ` = post-training test set (${TEST.size}, state/tb21_test20_tasks.txt); `,
-      el("span", { class: "valname" }, "green"), ` = validation set (${VAL.size}, state/tb21_val8_tasks.txt); see ../post_training/plan.md §2a. ` +
+      el("span", { class: "selname" }, "Blue"), ` = one of the ${SELECTED.size} tasks selected for collection (state/tb21_split1114_train.txt); `,
+      el("span", { class: "testname" }, "orange"), ` = post-training test set (${TEST.size}, state/tb21_split1114_test.txt); `,
+      el("span", { class: "valname" }, "green"), ` = validation set (${VAL.size}, state/tb21_split1114_val.txt); see train_val_test_split_nov_14.md. ` +
       `${rows.filter(r => isSel(r.fields.task)).length} blue, ${rows.filter(r => isTest(r.fields.task)).length} orange, ` +
       `${rows.filter(r => isVal(r.fields.task)).length} green of ${rows.length} rows; listed in that order.`),
     SOURCE === "local" ? await jobsPanel()
