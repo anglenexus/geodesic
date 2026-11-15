@@ -17,6 +17,7 @@ echo "== Harbor (harbor-miles @ ${HARBOR_COMMIT:0:7}) + patches -> $DEST"
 [ -d "$DEST/.git" ] || git clone -q https://github.com/harbor-framework/harbor.git "$DEST"
 git -C "$DEST" fetch -q origin harbor-miles-v0.20.0
 git -C "$DEST" checkout -q -- . 2>/dev/null || true    # drop earlier patches
+git -C "$DEST" clean -fdq -- src tests                # and files they added
 git -C "$DEST" checkout -q --detach "$HARBOR_COMMIT"
 git -C "$DEST" apply "$PT/grpo/harbor_parser.patch"
 git -C "$DEST" apply "$PT/grpo/command_timeout.patch"
