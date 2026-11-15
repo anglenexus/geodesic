@@ -838,7 +838,8 @@ class Tracker:
             folders = self.folders.refresh()
             history, status, status_t = self.live.view()
             settings = read_settings(self.settings)
-            att = attempts(settings, self.root / "extend", self.planned)
+            # the feeder (scripts/tmax_view.py) writes the run's current trial count when a later batch is added
+            att = attempts(settings, self.root / "extend", (settings or {}).get("planned") or self.planned)
             planned = att["planned"]
             return {"run": self.run, "generated": now, "planned": planned,
                     "sources": {"rollouts": len(rollouts), "dispatch": len(dispatch), "folders": len(folders),
