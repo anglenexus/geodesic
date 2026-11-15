@@ -81,3 +81,13 @@ def test_harbor_cmd_uses_the_plans_harbor_build_and_timeout_multiplier(tmp_path)
     assert cmd[cmd.index("--timeout-multiplier") + 1] == "1.0"
     assert 'reasoning_effort="medium"' in cmd and "max_turns=64" in cmd
     assert cmd[-2:] == ["-i", "terminal-bench/mailman"]
+
+
+def test_a_batch_can_run_its_own_task_list(tmp_path):
+    (tmp_path / "all.txt").write_text("a\nb\n")
+    (tmp_path / "b2.txt").write_text("b\n")
+    plan = {"env_file": "x", "dataset": "d", "agent": "t", "model": "m", "jobs_root": str(tmp_path), "agent_kwargs": {},
+            "task_prefix": "p/", "tasks_file": str(tmp_path / "all.txt")}
+    assert schedule.harbor_cmd(plan, {"name": "b1", "concurrency": 1, "attempts": 1})[-4:] == ["-i", "p/a", "-i", "p/b"]
+    b2 = {"name": "b2", "concurrency": 1, "attempts": 1, "tasks_file": str(tmp_path / "b2.txt")}
+    assert schedule.harbor_cmd(plan, b2)[-2:] == ["-i", "p/b"]

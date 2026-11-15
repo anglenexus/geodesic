@@ -157,7 +157,8 @@ def ingest_into_ledger(plan: dict, job: Path) -> dict:
 
 
 def harbor_cmd(plan: dict, batch: dict) -> list[str]:
-    tasks = [t.strip() for t in (HERE / plan["tasks_file"]).read_text().split() if t.strip()]
+    # a batch may run a subset of the plan's tasks (e.g. tasks that still need more attempts)
+    tasks = [t.strip() for t in (HERE / batch.get("tasks_file", plan["tasks_file"])).read_text().split() if t.strip()]
     # harbor_bin: e.g. the Tmax-aligned build (harbor-miles + patches) instead of the `harbor` on PATH
     cmd = [str(Path(plan.get("harbor_bin", "harbor")).expanduser()) if plan.get("harbor_bin") else "harbor",
            "run", "--env-file", str(Path(plan["env_file"]).expanduser()),
