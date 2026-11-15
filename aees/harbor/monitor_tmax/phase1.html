@@ -237,7 +237,8 @@ function tiles(s) {
     ? `${sec(x.p50 ?? x.p50_all)} / ${sec(x.p90 ?? x.p90_all)}` : "no data";
   const latNote = x => x && x.p50 != null ? `p50 / p90, last 5 min (${num(x.n)} requests)` : x && x.p50_all != null ? "p50 / p90, since engine start" : "p50 / p90";
   const cells = [
-    T("Pass rate", pct(o.pass_rate), [o.pass_rate, tmaxPass(s), o.ours_nothink.rate, Math.max(0.5, o.pass_rate || 0)],
+    T("Pass rate, per-task average", pct(o.pass_rate_task_avg), [o.pass_rate_task_avg, tmaxPass(s), o.ours_nothink.rate, Math.max(0.5, o.pass_rate_task_avg || 0)],
+      `equal weight over ${o.task_avg_tasks} tasks · pooled ${pct(o.pass_rate)} (all trials together; leans toward the tasks with the most trials)`,
       `${paperRef(s) ? tmaxLabel(s) : "Tmax"} ${tmaxPassText(s)}`,
       ...(paperRef(s) ? [`${recLabel(s)}: ${pct(records(s).rate)} (${records(s).passed}/${records(s).n})`] : []),
       `${o.passed} / ${o.scored} scored · ${ntLabel(s)} ${pct(o.ours_nothink.rate)}`),
@@ -444,9 +445,9 @@ function behaviourPanel(s) {
         el("td", {class: "c"}, num(P[k], d), refBar(P[k], t, null, mx)), el("td", {class: "c"}, num(F[k], d), refBar(F[k], t, null, mx)),
         el("td", {class: "muted"}, num(t, d))); })));
   const head = el("div", {class: "bar", style: "align-items:flex-start;gap:12px 24px;margin-bottom:10px"},
-    el("div", {}, el("div", {class: "sub"}, "Success rate"), el("div", {style: "font-size:24px;font-weight:600"}, pct(o.pass_rate)),
-       refBar(o.pass_rate, tmaxPass(s), o.ours_nothink.rate, Math.max(0.5, o.pass_rate || 0), 150, 12),
-       el("div", {class: "sub"}, `${o.passed} / ${o.scored} scored · `, el("span", {class: "tick", style: "background:var(--tmax)"}),
+    el("div", {}, el("div", {class: "sub"}, "Success rate, per-task average"), el("div", {style: "font-size:24px;font-weight:600"}, pct(o.pass_rate_task_avg)),
+       refBar(o.pass_rate_task_avg, tmaxPass(s), o.ours_nothink.rate, Math.max(0.5, o.pass_rate_task_avg || 0), 150, 12),
+       el("div", {class: "sub"}, `equal weight over ${o.task_avg_tasks} tasks · pooled ${pct(o.pass_rate)} (${o.passed} / ${o.scored}) · `, el("span", {class: "tick", style: "background:var(--tmax)"}),
           `${paperRef(s) ? tmaxLabel(s) : "Tmax"} ${tmaxPassText(s)}`)),
     el("div", {class: "scroll", style: "flex:1;min-width:0"}, sTable));
   $("behaviour").replaceChildren(head, table, shares);

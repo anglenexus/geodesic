@@ -376,6 +376,12 @@ def overall(rows: list[dict], reference: dict | None = None, ref_overall: dict |
     "tmax_records" is always the latter."""
     scored = [r for r in rows if not is_infra(r)]
     k = sum(passed(r) for r in scored)
+    # Equal weight per task: the mean of the per-task pass rates. The pooled rate (k / scored) leans toward the tasks
+    # with the most trials, which a collection run gives the hard tasks on purpose; benchmark scores weight tasks equally.
+    by_task: dict[str, list[int]] = {}
+    for r in scored:
+        by_task.setdefault(r.get("task"), []).append(passed(r))
+    task_avg = sum(sum(v) / len(v) for v in by_task.values()) / len(by_task) if by_task else None
     timeouts = sum(r.get("exit_status") == "TimeLimitExceeded" for r in scored)
     graded, graded_passed = folder_context_stops(folders)
     seqlen = sum(map(context_stop, scored)) + graded
@@ -388,6 +394,7 @@ def overall(rows: list[dict], reference: dict | None = None, ref_overall: dict |
     nothink = ref_sum(reference, "ours_nothink", NOTHINK_OVERALL)
     nothink["label"] = "thinking off" + ("" if nothink["tasks"] >= ntasks else f", our {nothink['tasks']} tasks only")
     return {"scored": len(scored), "passed": k, "pass_rate": rate(k, len(scored)),
+            "pass_rate_task_avg": task_avg, "task_avg_tasks": len(by_task),
             "timeouts": timeouts, "timeout_rate": rate(timeouts, len(scored)),
             "seqlen": seqlen, "seqlen_rate": rate(seqlen, len(scored)), "seqlen_graded_passed": graded_passed,
             "tmax": tmax, "tmax_records": records, "ours_nothink": nothink}
@@ -870,7 +877,8 @@ def summary_text(s: dict) -> str:
     ext = (f"; extension to {att['extend_attempts']} attempts "
            + ("requested" if att["extend_requested"] else "not requested")) if att.get("extend_possible") else ""
     return (f"{s['run']}: {p['done']}/{p['planned']} trials done ({live}; {o['scored']} scored, "
-            f"{s['outcomes']['infra_total']} infra errors{ext}). Pass rate {pc(o['pass_rate'])} ({o['passed']}/{o['scored']}) "
+            f"{s['outcomes']['infra_total']} infra errors{ext}). Pass rate, per-task average (equal weight, {o['task_avg_tasks']} tasks) "
+            f"{pc(o['pass_rate_task_avg'])}; pooled {pc(o['pass_rate'])} ({o['passed']}/{o['scored']}) "
             f"{head}, {o['ours_nothink']['label']} {pc(o['ours_nothink']['rate'])}. "
             f"Timeouts {pc(o['timeout_rate'])} (Tmax {pc(tm.get('timeout_rate'))}), context limit {o['seqlen']}, "
             f"64-call stops {pc(b['hit_64'])}, 120 s interrupts {b['interrupts']}. "

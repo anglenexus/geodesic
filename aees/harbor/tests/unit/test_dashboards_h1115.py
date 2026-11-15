@@ -77,3 +77,13 @@ def test_tmax_tracker_takes_planned_from_the_feeder(tmp_path):
     (tmp_path / "monitor" / "h1115" / "settings.json").write_text(json.dumps({"planned": 8700, "attempts": 50}))
     t = p1.Tracker("h1115", tmp_path, p1.Live([], ""), 1000, HARBOR / "monitor_tmax" / "h1115_reference.json")
     assert t.snapshot()["planned"] == 8700
+
+
+def test_tmax_dashboard_per_task_average_is_equal_weight():
+    p1 = _phase1()
+    ok = {"exit_status": "Completed", "reward": 1.0}
+    bad = {"exit_status": "Completed", "reward": 0.0}
+    rows = [{"task": "easy", **ok}] * 10 + [{"task": "hard", **ok}] * 10 + [{"task": "hard", **bad}] * 90
+    o = p1.overall(rows, {}, {}, [])
+    assert o["pass_rate"] == 20 / 110                      # pooled: dominated by the 100 hard trials
+    assert abs(o["pass_rate_task_avg"] - (1.0 + 0.1) / 2) < 1e-12 and o["task_avg_tasks"] == 2
