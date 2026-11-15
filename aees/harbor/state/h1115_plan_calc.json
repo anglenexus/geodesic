@@ -8,7 +8,8 @@
   ],
   "api_est": 6.4,
   "hours_upper": 1.56,
-  "backstop": 12.79
+  "backstop": 14.46,
+  "api_est_carry": 7.23
  },
  "h1115_i2": {
   "tasks": [
@@ -18,7 +19,8 @@
   ],
   "api_est": 2.57,
   "hours_upper": 1.25,
-  "backstop": 5.14
+  "backstop": 5.81,
+  "api_est_carry": 2.9
  },
  "h1115_i3": {
   "tasks": [
@@ -28,7 +30,8 @@
   ],
   "api_est": 1.31,
   "hours_upper": 1.25,
-  "backstop": 2.63
+  "backstop": 2.96,
+  "api_est_carry": 1.48
  },
  "h1115_i4": {
   "tasks": [
@@ -38,7 +41,8 @@
   ],
   "api_est": 4.06,
   "hours_upper": 1.25,
-  "backstop": 8.12
+  "backstop": 9.18,
+  "api_est_carry": 4.59
  },
  "h1115_i5": {
   "tasks": [
@@ -48,7 +52,8 @@
   ],
   "api_est": 1.41,
   "hours_upper": 1.25,
-  "backstop": 2.82
+  "backstop": 3.19,
+  "api_est_carry": 1.59
  },
  "h1115_i6": {
   "tasks": [
@@ -59,12 +64,13 @@
   ],
   "api_est": 2.08,
   "hours_upper": 1.46,
-  "backstop": 4.15
+  "backstop": 4.7,
+  "api_est_carry": 2.35
  },
  "api_est": 17.82,
  "ec2_est": 15.12,
- "total_est": 32.94,
- "cap_140": 46.12,
+ "total_est": 35.27,
+ "cap_140": 49.38,
  "per_task_medium_cost": {
   "cobol-modernization": 0.01091536116,
   "code-from-image": 0.01727488416,
@@ -89,5 +95,7 @@
  },
  "high_factor": 1.35,
  "attempts_per_task": 50,
- "ec2_rate": 1.6128
+ "ec2_rate": 1.6128,
+ "carry_factor": 1.13,
+ "api_est_carry": 20.15
 }

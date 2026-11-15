@@ -26,6 +26,7 @@
   "use_responses_api": true,
   "llm_kwargs": {
     "reasoning_summary": "detailed",
-    "responses_stateless": true
+    "responses_stateless": true,
+    "responses_carry_reasoning": true
   }
 }

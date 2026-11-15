@@ -1,8 +1,8 @@
 diff --git a/src/harbor/llms/lite_llm.py b/src/harbor/llms/lite_llm.py
-index 86e52d3e..8463123a 100644
+index 86e52d3e..ff428b00 100644
 --- a/src/harbor/llms/lite_llm.py
 +++ b/src/harbor/llms/lite_llm.py
-@@ -74,6 +74,12 @@ class LiteLLM(BaseLLM):
+@@ -74,6 +74,15 @@ class LiteLLM(BaseLLM):
      ):
          super().__init__()
          self._model_name = model_name
@@ -10,12 +10,15 @@ index 86e52d3e..8463123a 100644
 +        # model's reasoning, stored as reasoning_content. responses_stateless: send the full history on every call with
 +        # store=false instead of chaining previous_response_id, so no conversation state is kept by the provider and
 +        # earlier turns' reasoning is not carried forward (as with the chat completions API).
++        # responses_carry_reasoning: request each turn's reasoning encrypted, store it with the step, and send it back
++        # with the history on every later call, so the model sees its earlier reasoning (works with responses_stateless).
 +        self._reasoning_summary = kwargs.pop("reasoning_summary", None)
 +        self._responses_stateless = kwargs.pop("responses_stateless", False)
++        self._responses_carry_reasoning = kwargs.pop("responses_carry_reasoning", False)
          self._llm_kwargs = kwargs
          self._temperature = temperature
          self._model_info = model_info
-@@ -618,12 +624,24 @@ class LiteLLM(BaseLLM):
+@@ -618,12 +627,24 @@ class LiteLLM(BaseLLM):
          usage = response.usage
          prompt_tokens = getattr(usage, "input_tokens", 0) or 0
          completion_tokens = getattr(usage, "output_tokens", 0) or 0
@@ -41,7 +44,7 @@ index 86e52d3e..8463123a 100644
              cost_usd=cost,
          )
  
-@@ -691,6 +709,9 @@ class LiteLLM(BaseLLM):
+@@ -691,6 +712,9 @@ class LiteLLM(BaseLLM):
          the full input from message_history + prompt.
          """
          previous_response_id = kwargs.pop("previous_response_id", None)
@@ -51,7 +54,7 @@ index 86e52d3e..8463123a 100644
  
          try:
              # Build responses_kwargs
-@@ -700,9 +721,13 @@ class LiteLLM(BaseLLM):
+@@ -700,9 +724,15 @@ class LiteLLM(BaseLLM):
                  responses_kwargs["reasoning"] = {
                      "effort": self._reasoning_effort,
                  }
@@ -59,6 +62,8 @@ index 86e52d3e..8463123a 100644
 +                responses_kwargs.setdefault("reasoning", {})["summary"] = self._reasoning_summary
 +            if self._responses_stateless:
 +                responses_kwargs["store"] = False
++            if self._responses_carry_reasoning:
++                responses_kwargs["include"] = ["reasoning.encrypted_content"]
  
              # Get max_output_tokens from model info
 -            max_output_tokens = self.get_model_output_limit()
@@ -66,11 +71,21 @@ index 86e52d3e..8463123a 100644
              if max_output_tokens is not None:
                  responses_kwargs["max_output_tokens"] = max_output_tokens
  
-@@ -743,11 +768,28 @@ class LiteLLM(BaseLLM):
+@@ -731,6 +761,8 @@ class LiteLLM(BaseLLM):
+                         if isinstance(msg, dict)
+                         else getattr(msg, "content", "")
+                     )
++                    if isinstance(msg, dict) and msg.get("reasoning_items"):
++                        input_items.extend(msg["reasoning_items"])  # this assistant turn's reasoning, before its reply
+                     input_items.append({"role": role, "content": content})
+                 input_items.append({"role": "user", "content": prompt})
+                 responses_kwargs["input"] = input_items
+@@ -743,11 +775,42 @@ class LiteLLM(BaseLLM):
          # Extract text content from response.output
          content = ""
          reasoning_content = None
 +        summaries: list[str] = []
++        reasoning_items: list[dict[str, Any]] = []
          for output_item in response.output:
              if getattr(output_item, "type", None) == "message":
                  for content_part in getattr(output_item, "content", []):
@@ -81,6 +96,17 @@ index 86e52d3e..8463123a 100644
 +                    text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
 +                    if text:
 +                        summaries.append(text)
++                if self._responses_carry_reasoning and getattr(output_item, "encrypted_content", None):
++                    item = (
++                        dict(output_item)
++                        if isinstance(output_item, dict)
++                        else output_item.model_dump(exclude_none=True)
++                    )
++                    # sent back as encrypted reasoning only; the readable summary is stored, not re-sent
++                    reasoning_items.append(
++                        {"type": "reasoning", "id": item.get("id"), "summary": [],
++                         "encrypted_content": item["encrypted_content"]}
++                    )
 +        if summaries:
 +            reasoning_content = "\n\n".join(summaries)
 +        extra = None
@@ -92,16 +118,19 @@ index 86e52d3e..8463123a 100644
 +                else None,
 +                "reasoning_summary_parts": len(summaries),
 +            }
++        if reasoning_items:
++            extra = dict(extra or {}, reasoning_encrypted=[i["encrypted_content"] for i in reasoning_items])
  
          # Extract usage information
          usage_info = self._extract_responses_usage_info(response)
-@@ -776,5 +818,13 @@ class LiteLLM(BaseLLM):
+@@ -776,5 +839,14 @@ class LiteLLM(BaseLLM):
              reasoning_content=reasoning_content,
              model_name=getattr(response, "model", None),
              usage=usage_info,
 -            response_id=response_id,
 +            response_id=None if self._responses_stateless else response_id,
 +            extra=extra,
++            reasoning_items=reasoning_items or None,
          )
 +
 +    @staticmethod
@@ -111,7 +140,7 @@ index 86e52d3e..8463123a 100644
 +            return details.get("reasoning_tokens")
 +        return getattr(details, "reasoning_tokens", None)
 diff --git a/src/harbor/agents/terminus_2/terminus_2.py b/src/harbor/agents/terminus_2/terminus_2.py
-index 61860e2a..f3f1dcf2 100644
+index 61860e2a..eab38267 100644
 --- a/src/harbor/agents/terminus_2/terminus_2.py
 +++ b/src/harbor/agents/terminus_2/terminus_2.py
 @@ -30,6 +30,7 @@ from harbor.llms.base import (
@@ -165,11 +194,12 @@ index 61860e2a..f3f1dcf2 100644
                      ),
                  )
              )
-@@ -1696,7 +1705,11 @@ so ask everything you need to know."""
+@@ -1696,7 +1705,12 @@ so ask everything you need to know."""
          context: AgentContext,
      ) -> None:
          self._reset_per_run_state()
 -        self._chat = Chat(self._llm, interleaved_thinking=self._interleaved_thinking)
++        self._context_limit_stop: str | None = None
 +        self._chat = Chat(
 +            self._llm,
 +            interleaved_thinking=self._interleaved_thinking,
@@ -178,21 +208,70 @@ index 61860e2a..f3f1dcf2 100644
          self._context = context
  
          if self._session is None:
-@@ -1742,7 +1755,7 @@ so ask everything you need to know."""
+@@ -1742,9 +1756,10 @@ so ask everything you need to know."""
                  chat=self._chat,
                  original_instruction=instruction,
              )
 -        except ContextLengthExceededError:
-+        except (ContextLengthExceededError, MaxSeqLenExceededError):
++        except (ContextLengthExceededError, MaxSeqLenExceededError) as e:
              if not self._stop_at_context_limit:
                  raise
++            self._context_limit_stop = f"{type(e).__name__}: {e}"[:500]
              self.logger.debug("Context limit reached: agent stops, the verifier grades the current state")
+         finally:
+             for task in list(self._command_watchdogs):
+@@ -1776,8 +1791,18 @@ so ask everything you need to know."""
+                 "command_exec_times_msec": self._command_exec_times,
+                 "summarization_count": self._summarization_count,
+             }
++            if self._context_limit_stop is not None:
++                # graded as it stands; marked so these trials can be told apart from ones the agent ended itself
++                context.metadata["stopped_at_context_limit"] = True
++                context.metadata["context_limit_detail"] = self._context_limit_stop
+             if self._store_all_messages:
+-                context.metadata["all_messages"] = self._chat.messages
++                # without the encrypted reasoning items: the trajectory's steps already store them
++                context.metadata["all_messages"] = [
++                    {k: v for k, v in m.items() if k != "reasoning_items"}
++                    if isinstance(m, dict)
++                    else m
++                    for m in self._chat.messages
++                ]
+ 
+             # Dump trajectory to JSON
+             self._dump_trajectory()
+diff --git a/src/harbor/llms/base.py b/src/harbor/llms/base.py
+index b1538ba9..e9bccd65 100644
+--- a/src/harbor/llms/base.py
++++ b/src/harbor/llms/base.py
+@@ -35,6 +35,8 @@ class LLMResponse:
+     completion_token_ids: list[int] | None = None
+     logprobs: list[float] | None = None
+     extra: dict[str, Any] | None = None
++    # Responses API: this turn's reasoning items (encrypted), sent back with the history on later calls
++    reasoning_items: list[dict[str, Any]] | None = None
+ 
+ 
+ class ContextLengthExceededError(Exception):
+diff --git a/src/harbor/llms/chat.py b/src/harbor/llms/chat.py
+index 59073b12..78939197 100644
+--- a/src/harbor/llms/chat.py
++++ b/src/harbor/llms/chat.py
+@@ -128,6 +128,8 @@ class Chat:
+         assistant_message = {"role": "assistant", "content": llm_response.content}
+         if self._interleaved_thinking and llm_response.reasoning_content:
+             assistant_message["reasoning_content"] = llm_response.reasoning_content
++        if llm_response.reasoning_items:
++            assistant_message["reasoning_items"] = llm_response.reasoning_items
+ 
+         self._messages.extend(
+             [
 diff --git a/tests/unit/llms/test_responses_reasoning.py b/tests/unit/llms/test_responses_reasoning.py
 new file mode 100644
-index 00000000..7924a3e8
+index 00000000..606eb00a
 --- /dev/null
 +++ b/tests/unit/llms/test_responses_reasoning.py
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,239 @@
 +"""Responses API: reasoning summaries, stateless calls, cached-token pricing, and the max_seq_len context stop."""
 +
 +from types import SimpleNamespace
@@ -324,3 +403,111 @@ index 00000000..7924a3e8
 +    chat = Chat(_FixedLLM(60000, 5000), max_seq_len=65536)
 +    await chat.chat("p")
 +    assert len(chat.messages) == 2
++
++
++# ---- carrying reasoning back (responses_carry_reasoning) ----
++
++CARRY = dict(reasoning_summary="detailed", responses_stateless=True, responses_carry_reasoning=True)
++
++
++def _response_with_id(**kw):
++    r = _response(**kw)
++    r.output[0].id = "rs_1"
++    r.output[0].model_dump = lambda exclude_none=True: {"id": "rs_1", "type": "reasoning", "encrypted_content": "gAAAA-enc",
++                                                        "summary": [{"type": "summary_text", "text": "x"}]}
++    return r
++
++
++@pytest.mark.asyncio
++async def test_carry_requests_encrypted_and_returns_items(captured):
++    captured.set_response(_response_with_id())
++    r = await _llm(**CARRY).call(prompt="go", message_history=[])
++    assert captured.calls[0]["include"] == ["reasoning.encrypted_content"]
++    assert r.reasoning_items == [{"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAAA-enc"}]
++    assert r.extra["reasoning_encrypted"] == ["gAAAA-enc"]  # stored with the step
++    assert r.reasoning_content == "**Plan**\n\nInspect the files."
++
++
++@pytest.mark.asyncio
++async def test_carry_sends_reasoning_back_before_each_reply(captured):
++    """Through Chat: the 2nd call's input has turn 1's reasoning item right before turn 1's reply."""
++    captured.set_response(_response_with_id())
++    chat = Chat(_llm(**CARRY))
++    await chat.chat("step 1")
++    await chat.chat("step 2")
++    second = captured.calls[1]
++    assert "previous_response_id" not in second
++    assert second["input"] == [
++        {"role": "user", "content": "step 1"},
++        {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAAA-enc"},
++        {"role": "assistant", "content": '{"analysis": "a"}'},
++        {"role": "user", "content": "step 2"},
++    ]
++
++
++@pytest.mark.asyncio
++async def test_no_carry_sends_no_reasoning_back(captured):
++    chat = Chat(_llm(reasoning_summary="detailed", responses_stateless=True))
++    await chat.chat("step 1")
++    await chat.chat("step 2")
++    assert "include" not in captured.calls[1]
++    assert all("type" not in item for item in captured.calls[1]["input"])
++    assert "reasoning_items" not in chat.messages[1]
++
++
++@pytest.mark.asyncio
++async def test_terminus_context_limit_stop_is_marked(tmp_path):
++    """A max_seq_len stop ends the agent normally (verifier grades), is marked in metadata, and all_messages
++    leaves out the encrypted reasoning items (the trajectory steps store them)."""
++    from harbor.agents.terminus_2.terminus_2 import Terminus2
++    from harbor.models.agent.context import AgentContext
++
++    agent = Terminus2(logs_dir=tmp_path, model_name="openai/fake-luna-test", model_info=PRICES, use_responses_api=True,
++                      stop_at_context_limit=True, max_seq_len=65536, store_all_messages=True, enable_summarize=False)
++
++    class _Session:
++        async def get_incremental_output(self):
++            return "$ "
++
++    async def no_skills(_env):
++        return ""
++
++    async def loop(initial_prompt, chat, original_instruction):
++        chat.messages.extend([{"role": "user", "content": "p"},
++                              {"role": "assistant", "content": "a", "reasoning_items": [{"type": "reasoning"}]}])
++        raise MaxSeqLenExceededError("Sequence length (70000) exceeded limit (65536)")
++
++    agent._session = _Session()
++    agent._build_skills_section = no_skills
++    agent._run_agent_loop = loop
++    agent._dump_trajectory = lambda: None
++    ctx = AgentContext()
++    await agent.run("do it", environment=None, context=ctx)  # no exception: the verifier runs next
++    assert ctx.metadata["stopped_at_context_limit"] is True
++    assert "70000" in ctx.metadata["context_limit_detail"]
++    assert ctx.metadata["all_messages"][1] == {"role": "assistant", "content": "a"}
++
++
++@pytest.mark.asyncio
++async def test_terminus_without_stop_flag_raises(tmp_path):
++    from harbor.agents.terminus_2.terminus_2 import Terminus2
++    from harbor.models.agent.context import AgentContext
++
++    agent = Terminus2(logs_dir=tmp_path, model_name="openai/fake-luna-test", model_info=PRICES, max_seq_len=65536)
++
++    class _Session:
++        async def get_incremental_output(self):
++            return "$ "
++
++    async def no_skills(_env):
++        return ""
++
++    async def loop(**_):
++        raise MaxSeqLenExceededError("over")
++
++    agent._session = _Session()
++    agent._build_skills_section = no_skills
++    agent._run_agent_loop = loop
++    agent._dump_trajectory = lambda: None
++    with pytest.raises(MaxSeqLenExceededError):
++        await agent.run("do it", environment=None, context=AgentContext())
