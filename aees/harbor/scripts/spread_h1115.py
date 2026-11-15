@@ -5,8 +5,8 @@
 
 Each task's attempts are split as evenly as possible over the boxes (remainders rotate so totals stay even). On a box,
 every task becomes its own job tb21_h1115_i<k>_<tag>_<task> (matches the trackers' tb21_h1115_i* globs), started at
-once in tmux session h_<tag>_<task>, with -n set so the box runs at most --per-box trials at a time: each job's share of
-the slots follows attempts x weight (expected minutes per trial), so a box's jobs end about together.
+once in tmux session h_<tag>_<task>, with -n set so the box runs at most --per-box trials at a time, the slots given so that the box's last job
+ends as early as possible (attempts x weight = expected minutes per trial, see slots()).
 
 Run indices are not assigned on the boxes: the laptop ingests every mirrored trial folder into its ledger
 (aees_harbor.ingest), and a folder can be recorded only once, so tasks need not be tied to boxes.
@@ -60,22 +60,21 @@ def split(attempts: dict[str, int], nbox: int) -> list[dict[str, int]]:
 
 
 def slots(share: dict[str, int], weights: dict[str, float], per_box: int) -> dict[str, int]:
-    """-n per job: proportional to attempts x weight, at least 1, at most its attempts, summing to <= per_box."""
+    """-n per job, at least 1 and at most its attempts, summing to <= per_box, chosen so the box's last job ends as
+    early as possible: start every job at 1 slot, then give each remaining slot to the job that would finish last
+    (attempts x expected minutes / slots). Greedy is optimal for this min-max. (Until 2026-11-15 the leftover slots went
+    to the largest job, e.g. 15 of 40 to count-dataset-tokens while 92 db-wal-recovery trials ran one at a time.)"""
     if sum(share.values()) <= per_box:
         return dict(share)  # everything starts at once
-    w = {t: k * weights.get(t, 10.0) for t, k in share.items()}
-    tot = sum(w.values())
-    n = {t: max(1, min(share[t], int(per_box * w[t] / tot))) for t in share}
-    while sum(n.values()) > per_box:  # the 1-slot minimum can overshoot: take back from the largest
-        t = max((t for t in n if n[t] > 1), key=lambda t: n[t])
-        n[t] -= 1
-    spare = per_box - sum(n.values())
-    for t in sorted(share, key=lambda t: -w[t]):  # hand out rounding leftovers to the heaviest jobs
-        if spare <= 0:
+    if len(share) > per_box:
+        raise ValueError(f"{len(share)} jobs need at least one slot each, only {per_box} slots")
+    n = {t: 1 for t in share}
+    finish = lambda t: share[t] * weights.get(t, 10.0) / n[t]  # noqa: E731
+    for _ in range(per_box - len(share)):
+        open_jobs = [t for t in share if n[t] < share[t]]
+        if not open_jobs:
             break
-        add = min(spare, share[t] - n[t])
-        n[t] += add
-        spare -= add
+        n[max(open_jobs, key=lambda t: (finish(t), t))] += 1
     return n
 
 
