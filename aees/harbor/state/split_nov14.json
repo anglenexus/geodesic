@@ -37,42 +37,45 @@
    "query-optimize"
   ],
   "test": [
+   "break-filter-js-from-html",
+   "build-cython-ext",
    "extract-elf",
-   "git-leak-recovery",
+   "financial-document-processor",
    "git-multibranch",
    "headless-terminal",
    "hf-model-inference",
-   "kv-store-grpc",
    "large-scale-text-editing",
    "llm-inference-batching-scheduler",
    "mailman",
-   "make-mips-interpreter",
-   "model-extraction-relu-logits",
+   "mcmc-sampling-stan",
    "modernize-scientific-stack",
    "password-recovery",
    "path-tracing",
    "path-tracing-reverse",
-   "pypi-server",
    "pytorch-model-recovery",
    "rstan-to-pystan",
    "schemelike-metacircular-eval",
-   "sqlite-db-truncate"
+   "sqlite-db-truncate",
+   "tune-mjcf"
   ]
  },
  "left_out": [
-  "break-filter-js-from-html",
   "build-pov-ray",
   "chess-best-move",
   "circuit-fibsqrt",
   "distribution-search",
-  "financial-document-processor",
   "fix-code-vulnerability",
   "fix-git",
+  "git-leak-recovery",
+  "kv-store-grpc",
+  "make-mips-interpreter",
   "merge-diff-arc-agi-task",
+  "model-extraction-relu-logits",
   "openssl-selfsigned-cert",
   "overfull-hbox",
   "portfolio-optimization",
   "prove-plus-comm",
+  "pypi-server",
   "regex-chess",
   "reshard-c4-data",
   "sparql-university",
@@ -162,6 +165,25 @@
     "write-compressor"
    ],
    "why": "Luna cannot produce training successes (train-fasttext 0%, chess-best-move 5%) or 30% harness no-reward (build-pov-ray); replacements chosen from the left-out pool to keep the sets matched"
+  },
+  {
+   "date": "2026-11-14",
+   "set": "test",
+   "out": [
+    "git-leak-recovery",
+    "kv-store-grpc",
+    "pypi-server",
+    "make-mips-interpreter",
+    "model-extraction-relu-logits"
+   ],
+   "in": [
+    "financial-document-processor",
+    "break-filter-js-from-html",
+    "mcmc-sampling-stan",
+    "build-cython-ext",
+    "tune-mjcf"
+   ],
+   "why": "user-chosen swap-ins (Qwen 1-4/5); removed three Qwen 5/5 and two Qwen 0/5 + Luna ~0% tasks; balanced on Qwen only (Luna not measured for mcmc-sampling-stan, build-cython-ext, tune-mjcf)"
   }
  ]
 }
