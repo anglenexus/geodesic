@@ -1,0 +1,31 @@
+{
+  "parser_name": "json",
+  "reasoning_effort": "high",
+  "max_turns": 64,
+  "suppress_max_turns_warning": true,
+  "command_timeout_sec": 120.0,
+  "stop_at_context_limit": true,
+  "max_seq_len": 65536,
+  "response_length_exceeded_policy": "recover",
+  "enable_summarize": false,
+  "llm_call_kwargs": {
+    "max_tokens": 16384
+  },
+  "model_info": {
+    "max_input_tokens": 65536,
+    "max_output_tokens": 16384,
+    "input_cost_per_token": 2e-07,
+    "output_cost_per_token": 1.2e-06,
+    "cache_read_input_token_cost": 2e-08
+  },
+  "trajectory_config": {
+    "raw_content": true,
+    "linear_history": false
+  },
+  "store_all_messages": true,
+  "use_responses_api": true,
+  "llm_kwargs": {
+    "reasoning_summary": "detailed",
+    "responses_stateless": true
+  }
+}

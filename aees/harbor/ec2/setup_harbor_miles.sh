@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The Tmax-aligned Harbor build next to the stock one: Harbor's harbor-miles branch at the commit pinned in
-# ../post_training/configs/pins.sh, plus our two patches (JSON parser via setting; 120 s per-command limit). This is
+# ../post_training/configs/pins.sh, plus our patches (JSON parser via setting; 120 s per-command limit; Responses API
+# reasoning summaries and the max_seq_len context stop). This is
 # the build the full TB 2.1 run of Qwen3.6-27B used (post_training/serving_speed_on_TB2.md). Run after setup_ec2.sh.
 #
 #   bash ec2/setup_harbor_miles.sh [task-list ...]     # default task list: state/tb21_selected_tasks.txt
@@ -19,9 +20,11 @@ git -C "$DEST" checkout -q -- . 2>/dev/null || true    # drop earlier patches
 git -C "$DEST" checkout -q --detach "$HARBOR_COMMIT"
 git -C "$DEST" apply "$PT/grpo/harbor_parser.patch"
 git -C "$DEST" apply "$PT/grpo/command_timeout.patch"
+git -C "$DEST" apply "$PT/grpo/responses_reasoning.patch"   # Responses API: reasoning summaries, stateless; 65,536 stop
 (cd "$DEST" && uv sync -q)
 "$DEST/.venv/bin/harbor" --version
 grep -q "command_timeout_sec" "$DEST/src/harbor/agents/terminus_2/terminus_2.py" && echo "command_timeout patch: ok"
+grep -q "reasoning_summary" "$DEST/src/harbor/llms/lite_llm.py" && echo "responses_reasoning patch: ok"
 
 echo "== pre-pull task images"
 LISTS=("$@"); [ ${#LISTS[@]} -gt 0 ] || LISTS=("$HERE/state/tb21_selected_tasks.txt")

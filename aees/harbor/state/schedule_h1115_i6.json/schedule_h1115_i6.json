@@ -1,0 +1,65 @@
+{
+  "name": "GPT-5.6 Luna high + reasoning summaries (h1115), aees-l6: 4 tasks x 50 (batch 1)",
+  "dataset": "terminal-bench/terminal-bench-2-1",
+  "agent": "terminus-2",
+  "model": "openai/gpt-5.6-luna",
+  "task_prefix": "terminal-bench/",
+  "env_file": "~/.config/harbor/.env",
+  "jobs_root": "~/jobs",
+  "ledger": "state/ledger.sqlite",
+  "harbor_bin": "~/harbor-miles/.venv/bin/harbor",
+  "timeout_multiplier": 1.0,
+  "agent_kwargs": {
+    "parser_name": "json",
+    "reasoning_effort": "high",
+    "max_turns": 64,
+    "suppress_max_turns_warning": true,
+    "command_timeout_sec": 120.0,
+    "stop_at_context_limit": true,
+    "max_seq_len": 65536,
+    "response_length_exceeded_policy": "recover",
+    "enable_summarize": false,
+    "llm_call_kwargs": {
+      "max_tokens": 16384
+    },
+    "model_info": {
+      "max_input_tokens": 65536,
+      "max_output_tokens": 16384,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 1.2e-06,
+      "cache_read_input_token_cost": 2e-08
+    },
+    "trajectory_config": {
+      "raw_content": true,
+      "linear_history": false
+    },
+    "store_all_messages": true,
+    "use_responses_api": true,
+    "llm_kwargs": {
+      "reasoning_summary": "detailed",
+      "responses_stateless": true
+    }
+  },
+  "tasks_file": "state/tasks_h1115_i6.txt",
+  "budget_usd": 4.15,
+  "budget_counts_jobs": [],
+  "min_free_disk_gb": 30,
+  "no_new_batch_after": null,
+  "watchdog_interval_s": 60,
+  "cancel_grace_s": 60,
+  "wait_for_other_harbor": true,
+  "est_trials_per_hour": 137,
+  "est_cost_per_trial": 0.0104,
+  "budget_note": "Per-box API backstop at 2x this box's estimate ($2.08; per-task Luna medium cost x 1.35 for high). The 140% kill switch is the laptop run_guard over the whole batch (API + EC2), which stops every box.",
+  "batches": [
+    {
+      "name": "tb21_h1115_i6_b1",
+      "attempts": 50,
+      "concurrency": 40,
+      "status": "planned",
+      "est_trials": 200,
+      "tasks_file": "state/tasks_h1115_i6.txt",
+      "note": "code-from-image, constraints-scheduling, multi-source-data-merger, vulnerable-secret"
+    }
+  ]
+}

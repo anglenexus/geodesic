@@ -1,0 +1,326 @@
+diff --git a/src/harbor/llms/lite_llm.py b/src/harbor/llms/lite_llm.py
+index 86e52d3e..8463123a 100644
+--- a/src/harbor/llms/lite_llm.py
++++ b/src/harbor/llms/lite_llm.py
+@@ -74,6 +74,12 @@ class LiteLLM(BaseLLM):
+     ):
+         super().__init__()
+         self._model_name = model_name
++        # Responses API only. reasoning_summary ("auto", "concise", "detailed"): ask the provider for a summary of the
++        # model's reasoning, stored as reasoning_content. responses_stateless: send the full history on every call with
++        # store=false instead of chaining previous_response_id, so no conversation state is kept by the provider and
++        # earlier turns' reasoning is not carried forward (as with the chat completions API).
++        self._reasoning_summary = kwargs.pop("reasoning_summary", None)
++        self._responses_stateless = kwargs.pop("responses_stateless", False)
+         self._llm_kwargs = kwargs
+         self._temperature = temperature
+         self._model_info = model_info
+@@ -618,12 +624,24 @@ class LiteLLM(BaseLLM):
+         usage = response.usage
+         prompt_tokens = getattr(usage, "input_tokens", 0) or 0
+         completion_tokens = getattr(usage, "output_tokens", 0) or 0
++        details = getattr(usage, "input_tokens_details", None)
++        cache_tokens = (
++            details.get("cached_tokens") if isinstance(details, dict) else getattr(details, "cached_tokens", 0)
++        ) or 0
+         cost = self._extract_cost(response)
++        info = self._model_info or {}
++        if cost == 0.0 and info.get("input_cost_per_token") is not None:
++            # Priced from model_info as for chat completions: cached input at the cache-read rate
++            cost = (
++                (prompt_tokens - cache_tokens) * info["input_cost_per_token"]
++                + cache_tokens * info.get("cache_read_input_token_cost", info["input_cost_per_token"])
++                + completion_tokens * info.get("output_cost_per_token", 0.0)
++            )
+ 
+         return UsageInfo(
+             prompt_tokens=prompt_tokens,
+             completion_tokens=completion_tokens,
+-            cache_tokens=0,
++            cache_tokens=cache_tokens,
+             cost_usd=cost,
+         )
+ 
+@@ -691,6 +709,9 @@ class LiteLLM(BaseLLM):
+         the full input from message_history + prompt.
+         """
+         previous_response_id = kwargs.pop("previous_response_id", None)
++        if self._responses_stateless:
++            previous_response_id = None
++        max_tokens = kwargs.pop("max_tokens", None)  # the chat-completions name for max_output_tokens
+ 
+         try:
+             # Build responses_kwargs
+@@ -700,9 +721,13 @@ class LiteLLM(BaseLLM):
+                 responses_kwargs["reasoning"] = {
+                     "effort": self._reasoning_effort,
+                 }
++            if self._reasoning_summary is not None:
++                responses_kwargs.setdefault("reasoning", {})["summary"] = self._reasoning_summary
++            if self._responses_stateless:
++                responses_kwargs["store"] = False
+ 
+             # Get max_output_tokens from model info
+-            max_output_tokens = self.get_model_output_limit()
++            max_output_tokens = max_tokens or self.get_model_output_limit()
+             if max_output_tokens is not None:
+                 responses_kwargs["max_output_tokens"] = max_output_tokens
+ 
+@@ -743,11 +768,28 @@ class LiteLLM(BaseLLM):
+         # Extract text content from response.output
+         content = ""
+         reasoning_content = None
++        summaries: list[str] = []
+         for output_item in response.output:
+             if getattr(output_item, "type", None) == "message":
+                 for content_part in getattr(output_item, "content", []):
+                     if getattr(content_part, "type", None) == "output_text":
+                         content += getattr(content_part, "text", "")
++            elif getattr(output_item, "type", None) == "reasoning":
++                for part in getattr(output_item, "summary", None) or []:
++                    text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
++                    if text:
++                        summaries.append(text)
++        if summaries:
++            reasoning_content = "\n\n".join(summaries)
++        extra = None
++        if self._reasoning_summary is not None:
++            extra = {
++                "reasoning_tokens": self._responses_reasoning_tokens(response),
++                "reasoning_content_kind": f"provider summary ({self._reasoning_summary})"
++                if self._reasoning_summary
++                else None,
++                "reasoning_summary_parts": len(summaries),
++            }
+ 
+         # Extract usage information
+         usage_info = self._extract_responses_usage_info(response)
+@@ -776,5 +818,13 @@ class LiteLLM(BaseLLM):
+             reasoning_content=reasoning_content,
+             model_name=getattr(response, "model", None),
+             usage=usage_info,
+-            response_id=response_id,
++            response_id=None if self._responses_stateless else response_id,
++            extra=extra,
+         )
++
++    @staticmethod
++    def _responses_reasoning_tokens(response) -> int | None:
++        details = getattr(getattr(response, "usage", None), "output_tokens_details", None)
++        if isinstance(details, dict):
++            return details.get("reasoning_tokens")
++        return getattr(details, "reasoning_tokens", None)
+diff --git a/src/harbor/agents/terminus_2/terminus_2.py b/src/harbor/agents/terminus_2/terminus_2.py
+index 61860e2a..f3f1dcf2 100644
+--- a/src/harbor/agents/terminus_2/terminus_2.py
++++ b/src/harbor/agents/terminus_2/terminus_2.py
+@@ -30,6 +30,7 @@ from harbor.llms.base import (
+     ContextLengthExceededError,
+     LLMBackend,
+     LLMResponse,
++    MaxSeqLenExceededError,
+     OutputLengthExceededError,
+     SingleTurnMaxSeqLenExceededError,
+ )
+@@ -197,6 +198,7 @@ class Terminus2(BaseAgent):
+         extra_env: dict[str, str] | None = None,
+         command_timeout_sec: float | None = None,
+         stop_at_context_limit: bool = False,
++        max_seq_len: int | None = None,
+         *args,
+         **kwargs,
+     ):
+@@ -368,6 +370,10 @@ class Terminus2(BaseAgent):
+         # With summarization off, a call refused for the context limit ends the trial with an error; with this set it
+         # ends the agent instead, and the verifier grades the container as it is (as Tmax's agent does)
+         self._stop_at_context_limit = stop_at_context_limit
++        # Context limit for providers that don't enforce ours (e.g. a 922k-token API model run at 65,536): a call whose
++        # prompt + completion exceeds it raises MaxSeqLenExceededError, handled like a context-limit refusal
++        self._max_seq_len = max_seq_len
++        self._use_responses_api = use_responses_api
+ 
+     def _resolve_model_info(
+         self, model_name: str | None, provided_model_info: dict[str, Any] | None
+@@ -1070,6 +1076,7 @@ so ask everything you need to know."""
+             retry_if_not_exception_type(
+                 (
+                     ContextLengthExceededError,
++                    MaxSeqLenExceededError,
+                     OutputLengthExceededError,
+                     SingleTurnMaxSeqLenExceededError,
+                 )
+@@ -1523,6 +1530,7 @@ so ask everything you need to know."""
+                             prompt_token_ids=llm_response.prompt_token_ids,
+                             completion_token_ids=llm_response.completion_token_ids,
+                             logprobs=llm_response.logprobs,
++                            extra=llm_response.extra if self._use_responses_api else None,
+                         ),
+                     )
+                 )
+@@ -1653,6 +1661,7 @@ so ask everything you need to know."""
+                         prompt_token_ids=llm_response.prompt_token_ids,
+                         completion_token_ids=llm_response.completion_token_ids,
+                         logprobs=llm_response.logprobs,
++                        extra=llm_response.extra if self._use_responses_api else None,
+                     ),
+                 )
+             )
+@@ -1696,7 +1705,11 @@ so ask everything you need to know."""
+         context: AgentContext,
+     ) -> None:
+         self._reset_per_run_state()
+-        self._chat = Chat(self._llm, interleaved_thinking=self._interleaved_thinking)
++        self._chat = Chat(
++            self._llm,
++            interleaved_thinking=self._interleaved_thinking,
++            max_seq_len=self._max_seq_len,
++        )
+         self._context = context
+ 
+         if self._session is None:
+@@ -1742,7 +1755,7 @@ so ask everything you need to know."""
+                 chat=self._chat,
+                 original_instruction=instruction,
+             )
+-        except ContextLengthExceededError:
++        except (ContextLengthExceededError, MaxSeqLenExceededError):
+             if not self._stop_at_context_limit:
+                 raise
+             self.logger.debug("Context limit reached: agent stops, the verifier grades the current state")
+diff --git a/tests/unit/llms/test_responses_reasoning.py b/tests/unit/llms/test_responses_reasoning.py
+new file mode 100644
+index 00000000..7924a3e8
+--- /dev/null
++++ b/tests/unit/llms/test_responses_reasoning.py
+@@ -0,0 +1,131 @@
++"""Responses API: reasoning summaries, stateless calls, cached-token pricing, and the max_seq_len context stop."""
++
++from types import SimpleNamespace
++
++import pytest
++
++from harbor.llms.base import LLMResponse, MaxSeqLenExceededError, UsageInfo
++from harbor.llms.chat import Chat
++from harbor.llms.lite_llm import LiteLLM
++
++PRICES = {
++    "max_input_tokens": 65536,
++    "max_output_tokens": 16384,
++    "input_cost_per_token": 2e-07,
++    "output_cost_per_token": 1.2e-06,
++    "cache_read_input_token_cost": 2e-08,
++}
++
++
++def _response(summaries=("**Plan**\n\nInspect the files.",), encrypted="gAAAA-enc", reasoning_tokens=120,
++              input_tokens=1000, cached=600, output_tokens=300):
++    items = []
++    if summaries is not None:
++        items.append(SimpleNamespace(type="reasoning", encrypted_content=encrypted,
++                                     summary=[SimpleNamespace(type="summary_text", text=t) for t in summaries]))
++    items.append(SimpleNamespace(type="message", content=[SimpleNamespace(type="output_text", text='{"analysis": "a"}')]))
++    usage = SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens,
++                            input_tokens_details=SimpleNamespace(cached_tokens=cached),
++                            output_tokens_details=SimpleNamespace(reasoning_tokens=reasoning_tokens))
++    return SimpleNamespace(id="resp_1", model="gpt-5.6-luna", output=items, usage=usage, status="completed",
++                           _hidden_params={})
++
++
++def _llm(**llm_kwargs):
++    return LiteLLM(model_name="openai/fake-luna-test", use_responses_api=True, reasoning_effort="high",
++                   model_info=PRICES, **llm_kwargs)
++
++
++@pytest.fixture
++def captured(monkeypatch):
++    calls = []
++
++    async def fake_aresponses(**kwargs):
++        calls.append(kwargs)
++        return calls_response[0]
++
++    calls_response = [_response()]
++    monkeypatch.setattr("litellm.aresponses", fake_aresponses)
++    monkeypatch.setattr("litellm.completion_cost", lambda **_: 0.0)
++    return SimpleNamespace(calls=calls, set_response=lambda r: calls_response.__setitem__(0, r))
++
++
++@pytest.mark.asyncio
++async def test_summary_requested_and_stored(captured):
++    r = await _llm(reasoning_summary="detailed", responses_stateless=True).call(prompt="go", message_history=[])
++    sent = captured.calls[0]
++    assert sent["reasoning"] == {"effort": "high", "summary": "detailed"}
++    assert sent["store"] is False and "include" not in sent  # no encrypted reasoning: nobody but OpenAI can read it
++    assert "reasoning_summary" not in sent and "responses_stateless" not in sent  # not leaked to the API
++    assert r.reasoning_content == "**Plan**\n\nInspect the files."
++    assert r.extra == {"reasoning_tokens": 120, "reasoning_content_kind": "provider summary (detailed)",
++                       "reasoning_summary_parts": 1}
++
++
++@pytest.mark.asyncio
++async def test_multiple_summary_parts_joined(captured):
++    captured.set_response(_response(summaries=("A", "B")))
++    r = await _llm(reasoning_summary="detailed", responses_stateless=True).call(prompt="go", message_history=[])
++    assert r.reasoning_content == "A\n\nB" and r.extra["reasoning_summary_parts"] == 2
++
++
++@pytest.mark.asyncio
++async def test_missing_summary_still_records_reasoning_tokens(captured):
++    captured.set_response(_response(summaries=()))
++    r = await _llm(reasoning_summary="detailed", responses_stateless=True).call(prompt="go", message_history=[])
++    assert r.reasoning_content is None
++    assert r.extra["reasoning_tokens"] == 120 and r.extra["reasoning_summary_parts"] == 0
++
++
++@pytest.mark.asyncio
++async def test_stateless_sends_full_history_and_no_chain(captured):
++    llm = _llm(reasoning_summary="detailed", responses_stateless=True)
++    hist = [{"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"}]
++    r = await llm.call(prompt="q2", message_history=hist, previous_response_id="resp_0")
++    sent = captured.calls[0]
++    assert "previous_response_id" not in sent
++    assert sent["input"] == hist + [{"role": "user", "content": "q2"}]
++    assert r.response_id is None  # so Chat never starts a chain
++
++
++@pytest.mark.asyncio
++async def test_max_tokens_maps_to_max_output_tokens(captured):
++    await _llm(responses_stateless=True).call(prompt="go", message_history=[], max_tokens=16384)
++    sent = captured.calls[0]
++    assert sent["max_output_tokens"] == 16384 and "max_tokens" not in sent
++
++
++@pytest.mark.asyncio
++async def test_cached_tokens_and_cost(captured):
++    r = await _llm(responses_stateless=True).call(prompt="go", message_history=[])
++    assert r.usage.cache_tokens == 600
++    assert r.usage.cost_usd == pytest.approx(400 * 2e-07 + 600 * 2e-08 + 300 * 1.2e-06)
++
++
++@pytest.mark.asyncio
++async def test_default_behaviour_unchanged(captured):
++    """Without the new options: no summary, no store/include, chain id returned, no extra."""
++    captured.set_response(_response(summaries=None))  # the API sends no reasoning item unless asked
++    r = await _llm().call(prompt="go", message_history=[])
++    sent = captured.calls[0]
++    assert sent["reasoning"] == {"effort": "high"}
++    assert "store" not in sent and "include" not in sent
++    assert r.response_id == "resp_1" and r.extra is None
++
++
++class _FixedLLM:
++    def __init__(self, prompt_tokens, completion_tokens):
++        self.usage = UsageInfo(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, cache_tokens=0,
++                               cost_usd=0.01)
++
++    async def call(self, **_):
++        return LLMResponse(content="x", usage=self.usage)
++
++
++@pytest.mark.asyncio
++async def test_chat_max_seq_len_stops_over_limit():
++    with pytest.raises(MaxSeqLenExceededError):
++        await Chat(_FixedLLM(60000, 6000), max_seq_len=65536).chat("p")
++    chat = Chat(_FixedLLM(60000, 5000), max_seq_len=65536)
++    await chat.chat("p")
++    assert len(chat.messages) == 2
