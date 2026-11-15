@@ -125,3 +125,9 @@ def test_status_lists_several_mac_plans_and_sums_their_costs(tmp_path):
     assert [x["aggregate_cost_usd"] for x in s["schedules"]] == [0.5, 0.25]
     assert s["schedule"]["batches"][0]["name"] == "day_b1" and s["aggregate_cost_usd"] == 0.25  # last = current
     assert {j["name"] for j in s["jobs"]} == {"night_b1", "day_b1"}
+
+
+def test_model_label_separates_an_explicit_reasoning_effort():
+    assert browse.model_label("openai/gpt-5.6-luna", {"reasoning_effort": "medium"}) == "openai/gpt-5.6-luna · reasoning medium"
+    assert browse.model_label("openai/gpt-5.6-luna", {"store_all_messages": True}) == "openai/gpt-5.6-luna"
+    assert browse.model_label(None, {"reasoning_effort": "medium"}) is None

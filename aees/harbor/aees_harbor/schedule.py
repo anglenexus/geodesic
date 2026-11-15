@@ -158,10 +158,14 @@ def ingest_into_ledger(plan: dict, job: Path) -> dict:
 
 def harbor_cmd(plan: dict, batch: dict) -> list[str]:
     tasks = [t.strip() for t in (HERE / plan["tasks_file"]).read_text().split() if t.strip()]
-    cmd = ["harbor", "run", "--env-file", str(Path(plan["env_file"]).expanduser()),
+    # harbor_bin: e.g. the Tmax-aligned build (harbor-miles + patches) instead of the `harbor` on PATH
+    cmd = [str(Path(plan.get("harbor_bin", "harbor")).expanduser()) if plan.get("harbor_bin") else "harbor",
+           "run", "--env-file", str(Path(plan["env_file"]).expanduser()),
            "--dataset", plan["dataset"], "--agent", plan["agent"], "-m", plan["model"],
            "--env", "docker", "-o", str(Path(plan["jobs_root"]).expanduser()), "--job-name", batch["name"],
            "-n", str(batch["concurrency"]), "-k", str(batch["attempts"]), "-r", "0", "-y"]
+    if plan.get("timeout_multiplier") is not None:
+        cmd += ["--timeout-multiplier", str(plan["timeout_multiplier"])]
     for k, v in plan["agent_kwargs"].items():
         cmd += ["--ak", f"{k}={json.dumps(v)}"]
     for t in tasks:
@@ -219,7 +223,7 @@ def run(plan_path: Path, dry_run: bool) -> None:
         save(plan_path, plan)
         log(plan_path, f"launching {batch['name']}: {batch['attempts']} attempts x tasks, -n {batch['concurrency']}")
         cmd = plan.get("command_override") or harbor_cmd(plan, batch)  # override is for tests only
-        env = {**os.environ, "DOCKER_DEFAULT_PLATFORM": "linux/amd64"}
+        env = {**os.environ, "DOCKER_DEFAULT_PLATFORM": "linux/amd64", **plan.get("env", {})}
         killed = None
         with open(plan_path.with_name(f"{batch['name']}.harbor.log"), "w") as out:
             if dry_run:

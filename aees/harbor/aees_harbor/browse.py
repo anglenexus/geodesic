@@ -77,7 +77,8 @@ def scenarios(ledger: Ledger) -> list[dict]:
     out = []
     for s in ledger.scenarios():
         rewards = [t["facts"].get("reward") for t in ledger.trial_facts(s["key"])]
-        out.append({**s, "n_trials": len(rewards),
+        out.append({**s, "model_label": model_label(s["fields"].get("model"), s["fields"].get("agent_kwargs")),
+                    "n_trials": len(rewards),
                     "raw_reward_1": sum(r == 1.0 for r in rewards),
                     "raw_reward_0": sum(r == 0.0 for r in rewards),
                     "raw_no_reward": sum(r is None for r in rewards)})
@@ -92,7 +93,7 @@ def trials(ledger: Ledger, key: str | None) -> list[dict]:
         status = {**{i: "held" for i in s["held"]}, **{i: "pass" for i in s["passed"]},
                   **{i: "fail" for i in s["failed"]}}
         fields = ledger.scenario_fields(k)
-        task, model = fields["task"], fields.get("model")
+        task, model = fields["task"], model_label(fields.get("model"), fields.get("agent_kwargs"))
         for t in ledger.trial_facts(k):
             out.append({"key": k, "task": task, "model": model, "run_index": t["run_index"], "attempt": t["attempt"],
                         "status": status.get(t["run_index"], "released"), **t["facts"]})
@@ -165,10 +166,17 @@ def job_dir(jobs_root: Path, name: str) -> Path:
     return d
 
 
+def model_label(model: str | None, agent_kwargs: dict | None) -> str | None:
+    """The model as the web tools show and filter it: the model name, plus the reasoning effort when a run set one,
+    e.g. 'openai/gpt-5.6-luna · reasoning medium', so runs with an explicit setting form their own partition."""
+    effort = (agent_kwargs or {}).get("reasoning_effort")
+    return f"{model} · reasoning {effort}" if model and effort else model
+
+
 def job_model(job: Path) -> str | None:
-    """The model a Harbor job ran (its first agent's model_name in config.json), e.g. 'openai/gpt-5.6-luna'."""
+    """The model a Harbor job ran (its first agent's model_name and kwargs in config.json)."""
     agents = (_read_json(job / "config.json") or {}).get("agents") or [{}]
-    return agents[0].get("model_name")
+    return model_label(agents[0].get("model_name"), agents[0].get("kwargs"))
 
 
 def jobs(ledger: Ledger, jobs_root: Path) -> list[dict]:

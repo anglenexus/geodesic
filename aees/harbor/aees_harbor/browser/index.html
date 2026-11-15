@@ -163,8 +163,8 @@ const trialHref = t => `#/trial/${t.key}/${t.run_index}/${t.attempt}`;
 async function pageLedger() {
   setNav("ledger");
   const allRows = await api("/api/scenarios");
-  setModels(allRows.map(r => r.fields.model));
-  const rows = allRows.filter(r => byModel(r.fields.model));
+  setModels(allRows.map(r => r.model_label || r.fields.model));
+  const rows = allRows.filter(r => byModel(r.model_label || r.fields.model));
   const sum = k => rows.reduce((a, r) => a + (Array.isArray(r[k]) ? r[k].length : (r[k] || 0)), 0);
   const target = rows.reduce((a, r) => a + r.target, 0);
   app.replaceChildren(
@@ -194,7 +194,7 @@ async function pageLedger() {
         const f = r.fields, done = r.passed.length + r.failed.length;
         const rate = r.n_trials ? r.raw_reward_1 / r.n_trials : null;
         return el("tr", { class: "click" + rowClass(f.task), onclick: () => location.hash = `#/task/${r.key}` },
-          taskCell(f.task), el("td", {}, f.model), el("td", { class: "muted" }, `${f.agent} ${f.agent_version} · ${f.tool_mode}`),
+          taskCell(f.task), el("td", {}, r.model_label || f.model), el("td", { class: "muted" }, `${f.agent} ${f.agent_version} · ${f.tool_mode}`),
           el("td", { class: "num" }, r.n_trials), el("td", { class: "num" }, r.held.length),
           el("td", { class: "num" }, r.passed.length), el("td", { class: "num" }, r.failed.length),
           el("td", { class: "num" }, `${r.raw_reward_1} / ${r.raw_reward_0} / ${r.raw_no_reward}`),
