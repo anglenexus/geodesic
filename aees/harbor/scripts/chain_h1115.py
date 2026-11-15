@@ -1,25 +1,23 @@
-"""Unattended h1115 run on the laptop: batch 1 -> checks -> batch 2 -> per-box finish and teardown.
+"""Unattended h1115 run on the laptop: batch 1 -> checks -> batch 2 on all boxes -> verified ledger ingest -> teardown.
 
     python3 scripts/chain_h1115.py [--loop 120] [--dry-run]
 
-Batch 1 (50 attempts x 20 training tasks) runs from each box's plan state/schedule_h1115_i<k>.json. When every box's
-batch 1 has ended, this script syncs, evaluates the user's two conditions, and writes state/h1115_b1_report.{json,md}:
+Any task runs on any box: run indices are assigned here, on the laptop, by ingesting every mirrored trial folder
+(aees_harbor.ingest; a folder is recorded once), so nothing ties tasks to boxes.
 
-  reasoning  encrypted reasoning stored on >= 95% of agent steps, a summary on >= 20% of them, and the next call's
-             input carrying the previous step's reasoning (checked by token arithmetic on a sample)
-  trajectories  batch 1 finished on every box (not stopped by a kill switch), and trials with no reward (no verifier
-             result) <= 3% (the earlier EC2 lesson)
-
-If both hold, batch 2 is appended to each box's plan: for every task, enough attempts for 200 successes in total at
-its batch-1 success rate (ceil((200 - s) / p), at most MAX_ATTEMPTS; tasks with no success are left out and listed).
-One batch per task, -n 40, on the same box as batch 1 (exactly-once run indices). The estimate (API at each task's
-batch-1 cost per trial; EC2 by the longest box) must be <= MAX_B2_USD, else batch 2 is not started. The laptop
-run_guard is restarted with cap = spent so far + 140% of the batch-2 estimate; each box's own API backstop is 2x
-its estimate.
-
-Every box whose plan has ended (or that the checks stop) is finished one by one: sync, verify the mirror holds every
-trial on the box, back up the laptop ledger, test the merge on a copy, merge (box paths rewritten to the mirror),
-then terminate the instance. Any failed step leaves the box running and is logged; nothing is terminated unverified.
+1. Wait until no `harbor run` is left on any box (batch 1: jobs tb21_h1115_i<k>_b1 and _b1x_<task>), then sync and
+   evaluate the user's two conditions, written to state/h1115_b1_report.{json,md}:
+     reasoning     encrypted reasoning on >= 95% of agent steps, a summary on >= 20%, and the previous step's
+                   reasoning re-sent on >= 90% of >= 20 checked steps (token arithmetic, o200k tokenizer)
+     trajectories  >= 95% of each task's 50 attempts finished, no reward <= 3% (earlier EC2 lesson), kill switch quiet
+2. If both hold: batch 2 = for each task ceil((200 - s) / p) attempts at its batch-1 rate p (at most MAX_ATTEMPTS;
+   tasks with no success are left out and listed), spread over all six boxes by scripts/spread_h1115.py at 40 per box
+   (240 at once). Not started if the estimate (API at batch-1 $/trial per task; EC2 = 6 boxes x the expected hours)
+   is above MAX_B2_USD. The laptop run_guard is restarted with cap = counted so far + 140% of the batch-2 estimate, and
+   each box gets a backstop (tmux h1115_backstop) that interrupts its harbor jobs at 2x its share of the API estimate.
+3. When no harbor job is left on any box (batch 2 done, or the checks failed, or a kill switch fired): sync, verify the
+   mirror holds every trial folder each box has, back up the laptop ledger, ingest every mirrored h1115 job into a
+   copy, then into the ledger, then terminate all six instances. Any failed step terminates nothing and is logged.
 Log: state/h1115_chain.log; state: state/h1115_chain.json.
 """
 from __future__ import annotations
@@ -33,27 +31,49 @@ import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent  # aees/harbor
 sys.path.insert(0, str(HERE))
-from aees_harbor.merge import merge  # noqa: E402
-from aees_harbor.remote import load_config, sync_one  # noqa: E402
-
 sys.path.insert(0, str(HERE / "scripts"))
+from aees_harbor.ingest import ingest_job  # noqa: E402
+from aees_harbor.ledger import Ledger  # noqa: E402
+from aees_harbor.remote import load_config, sync_one  # noqa: E402
 import run_guard  # noqa: E402
+import spread_h1115  # noqa: E402
 
 RUN = "h1115"
 TARGET = 200          # successes per task, batches 1 + 2
+B1_ATTEMPTS = 50
 MAX_ATTEMPTS = 1000   # per task in batch 2
 MAX_B2_USD = 400.0    # API + EC2; above this batch 2 is not started (left for the user)
-CONC = 40
-ENDED = ("done", "failed", "killed", "stopped", "skipped")
+PER_BOX = 40
+RATE = 1.6128         # m7i.8xlarge $/h
+MIRROR = Path("~/code/jobs_remote").expanduser()
 STATE = HERE / "state" / f"{RUN}_chain.json"
 LOG = HERE / "state" / f"{RUN}_chain.log"
 GUARD_SINCE = dt.datetime(2026, 11, 15, 0, 19)
-GUARD_CMD = ["caffeinate", "-i", "python3", "scripts/run_guard.py", "--remotes", "aees-l*", "--ec2-usd-per-hour", "1.6128",
+GUARD_CMD = ["caffeinate", "-i", "python3", "scripts/run_guard.py", "--remotes", "aees-l*", "--ec2-usd-per-hour", str(RATE),
              "--since", f"{GUARD_SINCE:%Y-%m-%d %H:%M}", "--ended-json", str(STATE), "--loop", "60"]
+BACKSTOP = r'''
+import glob, json, subprocess, sys, time
+cap = float(sys.argv[1])
+while True:
+    c = 0.0
+    for f in glob.glob("/home/ubuntu/jobs/tb21_h1115_i*_b2_*/*__*/result.json"):
+        try:
+            c += (json.load(open(f)).get("agent_result") or {}).get("cost_usd") or 0
+        except Exception:
+            pass
+    if c >= cap:
+        subprocess.run(["pkill", "-INT", "-f", "[h]arbor run --env"])
+        open("/home/ubuntu/h1115_backstop.log", "a").write(f"{time.ctime()} backstop: ${c:.2f} >= ${cap}\n")
+        break
+    if subprocess.run(["pgrep", "-f", "[h]arbor run --env"], capture_output=True).returncode != 0:
+        break
+    time.sleep(60)
+'''
 
 
 def log(msg: str) -> None:
@@ -64,7 +84,7 @@ def log(msg: str) -> None:
 
 
 def load_state() -> dict:
-    return json.loads(STATE.read_text()) if STATE.exists() else {"phase": "b1", "finished_boxes": []}
+    return json.loads(STATE.read_text()) if STATE.exists() else {"phase": "b1"}
 
 
 def save_state(s: dict) -> None:
@@ -80,18 +100,25 @@ def ssh(r: dict, cmd: str, timeout: int = 120, input: str | None = None) -> subp
                            f"{r['user']}@{r['host']}", cmd], capture_output=True, text=True, timeout=timeout, input=input)
 
 
-def box_plan(r: dict) -> dict | None:
-    p = ssh(r, f"cat {r['remote_harbor']}/{r['plan']}")
-    return json.loads(p.stdout) if p.returncode == 0 else None
+def all_idle(cfg: dict) -> bool | None:
+    """True if no box runs `harbor run`; None if a box can't be reached."""
+    def q(r):
+        p = ssh(r, "pgrep -f '[h]arbor run --env' >/dev/null && echo busy || echo idle")
+        return p.stdout.strip() if p.returncode == 0 else None
+    with ThreadPoolExecutor(6) as ex:
+        states = list(ex.map(q, boxes(cfg)))
+    return None if None in states else all(s == "idle" for s in states)
 
 
-def mirror(r: dict) -> Path:
-    return Path("~/code/jobs_remote").expanduser() / r["name"]
+def sync_all(cfg: dict) -> list[str]:
+    with ThreadPoolExecutor(6) as ex:
+        res = list(ex.map(lambda r: sync_one(cfg, r), boxes(cfg)))
+    return [f"{x['name']}: {x['errors']}" for x in res if not x["ok"]]
 
 
 def guard_fired() -> bool:
-    log_path = HERE / "state" / "run_guard.log"
-    return log_path.exists() and any("CAP REACHED" in l and l >= "2026-11-15 00:19" for l in log_path.read_text().splitlines())
+    p = HERE / "state" / "run_guard.log"
+    return p.exists() and any("CAP REACHED" in l and l >= f"{GUARD_SINCE:%Y-%m-%d %H:%M}" for l in p.read_text().splitlines())
 
 
 # ---------- batch-1 evaluation ----------
@@ -103,6 +130,8 @@ def trials(job_glob: str) -> list[dict]:
         try:
             r = json.loads(Path(res).read_text())
         except json.JSONDecodeError:
+            continue
+        if not r.get("finished_at"):
             continue
         steps = []
         try:
@@ -120,13 +149,12 @@ def trials(job_glob: str) -> list[dict]:
 
 
 def carry_check(sample: list[dict]) -> tuple[int, int]:
-    """Steps whose input grew by the previous step's reasoning (beyond reply + terminal output), via o200k tokens.
-    Run on a box (tiktoken is in the harbor venv there); returns (consistent, checked)."""
+    """Steps whose input grew by the previous step's reasoning beyond reply + terminal output: (consistent, checked)."""
     ok = n = 0
     try:
         import tiktoken  # noqa: PLC0415
         enc = tiktoken.get_encoding("o200k_base")
-    except Exception:  # noqa: BLE001 - no tokenizer on the laptop: skip, reported as not checked
+    except Exception:  # noqa: BLE001 - no tokenizer: nothing checked, and the check fails
         return 0, 0
     for t in sample:
         st = t["steps"]
@@ -142,53 +170,60 @@ def carry_check(sample: list[dict]) -> tuple[int, int]:
     return ok, n
 
 
-def evaluate(cfg: dict, plans: dict) -> dict:
-    ts = trials(str(Path("~/code/jobs_remote").expanduser() / "aees-l*" / f"tb21_{RUN}_i*_b1"))
+def b1_glob() -> str:
+    return str(MIRROR / "aees-l*" / f"tb21_{RUN}_i*_b1*")
+
+
+def evaluate(train: list[str]) -> dict:
+    ts = trials(b1_glob())
     steps = [s for t in ts for s in t["steps"]]
     enc = sum(1 for s in steps if ((s.get("metrics") or {}).get("extra") or {}).get("reasoning_encrypted"))
     summ = sum(1 for s in steps if s.get("reasoning_content"))
     ok, n = carry_check(sorted(ts, key=lambda t: -len(t["steps"]))[:40])
     no_reward = sum(1 for t in ts if t["reward"] is None)
-    per = {}
+    per = {t: dict(n=0, s=0, cost=0.0, ctx_stop=0, timeouts=0, no_reward=0, secs=[]) for t in train}
     for t in ts:
-        d = per.setdefault(t["task"], dict(n=0, s=0, cost=0.0, ctx_stop=0, timeouts=0, no_reward=0, secs=[]))
+        if t["task"] not in per:
+            continue
+        d = per[t["task"]]
         d["n"] += 1; d["s"] += t["reward"] == 1; d["cost"] += t["cost"]; d["ctx_stop"] += t["ctx_stop"]
         d["timeouts"] += t["exc"] == "AgentTimeoutError"; d["no_reward"] += t["reward"] is None
         if t["started"] and t["finished"]:
             d["secs"].append((dt.datetime.fromisoformat(t["finished"].replace("Z", "+00:00"))
                               - dt.datetime.fromisoformat(t["started"].replace("Z", "+00:00"))).total_seconds())
-    statuses = {name: [b["status"] for b in p["batches"]] for name, p in plans.items()}
+    for d in per.values():
+        d["median_min"] = round(sorted(d["secs"])[len(d["secs"]) // 2] / 60, 1) if d["secs"] else None
+        d.pop("secs")
     checks = {
         "encrypted_reasoning_on_>=95%_of_steps": bool(steps) and enc / len(steps) >= 0.95,
         "summary_on_>=20%_of_steps": bool(steps) and summ / len(steps) >= 0.20,
-        "reasoning_carried_on_>=90%_of_>=20_checked_steps": n >= 20 and ok / n >= 0.90,
-        "batch1_done_on_every_box": all(s and s[0] == "done" for s in statuses.values()),
-        "kill_switch_not_fired": not guard_fired(),
+        "reasoning_resent_on_>=90%_of_>=20_checked_steps": n >= 20 and ok / n >= 0.90,
+        "every_task_>=95%_of_50_finished": all(d["n"] >= 0.95 * B1_ATTEMPTS for d in per.values()),
         "no_reward_<=3%": bool(ts) and no_reward / len(ts) <= 0.03,
-        "every_task_has_trials": len(per) == 20,
+        "kill_switch_not_fired": not guard_fired(),
     }
     return dict(trials=len(ts), steps=len(steps), encrypted_steps=enc, summary_steps=summ, carry_ok=ok, carry_checked=n,
-                no_reward=no_reward, per_task={k: {**v, "secs": None, "median_min": round(sorted(v["secs"])[len(v["secs"]) // 2] / 60, 1)
-                                                if v["secs"] else None} for k, v in per.items()},
-                box_status=statuses, checks=checks, passed=all(checks.values()))
+                no_reward=no_reward, per_task=per, checks=checks, passed=all(checks.values()))
 
 
-def plan_b2(ev: dict, plans: dict, cfg: dict) -> dict:
-    task_box = {t: r["name"] for r in boxes(cfg) for t in (HERE / "state" / f"tasks_{RUN}_i{r['name'][-1]}.txt").read_text().split()}
-    attempts, left_out, api, box_hours = {}, [], 0.0, {}
+def plan_b2(ev: dict, nbox: int = 6) -> dict:
+    attempts, left_out, api, minutes = {}, [], 0.0, 0.0
     for t, d in ev["per_task"].items():
-        if d["s"] >= TARGET:
+        if d["s"] >= TARGET or d["n"] == 0:
             continue
         if d["s"] == 0:
-            left_out.append(t); continue
+            left_out.append(t)
+            continue
         a = min(MAX_ATTEMPTS, math.ceil((TARGET - d["s"]) / (d["s"] / d["n"])))
         attempts[t] = a
         api += a * d["cost"] / d["n"]
-        box_hours[task_box[t]] = box_hours.get(task_box[t], 0.0) + a * (d["median_min"] or 15) / 60 / CONC
-    ec2 = 1.6128 * sum(box_hours.values()) + 1.6128 * 0.5 * len(box_hours)  # per box until its own teardown, + 30 min
-    return dict(attempts=attempts, left_out=left_out, task_box=task_box, api_est=round(api, 2), ec2_est=round(ec2, 2),
-                total_est=round(api + ec2, 2), box_hours={k: round(v, 2) for k, v in box_hours.items()},
-                trials=sum(attempts.values()))
+        minutes += a * (d["median_min"] or 15)
+    hours = minutes / 60 / (nbox * PER_BOX) + 0.5  # all slots busy, + 30 min for the tail and teardown
+    ec2 = nbox * RATE * hours
+    return dict(attempts=attempts, left_out=left_out, api_est=round(api, 2), ec2_est=round(ec2, 2),
+                total_est=round(api + ec2, 2), hours_est=round(hours, 2), trials=sum(attempts.values()),
+                weights={t: ev["per_task"][t]["median_min"] or 15 for t in attempts},
+                cost_per_trial={t: ev["per_task"][t]["cost"] / max(ev["per_task"][t]["n"], 1) for t in attempts})
 
 
 def write_report(ev: dict, b2: dict | None, decision: str) -> None:
@@ -196,104 +231,86 @@ def write_report(ev: dict, b2: dict | None, decision: str) -> None:
     lines = [f"# {RUN} batch 1 report ({dt.datetime.now():%Y-%m-%d %H:%M} PT)", "", f"**Decision:** {decision}", "",
              "## Checks", *[f"- {'PASS' if v else 'FAIL'} {k}" for k, v in ev["checks"].items()], "",
              f"Trials {ev['trials']}, agent steps {ev['steps']}: encrypted reasoning on {ev['encrypted_steps']}, summary on "
-             f"{ev['summary_steps']}; reasoning carried on {ev['carry_ok']}/{ev['carry_checked']} checked steps; no reward {ev['no_reward']}.",
-             "", "## Per task (batch 1)", "", "| Task | Trials | Successes | Rate | Context stops | Timeouts | $/trial | Batch-2 attempts |",
-             "|---|---|---|---|---|---|---|---|"]
+             f"{ev['summary_steps']}; reasoning re-sent on {ev['carry_ok']}/{ev['carry_checked']} checked steps; "
+             f"no reward {ev['no_reward']}.", "", "## Per task (batch 1)", "",
+             "| Task | Trials | Successes | Rate | Context stops | Timeouts | Median min | $/trial | Batch-2 attempts |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for t, d in sorted(ev["per_task"].items(), key=lambda kv: kv[1]["s"] / max(kv[1]["n"], 1)):
         lines.append(f"| {t} | {d['n']} | {d['s']} | {100 * d['s'] / max(d['n'], 1):.0f}% | {d['ctx_stop']} | {d['timeouts']} | "
-                     f"{d['cost'] / max(d['n'], 1):.4f} | {(b2 or {}).get('attempts', {}).get(t, '-')} |")
+                     f"{d['median_min']} | {d['cost'] / max(d['n'], 1):.4f} | {(b2 or {}).get('attempts', {}).get(t, '-')} |")
     if b2:
-        lines += ["", f"Batch 2: {b2['trials']} trials, estimate API ${b2['api_est']} + EC2 ${b2['ec2_est']} = ${b2['total_est']}; "
-                  f"left out (no success in batch 1): {', '.join(b2['left_out']) or 'none'}"]
+        lines += ["", f"Batch 2: {b2['trials']} trials on 6 boxes x {PER_BOX}; estimate API ${b2['api_est']} + EC2 ${b2['ec2_est']} "
+                  f"(~{b2['hours_est']} h) = ${b2['total_est']}; left out (no success in batch 1): {', '.join(b2['left_out']) or 'none'}"]
     (HERE / "state" / f"{RUN}_b1_report.md").write_text("\n".join(lines) + "\n")
 
 
-def launch_b2(cfg: dict, plans: dict, b2: dict, dry: bool) -> None:
+def launch_b2(cfg: dict, b2: dict, dry: bool) -> None:
+    for line in spread_h1115.launch("b2", b2["attempts"], b2["weights"], PER_BOX, dry):
+        log(f"batch 2 launch: {line}")
+    box_cap = round(2 * b2["api_est"] / len(boxes(cfg)), 2)
+    api, ec2, _ = run_guard.totals(cfg, "aees-l*", RATE, GUARD_SINCE, load_state().get("ended_at"))
+    cap = round(api + ec2 + 1.4 * b2["total_est"], 2)
+    if dry:
+        log(f"[dry-run] would start box backstops at ${box_cap} and set run_guard cap ${cap}")
+        return
     for r in boxes(cfg):
-        i = r["name"][-1]
-        plan = plans[r["name"]]
-        mine = {t: a for t, a in b2["attempts"].items() if b2["task_box"][t] == r["name"]}
-        if not mine:
-            continue
-        files = {}
-        for t, a in sorted(mine.items(), key=lambda kv: -kv[1]):
-            tf = f"state/tasks_{RUN}_i{i}_b2_{t}.txt"
-            files[tf] = t + "\n"
-            plan["batches"].append(dict(name=f"tb21_{RUN}_i{i}_b2_{t}", attempts=a, concurrency=CONC, status="planned",
-                                        est_trials=a, tasks_file=tf, note=f"batch 2: {t}"))
-        box_api = sum(a * b2_cost_per_trial(t) for t, a in mine.items())
-        plan["budget_usd"] = round(plan["budget_usd"] + 2 * box_api, 2)
-        plan["name"] = plan["name"].replace("(batch 1)", "(batches 1 + 2)")
-        if dry:
-            log(f"[dry-run] {r['name']}: would add {mine}, backstop ${plan['budget_usd']}")
-            continue
-        for tf, body in files.items():
-            ssh(r, f"cat > {r['remote_harbor']}/{tf}", input=body)
-        ssh(r, f"cat > {r['remote_harbor']}/{r['plan']}", input=json.dumps(plan, indent=2) + "\n")
-        p = ssh(r, f"cd {r['remote_harbor']} && rm -f state/STOP && tmux kill-session -t sched 2>/dev/null; "
-                   f"tmux new -d -s sched \"export PATH=\\$HOME/.local/bin:\\$PATH; .venv/bin/python -m aees_harbor.schedule "
-                   f"--plan {r['plan']} 2>&1 | tee -a ~/sched.out\"; sleep 15; tail -1 ~/sched.out")
-        log(f"{r['name']}: batch 2 started ({mine}); backstop ${plan['budget_usd']}: {p.stdout.strip()[-150:]}")
-    api, ec2, _ = run_guard.totals(cfg, "aees-l*", 1.6128, GUARD_SINCE, load_state().get("ended_at"))
-    spent = api + ec2
-    cap = round(spent + 1.4 * b2["total_est"], 2)
-    if not dry:
-        subprocess.run(["pkill", "-f", "scripts/run_guard.py"])
-        subprocess.Popen(GUARD_CMD[:4] + ["--cap", str(cap)] + GUARD_CMD[4:], cwd=HERE,
-                         stdout=open(HERE / "state" / "run_guard.out", "a"), stderr=subprocess.STDOUT, start_new_session=True)
-        planned = 1000 + b2["trials"]
-        subprocess.run(["pkill", "-f", f"tmax_view.py --run {RUN}"])
-        subprocess.Popen(["python3", "scripts/tmax_view.py", "--run", RUN, "--jobs", f"~/code/jobs_remote/aees-l*/tb21_{RUN}_i*",
-                          "--data", str(Path("~/code/tmax_view").expanduser()), "--planned", str(planned), "--reasoning-effort", "high",
-                          "--loop", "60"], cwd=HERE, stdout=open(HERE / "state" / f"tmax_view_{RUN}.out", "a"),
-                         stderr=subprocess.STDOUT, start_new_session=True)
-    log(f"run_guard cap -> ${cap} (spent ${spent:.2f} + 140% of ${b2['total_est']})")
+        ssh(r, "cat > /tmp/h1115_backstop.py", input=BACKSTOP)
+        ssh(r, f"tmux kill-session -t h1115_backstop 2>/dev/null; sleep 20; tmux new -d -s h1115_backstop 'python3 /tmp/h1115_backstop.py {box_cap}'")
+    subprocess.run(["pkill", "-f", "scripts/run_guard.py"])
+    subprocess.Popen(GUARD_CMD[:4] + ["--cap", str(cap)] + GUARD_CMD[4:], cwd=HERE, stdout=open(HERE / "state" / "run_guard.out", "a"),
+                     stderr=subprocess.STDOUT, start_new_session=True)
+    subprocess.run(["pkill", "-f", f"tmax_view.py --run {RUN}"])
+    subprocess.Popen(["python3", "scripts/tmax_view.py", "--run", RUN, "--jobs", str(MIRROR / "aees-l*" / f"tb21_{RUN}_i*"),
+                      "--data", str(Path("~/code/tmax_view").expanduser()), "--planned", str(1000 + b2["trials"]),
+                      "--reasoning-effort", "high", "--loop", "60"], cwd=HERE,
+                     stdout=open(HERE / "state" / f"tmax_view_{RUN}.out", "a"), stderr=subprocess.STDOUT, start_new_session=True)
+    log(f"box backstops at ${box_cap} each; run_guard cap -> ${cap} (counted ${api + ec2:.2f} + 140% of ${b2['total_est']})")
 
 
-_COST: dict[str, float] = {}
+# ---------- finish: verify, ingest, terminate ----------
 
-
-def b2_cost_per_trial(task: str) -> float:
-    return _COST.get(task, 0.03)
-
-
-# ---------- per-box finish ----------
-
-def finish_box(cfg: dict, r: dict, dry: bool) -> bool:
-    name, i = r["name"], r["name"][-1]
-    if ssh(r, "pgrep -f '[h]arbor run --env' >/dev/null && echo busy || echo idle").stdout.strip() != "idle":
-        return False
-    res = sync_one(cfg, r)
-    if not res["ok"]:
-        log(f"{name}: sync errors {res['errors']}; not finishing"); return False
-    count = ssh(r, f"ls -d {r['remote_jobs']}/tb21_{RUN}_i{i}_*/*__*/result.json 2>/dev/null | wc -l").stdout.strip()
-    local = len(glob.glob(str(mirror(r) / f"tb21_{RUN}_i{i}_*" / "*__*" / "result.json")))
-    if not count.isdigit() or int(count) != local:
-        log(f"{name}: mirror has {local} trials, box has {count}; not finishing"); return False
-    src = HERE / "state" / "remote" / name / "ledger.sqlite"
-    if not src.exists():
-        log(f"{name}: no ledger snapshot; not finishing"); return False
-    stamp = dt.datetime.now().strftime("%m%d_%H%M")
+def finish(cfg: dict, dry: bool) -> bool:
+    errs = sync_all(cfg)
+    if errs:
+        log(f"sync errors {errs}; retrying later"); return False
+    for r in boxes(cfg):
+        p = ssh(r, f"cd {r['remote_jobs']} && ls -d tb21_{RUN}_*/*__* 2>/dev/null")
+        on_box = set(p.stdout.split())
+        local = {str(Path(d).relative_to(MIRROR / r["name"])) for d in glob.glob(str(MIRROR / r["name"] / f"tb21_{RUN}_*" / "*__*"))}
+        if p.returncode != 0 or not on_box <= local:
+            log(f"{r['name']}: mirror misses {len(on_box - local)} of {len(on_box)} trial folders; not finishing"); return False
+    jobs = sorted(Path(j) for j in glob.glob(str(MIRROR / "aees-l*" / f"tb21_{RUN}_i*")))
     led = HERE / "state" / "ledger.sqlite"
-    backup = HERE / "state" / f"ledger_backup_before_{RUN}_{name}_{stamp}.sqlite"
-    rules = [(r["remote_jobs"], str(mirror(r)))]
+    stamp = dt.datetime.now().strftime("%m%d_%H%M")
+    backup = HERE / "state" / f"ledger_backup_before_{RUN}_{stamp}.sqlite"
+    test = HERE / "state" / f"ledger_ingesttest_{RUN}.sqlite"
     try:
         shutil.copy2(led, backup)
-        test = HERE / "state" / f"ledger_mergetest_{RUN}_{name}.sqlite"
         shutil.copy2(led, test)
-        merge(test, [src], rules)
+        tl = Ledger(test)
+        tcounts = [ingest_job(tl, j) for j in jobs]
+        tl.close()
         test.unlink()
         if dry:
-            log(f"[dry-run] {name}: merge test ok; would merge and terminate {r['instance_id']}"); return True
-        merge(led, [src], rules)
-    except Exception as e:  # noqa: BLE001 - any failure: keep the box, log
-        log(f"{name}: merge failed ({type(e).__name__}: {e}); ledger backup {backup.name}; not terminating"); return False
-    (HERE / "state" / "remote" / name / f"ledger_{RUN}_final.sqlite").write_bytes(src.read_bytes())
-    t = subprocess.run(["aws", "ec2", "terminate-instances", "--region", r.get("region", "us-east-2"), "--instance-ids",
-                        r["instance_id"], "--query", "TerminatingInstances[0].CurrentState.Name", "--output", "text"],
-                       capture_output=True, text=True, timeout=120)
-    log(f"{name}: {local} trials verified and merged (backup {backup.name}); terminate -> {t.stdout.strip() or t.stderr.strip()[:200]}")
-    return t.returncode == 0
+            log(f"[dry-run] ingest test ok on {len(jobs)} jobs: {sum(c['ingested'] for c in tcounts)} trials; would ingest and terminate")
+            return True
+        rl = Ledger(led)
+        counts = [ingest_job(rl, j) for j in jobs]
+        rl.close()
+    except Exception as e:  # noqa: BLE001 - keep the boxes
+        log(f"ingest failed ({type(e).__name__}: {e}); ledger backup {backup.name}; not terminating"); return False
+    n = sum(c["ingested"] for c in counts)
+    log(f"ingested {n} trials from {len(jobs)} jobs into the ledger (backup {backup.name}; skipped "
+        f"{sum(c['skipped_target_full_or_frozen'] for c in counts)}, already there {sum(c['already_in_ledger'] for c in counts)})")
+    s = load_state()
+    for r in boxes(cfg):
+        t = subprocess.run(["aws", "ec2", "terminate-instances", "--region", r.get("region", "us-east-2"), "--instance-ids",
+                            r["instance_id"], "--query", "TerminatingInstances[0].CurrentState.Name", "--output", "text"],
+                           capture_output=True, text=True, timeout=120)
+        s.setdefault("ended_at", {})[r["name"]] = dt.datetime.now().isoformat(timespec="seconds")
+        log(f"{r['name']}: terminate -> {t.stdout.strip() or t.stderr.strip()[:200]}")
+    save_state(s)
+    return True
 
 
 # ---------- main loop ----------
@@ -301,47 +318,43 @@ def finish_box(cfg: dict, r: dict, dry: bool) -> bool:
 def step(dry: bool) -> bool:
     cfg = load_config()
     s = load_state()
-    plans = {r["name"]: box_plan(r) for r in boxes(cfg) if r["name"] not in s["finished_boxes"]}
-    if any(p is None for p in plans.values()):
-        log(f"cannot read plans from {[k for k, v in plans.items() if v is None]}; retrying"); return False
+    idle = all_idle(cfg)
+    if idle is None:
+        log("a box is unreachable; retrying"); return False
+    if not idle:
+        return False
     if s["phase"] == "b1":
-        if not all(p["batches"][0]["status"] in ENDED for p in plans.values()):
-            return False
-        log("batch 1 ended on every box; syncing and evaluating")
-        for r in boxes(cfg):
-            sync_one(cfg, r)
-        ev = evaluate(cfg, plans)
-        for t, d in ev["per_task"].items():
-            _COST[t] = d["cost"] / max(d["n"], 1)
-        b2 = plan_b2(ev, plans, cfg) if ev["passed"] else None
+        log("no harbor job left on any box: batch 1 ended; syncing and evaluating")
+        errs = sync_all(cfg)
+        if errs:
+            log(f"sync errors {errs}; retrying later"); return False
+        train = (HERE / "state" / "tb21_split1114_train.txt").read_text().split()
+        ev = evaluate(train)
+        b2 = plan_b2(ev, len(boxes(cfg))) if ev["passed"] else None
         if not ev["passed"]:
-            decision = "batch 2 NOT started: checks failed; boxes are finished and terminated"
+            decision = "batch 2 NOT started: checks failed; boxes will be finished and terminated"
         elif b2["total_est"] > MAX_B2_USD:
-            decision = f"batch 2 NOT started: estimate ${b2['total_est']} > ${MAX_B2_USD}; boxes are finished and terminated"
+            decision = f"batch 2 NOT started: estimate ${b2['total_est']} > ${MAX_B2_USD}; boxes will be finished and terminated"
         elif not b2["attempts"]:
             decision = "batch 2 not needed (every task at target or left out)"
         else:
-            decision = f"batch 2 started: {b2['trials']} trials, estimate ${b2['total_est']}"
+            decision = f"batch 2 started: {b2['trials']} trials on 6 boxes x {PER_BOX}, estimate ${b2['total_est']} (~{b2['hours_est']} h)"
         write_report(ev, b2, decision)
         log(decision)
         if decision.startswith("batch 2 started"):
-            launch_b2(cfg, plans, b2, dry)
-        s["phase"] = "b2" if decision.startswith("batch 2 started") else "finish"
-        save_state(s)
-        return False
-    # b2 / finish: finish each box whose plan has ended
-    for r in boxes(cfg):
-        if r["name"] in s["finished_boxes"]:
-            continue
-        p = plans[r["name"]]
-        if s["phase"] == "b2" and not all(b["status"] in ENDED for b in p["batches"]):
-            continue
-        if finish_box(cfg, r, dry) and not dry:
-            s["finished_boxes"].append(r["name"])
-            s.setdefault("ended_at", {})[r["name"]] = dt.datetime.now().isoformat(timespec="seconds")
+            launch_b2(cfg, b2, dry)
+            s["phase"] = "b2"
+        else:
+            s["phase"] = "finish"
+        if not dry:
             save_state(s)
-    if len(s["finished_boxes"]) == len(boxes(cfg)):
-        log("all boxes finished and terminated"); s["phase"] = "done"; save_state(s); return True
+        return dry
+    # b2 ended (no harbor job left) or finish: verify, ingest, terminate
+    if finish(cfg, dry):
+        if not dry:
+            s["phase"] = "done"; save_state(s)
+        log("done")
+        return True
     return False
 
 
@@ -353,10 +366,12 @@ def main() -> None:
     log(f"chain started (dry_run={a.dry_run})")
     while True:
         try:
-            if step(a.dry_run) or a.dry_run:
+            if step(a.dry_run):
                 break
         except Exception as e:  # noqa: BLE001 - keep going; logged
             log(f"error: {type(e).__name__}: {e}")
+        if a.dry_run:
+            break
         time.sleep(a.loop)
 
 
