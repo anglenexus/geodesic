@@ -98,3 +98,49 @@ Mean of per-task success rates (each task weighted equally), SD across tasks in 
 - **Train:** Luna data collection for the Q-function reward model; SFT/RL rollouts. Only train tasks.
 - **Validation:** checkpoint selection during training.
 - **Test:** base model and final checkpoint only.
+
+## Training data: GPT-5.6 Luna, high reasoning (run h1115, 2026-11-15)
+
+For the reward-learning (Q-function) and post-training agents. Collected on the **20 training tasks above only**.
+
+**Run.** terminus-2 with the Tmax settings (64 turns, 120 s per command, 65,536-token context with stop-and-grade,
+16,384 max tokens, each task's own time limits), `openai/gpt-5.6-luna` with **reasoning effort high**, called through
+OpenAI's Responses API with **each step's reasoning sent back** (encrypted) on every later call, so Luna sees its own
+earlier reasoning. Batch 1: 50 attempts per task (1,000 trials, 80.6% passed). Batch 2: attempts per task set from
+the batch-1 pass rate for **300 successes per task** (~7,700 trials). Settings: `aees/harbor/state/h1115_agent_kwargs.json`;
+Harbor build: harbor-miles + `post_training/grpo/{harbor_parser,command_timeout,responses_reasoning}.patch`.
+
+**Where the data lives.**
+- Ledger `aees/harbor/state/ledger.sqlite`: its own partition (scenario: model `openai/gpt-5.6-luna`, agent kwargs with
+  `reasoning_effort: high` and `llm_kwargs.responses_carry_reasoning: true`). Rows point to trial folders; the ledger
+  holds no text.
+- Trial folders on the laptop: `~/code/jobs_remote/aees-l<k>/tb21_h1115_i<k>_<batch>_<task>/<task>__<time>__<id>/`
+  (batch 1 also `tb21_h1115_i<k>_b1/`). After the EC2 boxes are terminated this mirror is the **only copy**: back it up.
+- Per trial, `agent/trajectory.json`, per agent step:
+  - `message`: the visible reply (terminus-2 JSON: analysis, plan, commands, task_complete)
+  - `reasoning_content`: **OpenAI's summary of that step's reasoning** (`reasoning.summary: detailed`)
+  - `metrics.extra.reasoning_tokens`: reasoning tokens billed for the step
+  - `metrics.extra.reasoning_summary_parts`, `metrics.extra.reasoning_content_kind` = `"provider summary (detailed)"`
+  - `metrics.extra.reasoning_encrypted`: the encrypted reasoning that was sent back to Luna. Only OpenAI can read it;
+    kept so the exact model input can be reconstructed, not as training text.
+- `result.json` → `agent_result.metadata.stopped_at_context_limit: true` marks trials stopped at 65,536 tokens; they are
+  graded as they stand (not infra errors).
+
+**What the summaries are.** OpenAI's first-person paraphrases of the hidden reasoning, written by a summarizer, **not
+the raw reasoning** (OpenAI never returns it). Present on **~53% of steps** (95% of steps with ≥ 2,000 reasoning tokens,
+~45% under 500) and on 98.6% of trajectories at least once. A step without one has `reasoning_content: null`. In samples
+they match the step's reply (e.g. 3,540 reasoning tokens on write-compressor → 13 summary parts on the coding format).
+No earlier Luna run (default or medium reasoning) stored any reasoning text.
+
+**Clean replies before training (required).** In this run 15.3% of replies carry text the agent ignored: stray
+fragments after the JSON (often non-ASCII, e.g. `}ుత్వ`; 0.7% of replies at medium reasoning), echoed prompt text, a
+second full JSON reply, or prose before the JSON. terminus-2 executed only the first complete JSON object.
+`aees/harbor/aees_harbor/reply_clean.py`: `clean_trajectory(traj)` returns a copy where each agent `message` is exactly
+that object (an exact substring, nothing re-serialized) and records what it removed in the step's
+`extra.reply_cleaning`; everything else (reasoning_content, metrics, observations) is unchanged. Replies the agent
+could not parse (0.4%) are left as they are (`unparsed`). Raw files are never modified. Tests:
+`aees/harbor/tests/unit/test_reply_clean.py`, including a check against terminus-2's own parser on every mirrored
+trajectory (same object, same commands).
+
+**Pipeline gap.** The reward-model export in `~/code/aees/reward` (and `post_training/sft/rollout.py`, which renders
+thinking-off) does not read `reasoning_content` yet, and must apply `clean_trajectory` first.
