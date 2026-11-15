@@ -10,7 +10,7 @@ Any task runs on any box: run indices are assigned here, on the laptop, by inges
      reasoning     encrypted reasoning on >= 95% of agent steps, a summary on >= 20%, and the previous step's
                    reasoning re-sent on >= 90% of >= 20 checked steps (token arithmetic, o200k tokenizer)
      trajectories  >= 95% of each task's 50 attempts finished, no reward <= 3% (earlier EC2 lesson), kill switch quiet
-2. If both hold: batch 2 = for each task ceil((200 - s) / p) attempts at its batch-1 rate p (at most MAX_ATTEMPTS;
+2. If both hold: batch 2 = for each task ceil((300 - s) / p) attempts at its batch-1 rate p (at most MAX_ATTEMPTS;
    tasks with no success are left out and listed), spread over all six boxes by scripts/spread_h1115.py at 40 per box
    (240 at once). Not started if the estimate (API at batch-1 $/trial per task; EC2 = 6 boxes x the expected hours)
    is above MAX_B2_USD. The laptop run_guard is restarted with cap = counted so far + 140% of the batch-2 estimate, and
@@ -44,9 +44,9 @@ import run_guard  # noqa: E402
 import spread_h1115  # noqa: E402
 
 RUN = "h1115"
-TARGET = 200          # successes per task, batches 1 + 2
+TARGET = 300          # successes per task, batches 1 + 2 (user, 2026-11-15 00:55)
 B1_ATTEMPTS = 50
-MAX_ATTEMPTS = 1000   # per task in batch 2
+MAX_ATTEMPTS = 2000   # per task in batch 2 (count-dataset-tokens needs ~1,300 at 22%)
 MAX_B2_USD = 400.0    # API + EC2; above this batch 2 is not started (left for the user)
 PER_BOX = 40
 RATE = 1.6128         # m7i.8xlarge $/h
