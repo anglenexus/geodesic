@@ -5,8 +5,6 @@
  "qwen_gap": 0.020000000000000018,
  "split": {
   "train": [
-   "build-pov-ray",
-   "chess-best-move",
    "cobol-modernization",
    "code-from-image",
    "constraints-scheduling",
@@ -14,6 +12,7 @@
    "crack-7z-hash",
    "custom-memory-heap-crash",
    "db-wal-recovery",
+   "dna-insert",
    "feal-differential-cryptanalysis",
    "feal-linear-cryptanalysis",
    "largest-eigenval",
@@ -22,9 +21,10 @@
    "polyglot-c-py",
    "polyglot-rust-c",
    "regex-log",
+   "sanitize-git-repo",
    "sqlite-with-gcov",
-   "train-fasttext",
-   "vulnerable-secret"
+   "vulnerable-secret",
+   "write-compressor"
   ],
   "val": [
    "adaptive-rejection-sampler",
@@ -61,9 +61,10 @@
  },
  "left_out": [
   "break-filter-js-from-html",
+  "build-pov-ray",
+  "chess-best-move",
   "circuit-fibsqrt",
   "distribution-search",
-  "dna-insert",
   "financial-document-processor",
   "fix-code-vulnerability",
   "fix-git",
@@ -74,10 +75,9 @@
   "prove-plus-comm",
   "regex-chess",
   "reshard-c4-data",
-  "sanitize-git-repo",
   "sparql-university",
-  "winning-avg-corewars",
-  "write-compressor"
+  "train-fasttext",
+  "winning-avg-corewars"
  ],
  "group": {
   "adaptive-rejection-sampler": "science/math",
@@ -146,5 +146,22 @@
   "vulnerable-secret": "security",
   "winning-avg-corewars": "software",
   "write-compressor": "software"
- }
+ },
+ "changes": [
+  {
+   "date": "2026-11-14",
+   "set": "train",
+   "out": [
+    "train-fasttext",
+    "chess-best-move",
+    "build-pov-ray"
+   ],
+   "in": [
+    "dna-insert",
+    "sanitize-git-repo",
+    "write-compressor"
+   ],
+   "why": "Luna cannot produce training successes (train-fasttext 0%, chess-best-move 5%) or 30% harness no-reward (build-pov-ray); replacements chosen from the left-out pool to keep the sets matched"
+  }
+ ]
 }

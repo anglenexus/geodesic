@@ -1,5 +1,3 @@
-build-pov-ray
-chess-best-move
 cobol-modernization
 code-from-image
 constraints-scheduling
@@ -7,6 +5,7 @@ count-dataset-tokens
 crack-7z-hash
 custom-memory-heap-crash
 db-wal-recovery
+dna-insert
 feal-differential-cryptanalysis
 feal-linear-cryptanalysis
 largest-eigenval
@@ -15,6 +14,7 @@ multi-source-data-merger
 polyglot-c-py
 polyglot-rust-c
 regex-log
+sanitize-git-repo
 sqlite-with-gcov
-train-fasttext
 vulnerable-secret
+write-compressor

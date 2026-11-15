@@ -1,43 +1,26 @@
-# Train / validation / test split, 2026-11-14
+# Train / test / validation split, 2026-11-14 (final)
 
-Decided 2026-11-14 (user). Replaces the earlier lists (`state/tb21_selected_tasks.txt`, `tb21_test20_tasks.txt`, `tb21_val8_tasks.txt`, and the 20-task list `tb21_train20_l1114.txt` used by the paused run `l1114`). The earlier sets were not matched: Qwen3.6-27B (Tmax settings) passed **91%** of the old test set but **46%** of the old training set, and GPT-5.6 Luna passed 87% vs 54-57%.
+Decided 2026-11-14 by the user and **frozen**: no task moves between sets from here on without the user's approval, recorded in the change log below. Replaces `state/tb21_selected_tasks.txt` (old train), `tb21_test20_tasks.txt` (old test), `tb21_val8_tasks.txt` (old validation) and `tb21_train20_l1114.txt`. The old sets were not matched: Qwen3.6-27B (Tmax settings) passed 46% of the old train set and 91% of the old test set.
 
-**Task lists** (in `aees/harbor/state/`): `tb21_split1114_train.txt` (20), `tb21_split1114_val.txt` (8), `tb21_split1114_test.txt` (20). Machine-readable record: `state/split_nov14.json`.
+**Task lists** (`aees/harbor/state/`): `tb21_split1114_train.txt` (**20**), `tb21_split1114_test.txt` (**20**), `tb21_split1114_val.txt` (**8**). Machine-readable record with seed and change log: `state/split_nov14.json`.
 
-## How the split was made
+## Success rates per set (matched)
 
-- **Pool: 66 TB 2.1 tasks** that have success rates for both models:
-  - **Qwen3.6-27B:** the full Tmax-aligned TB 2.1 run `tb21full_1112_1454b` (thinking on, temperature 0.7 / top_p 0.95, 65,536 context, 64 turns, 120 s per command, each task's own limits), 5 attempts per task; per-task table in `../post_training/serving_speed_on_TB2.md` §6.
-  - **GPT-5.6 Luna:** every Luna trial in the ledger at the API's default reasoning (measured to match `medium`), without the Tmax turn/context limits. 9 to 509 attempts per task (10 for most tasks outside the old training set).
-  - Not in the pool: the 22 TB 2.1 tasks with no Luna data (e.g. qemu-*, tune-mjcf, bn-fit-modify, sam-cell-seg), and `configure-git-webserver` (Tmax excludes it).
-- **Random draw with a balance check:** 200,000 random 20 / 8 / 20 assignments of the pool (seed 20261114); kept the one whose sets have the closest mean per-task success rates for **both** models and the most even mix of task types. 18 pool tasks are left out at random.
-- **Task types:** each task's `category` in its `task.toml`, merged into 6 types: software (software-engineering, debugging, games), systems (system-administration, file-operations, personal-assistant), security, science/math (scientific-computing, mathematics, optimization), data (data-science, data-processing, data-querying), ML (model-training, machine-learning, video-processing).
-- **Near-duplicate tasks stay in one split** (decision 2026-11-14, option 1), so the test set measures generalization, not recall of a near-identical training task: feal-differential + feal-linear (train), polyglot-c-py + polyglot-rust-c (train), path-tracing + path-tracing-reverse (test). Rationale: train/test leakage through near-duplicates inflates test scores (Kapoor & Narayanan 2023, *Patterns*; Allamanis 2019, Onward!; Lee et al. 2022, ACL; scikit-learn GroupShuffleSplit).
+Mean of per-task success rates (each task weighted equally), SD across tasks in brackets.
 
-## The success rates are matched
+| Set | Tasks | GPT-5.6 Luna | Qwen3.6-27B (Tmax settings) | Mean agent limit (min) | Task types: software / systems / security / science-math / data / ML |
+|---|---|---|---|---|---|
+| **Train** | 20 | **66.2%** (28) | **55.0%** (42) | 19 | 6 / 3 / 3 / 4 / 3 / 1 |
+| **Test** | 20 | **65.1%** (37) | **53.0%** (41) | 21 | 9 / 4 / 1 / 2 / 2 / 2 |
+| **Validation** | 8 | **66.4%** (36) | **55.0%** (36) | 22 | 3 / 1 / 0 / 1 / 2 / 1 |
 
-Mean of per-task success rates (each task weighted equally), with the spread across tasks (SD), and pooled trial-level rates.
+Largest difference between the three sets: **1.3 points for Luna, 2.0 points for Qwen.**
 
-| Set | Tasks | Luna mean (SD) | Qwen mean (SD) | Luna pooled | Qwen pooled | Mean agent limit (min) |
-|---|---|---|---|---|---|---|
-| **train** | 20 | **64.7%** (32) | **53.0%** (44) | 56.2% | 53.0% | 30 |
-| **val** | 8 | **66.4%** (36) | **55.0%** (36) | 47.9% | 55.0% | 22 |
-| **test** | 20 | **65.1%** (37) | **53.0%** (41) | 67.4% | 53.0% | 21 |
-| left out | 18 | 63.4% (33) | 63.3% (43) | 48.8% | 63.3% | 31 |
-
-Largest difference between the three sets' means: **1.7 points for Luna, 2.0 points for Qwen.** (Pooled rates differ more because the number of Luna attempts per task varies; the per-task mean is the balanced quantity.)
-
-**Task types per set:**
-
-| Set | software | systems | security | science/math | data | ML |
-|---|---|---|---|---|---|---|
-| train | 7 | 3 | 2 | 3 | 3 | 2 |
-| val | 3 | 1 | 0 | 1 | 2 | 1 |
-| test | 9 | 4 | 1 | 2 | 2 | 2 |
+**Sources of the rates.** Qwen3.6-27B: the full Tmax-aligned TB 2.1 run `tb21full_1112_1454b` (thinking on, temperature 0.7 / top_p 0.95, 65,536 context, 64 turns, 120 s per command, each task's own limits), 5 attempts per task (`../post_training/serving_speed_on_TB2.md` §6). GPT-5.6 Luna: all Luna trials in the ledger at the API-default reasoning (measured to match `medium`), 9-509 attempts per task.
 
 ## Train set (20 tasks)
 
-| Task | Type (category) | Luna: passed / graded | Luna | Qwen: passed / 5 | Qwen | Agent limit (min) |
+| Task | Type (TB category) | Luna: passed / graded | Luna | Qwen: passed / 5 | Qwen | Agent limit (min) |
 |---|---|---|---|---|---|---|
 | cobol-modernization | software (software-engineering) | 10 / 10 | 100% | 5 / 5 | 100% | 15 |
 | multi-source-data-merger | data (data-processing) | 10 / 10 | 100% | 5 / 5 | 100% | 15 |
@@ -53,29 +36,16 @@ Largest difference between the three sets' means: **1.7 points for Luna, 2.0 poi
 | feal-differential-cryptanalysis | science/math (mathematics) | 78 / 85 | 92% | 0 / 5 | 0% | 30 |
 | feal-linear-cryptanalysis | science/math (mathematics) | 9 / 10 | 90% | 0 / 5 | 0% | 30 |
 | polyglot-rust-c | software (software-engineering) | 373 / 434 | 86% | 0 / 5 | 0% | 15 |
-| build-pov-ray | software (software-engineering) | 5 / 7 | 71% | 0 / 5 | 0% | 200 |
+| dna-insert | science/math (scientific-computing) | 171 / 337 | 51% | 1 / 5 | 20% | 30 |
 | largest-eigenval | science/math (mathematics) | 199 / 434 | 46% | 1 / 5 | 20% | 15 |
 | count-dataset-tokens | ML (model-training) | 68 / 387 | 18% | 2 / 5 | 40% | 15 |
+| sanitize-git-repo | security (security) | 187 / 509 | 37% | 1 / 5 | 20% | 15 |
 | db-wal-recovery | systems (file-operations) | 230 / 435 | 53% | 0 / 5 | 0% | 15 |
-| chess-best-move | software (games) | 4 / 85 | 5% | 0 / 5 | 0% | 15 |
-| train-fasttext | ML (model-training) | 0 / 10 | 0% | 0 / 5 | 0% | 60 |
-
-## Val set (8 tasks)
-
-| Task | Type (category) | Luna: passed / graded | Luna | Qwen: passed / 5 | Qwen | Agent limit (min) |
-|---|---|---|---|---|---|---|
-| pytorch-model-cli | ML (model-training) | 79 / 85 | 93% | 5 / 5 | 100% | 15 |
-| build-pmars | software (software-engineering) | 9 / 10 | 90% | 5 / 5 | 100% | 15 |
-| nginx-request-logging | systems (system-administration) | 10 / 10 | 100% | 4 / 5 | 80% | 15 |
-| fix-ocaml-gc | software (software-engineering) | 10 / 10 | 100% | 3 / 5 | 60% | 60 |
-| adaptive-rejection-sampler | science/math (scientific-computing) | 292 / 336 | 87% | 3 / 5 | 60% | 15 |
-| cancel-async-tasks | software (software-engineering) | 88 / 389 | 23% | 1 / 5 | 20% | 15 |
-| query-optimize | data (data-science) | 1 / 10 | 10% | 1 / 5 | 20% | 15 |
-| mteb-retrieve | data (data-science) | 126 / 434 | 29% | 0 / 5 | 0% | 30 |
+| write-compressor | software (software-engineering) | 74 / 401 | 18% | 0 / 5 | 0% | 15 |
 
 ## Test set (20 tasks)
 
-| Task | Type (category) | Luna: passed / graded | Luna | Qwen: passed / 5 | Qwen | Agent limit (min) |
+| Task | Type (TB category) | Luna: passed / graded | Luna | Qwen: passed / 5 | Qwen | Agent limit (min) |
 |---|---|---|---|---|---|---|
 | git-leak-recovery | software (software-engineering) | 9 / 9 | 100% | 5 / 5 | 100% | 15 |
 | hf-model-inference | data (data-science) | 10 / 10 | 100% | 5 / 5 | 100% | 15 |
@@ -98,17 +68,36 @@ Largest difference between the three sets' means: **1.7 points for Luna, 2.0 poi
 | model-extraction-relu-logits | science/math (mathematics) | 1 / 85 | 1% | 0 / 5 | 0% | 15 |
 | make-mips-interpreter | software (software-engineering) | 0 / 10 | 0% | 0 / 5 | 0% | 30 |
 
-## Left out (18 tasks, at random)
+## Validation set (8 tasks)
 
-break-filter-js-from-html, circuit-fibsqrt, distribution-search, dna-insert, financial-document-processor, fix-code-vulnerability, fix-git, merge-diff-arc-agi-task, openssl-selfsigned-cert, overfull-hbox, portfolio-optimization, prove-plus-comm, regex-chess, reshard-c4-data, sanitize-git-repo, sparql-university, winning-avg-corewars, write-compressor
+| Task | Type (TB category) | Luna: passed / graded | Luna | Qwen: passed / 5 | Qwen | Agent limit (min) |
+|---|---|---|---|---|---|---|
+| pytorch-model-cli | ML (model-training) | 79 / 85 | 93% | 5 / 5 | 100% | 15 |
+| build-pmars | software (software-engineering) | 9 / 10 | 90% | 5 / 5 | 100% | 15 |
+| nginx-request-logging | systems (system-administration) | 10 / 10 | 100% | 4 / 5 | 80% | 15 |
+| fix-ocaml-gc | software (software-engineering) | 10 / 10 | 100% | 3 / 5 | 60% | 60 |
+| adaptive-rejection-sampler | science/math (scientific-computing) | 292 / 336 | 87% | 3 / 5 | 60% | 15 |
+| cancel-async-tasks | software (software-engineering) | 88 / 389 | 23% | 1 / 5 | 20% | 15 |
+| query-optimize | data (data-science) | 1 / 10 | 10% | 1 / 5 | 20% | 15 |
+| mteb-retrieve | data (data-science) | 126 / 434 | 29% | 0 / 5 | 0% | 30 |
+
+## How the split was made
+
+- **Pool:** the 66 TB 2.1 tasks with success rates for both models (all 89 minus 22 without Luna data and `configure-git-webserver`, which Tmax excludes).
+- **Random draw:** 200,000 random 20 / 8 / 20 assignments (seed 20261114); kept the one with the closest mean per-task success rates for both models and the most even mix of 6 task types (TB `category` merged: software, systems, security, science/math, data, ML).
+- **Near-duplicate tasks stay in one split** (no train/test leakage): feal-differential + feal-linear (train), polyglot-c-py + polyglot-rust-c (train), path-tracing + path-tracing-reverse (test). References: Kapoor & Narayanan 2023 (*Patterns*), Allamanis 2019 (Onward!), Lee et al. 2022 (ACL), scikit-learn GroupShuffleSplit.
+- **Change after the draw (2026-11-14, user-approved):** in train, train-fasttext (Luna 0%), chess-best-move (Luna 5%) and build-pov-ray (30% harness no-reward) were replaced by dna-insert, sanitize-git-repo and write-compressor, from the left-out tasks, keeping the sets matched; Luna must be able to produce training successes.
+- **Test and validation kept as drawn.** About half their tasks are at Qwen 0/5 or 5/5 (as in train; TB 2.1 has many such tasks), which limits how much change they can show; no swap-in candidates were clearly better without longer time limits.
+
+**Left out (18):** break-filter-js-from-html, build-pov-ray, chess-best-move, circuit-fibsqrt, distribution-search, financial-document-processor, fix-code-vulnerability, fix-git, merge-diff-arc-agi-task, openssl-selfsigned-cert, overfull-hbox, portfolio-optimization, prove-plus-comm, regex-chess, reshard-c4-data, sparql-university, train-fasttext, winning-avg-corewars
 
 ## Caveats
 
-- Qwen rates come from 5 attempts per task (steps of 20 points); Luna rates from 9-509 attempts. Per-task rates are noisy; the set means are what is matched.
-- Luna rates are at the API-default reasoning without Tmax's turn/context limits; the paused medium run (`l1114`, Tmax limits) gave similar rates on the tasks it covered (57.0% vs 54.4% on the old training set).
-- 18 of the old 20 training tasks moved: the old training set was chosen for Luna's 10-90% band, which made it harder for Luna than the rest of the benchmark.
+- Qwen rates: 5 attempts per task (steps of 20 points). Luna rates: 9-509 attempts per task. Set means are what is matched; per-task rates are noisy.
+- Luna rates are at the API-default reasoning without Tmax's turn/context limits; the Tmax-aligned medium run (`l1114`, paused) gave similar rates where it overlapped.
 
-## Next
+## Uses
 
-- Collect the Q-function training data on the new training set (GPT-5.6 Luna, reasoning medium, Tmax-aligned settings); the paused run `l1114` is kept as its own partition and not extended.
-- `../post_training/PLAN.md` §2a and the post-training task lists should be updated to these sets before the Phase 0 baseline.
+- **Train:** Luna data collection for the Q-function reward model; SFT/RL rollouts. Only train tasks.
+- **Validation:** checkpoint selection during training.
+- **Test:** base model and final checkpoint only.
