@@ -1,0 +1,4 @@
+crack-7z-hash
+cobol-modernization
+polyglot-c-py
+write-compressor

@@ -1,0 +1,101 @@
+{
+ "h1115_i1": {
+  "tasks": [
+   "crack-7z-hash",
+   "cobol-modernization",
+   "polyglot-c-py",
+   "write-compressor"
+  ],
+  "api_est": 6.4,
+  "hours_upper": 1.56,
+  "backstop": 14.46,
+  "api_est_carry": 7.23
+ },
+ "h1115_i2": {
+  "tasks": [
+   "custom-memory-heap-crash",
+   "count-dataset-tokens",
+   "polyglot-rust-c"
+  ],
+  "api_est": 2.57,
+  "hours_upper": 1.25,
+  "backstop": 5.81,
+  "api_est_carry": 2.9
+ },
+ "h1115_i3": {
+  "tasks": [
+   "dna-insert",
+   "db-wal-recovery",
+   "regex-log"
+  ],
+  "api_est": 1.31,
+  "hours_upper": 1.25,
+  "backstop": 2.96,
+  "api_est_carry": 1.48
+ },
+ "h1115_i4": {
+  "tasks": [
+   "feal-differential-cryptanalysis",
+   "largest-eigenval",
+   "sanitize-git-repo"
+  ],
+  "api_est": 4.06,
+  "hours_upper": 1.25,
+  "backstop": 9.18,
+  "api_est_carry": 4.59
+ },
+ "h1115_i5": {
+  "tasks": [
+   "feal-linear-cryptanalysis",
+   "log-summary-date-ranges",
+   "sqlite-with-gcov"
+  ],
+  "api_est": 1.41,
+  "hours_upper": 1.25,
+  "backstop": 3.19,
+  "api_est_carry": 1.59
+ },
+ "h1115_i6": {
+  "tasks": [
+   "code-from-image",
+   "constraints-scheduling",
+   "multi-source-data-merger",
+   "vulnerable-secret"
+  ],
+  "api_est": 2.08,
+  "hours_upper": 1.46,
+  "backstop": 4.7,
+  "api_est_carry": 2.35
+ },
+ "api_est": 17.82,
+ "ec2_est": 15.12,
+ "total_est": 35.27,
+ "cap_140": 49.38,
+ "per_task_medium_cost": {
+  "cobol-modernization": 0.01091536116,
+  "code-from-image": 0.01727488416,
+  "constraints-scheduling": 0.0030188082666666666,
+  "count-dataset-tokens": 0.007186977021276596,
+  "crack-7z-hash": 0.01960756208955224,
+  "custom-memory-heap-crash": 0.010998937369411765,
+  "db-wal-recovery": 0.005604641472392638,
+  "dna-insert": 0.00980565238095238,
+  "feal-differential-cryptanalysis": 0.02815028663529412,
+  "feal-linear-cryptanalysis": 0.012113456,
+  "largest-eigenval": 0.013634237832512315,
+  "log-summary-date-ranges": 0.00287127216,
+  "multi-source-data-merger": 0.00490075076,
+  "polyglot-c-py": 0.005688886909090909,
+  "polyglot-rust-c": 0.019867627318840578,
+  "regex-log": 0.00406349464,
+  "sanitize-git-repo": 0.0183373495035461,
+  "sqlite-with-gcov": 0.005883287425742574,
+  "vulnerable-secret": 0.00557982024,
+  "write-compressor": 0.05853800734693877
+ },
+ "high_factor": 1.35,
+ "attempts_per_task": 50,
+ "ec2_rate": 1.6128,
+ "carry_factor": 1.13,
+ "api_est_carry": 20.15
+}

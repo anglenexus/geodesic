@@ -18,7 +18,7 @@ from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from aees_harbor.browse import job_model, selected_tasks, test_candidates, validation_tasks
+from aees_harbor.browse import job_model, model_label, selected_tasks, test_candidates, validation_tasks
 from aees_harbor.ledger import Ledger
 from aees_harbor.schedule import aggregate_cost
 
@@ -87,7 +87,9 @@ def job_status(job: Path, now: dt.datetime) -> dict:
         if not trial.is_dir() or "__" not in trial.name:
             continue
         r = _json(trial / "result.json") or {}
-        task = r.get("task_name") or next((t for t in tasks if t.split("/")[-1] == trial.name.rsplit("__", 1)[0]), trial.name)
+        # trial folders are <task>__<date>-<time>__<id>; a running trial has no result.json yet
+        name = trial.name.split("__", 1)[0]
+        task = r.get("task_name") or next((t for t in tasks if t.split("/")[-1] == name), name)
         if r.get("started_at"):
             starts.append(_ts(r["started_at"]))
         if r.get("finished_at"):
@@ -185,8 +187,8 @@ def status(jobs_root: Path, ledger_path: Path, host: dict, schedule_path: Path |
                 "held": sum(len(s["held"]) for s in group), "passed": sum(len(s["passed"]) for s in group),
                 "failed": sum(len(s["failed"]) for s in group)}
     overall = totals(scen)
-    by_model = {m: totals([s for s in scen if s["fields"].get("model") == m])
-                for m in sorted({s["fields"].get("model") for s in scen} - {None})}
+    label = lambda s: model_label(s["fields"].get("model"), s["fields"].get("agent_kwargs"))
+    by_model = {m: totals([s for s in scen if label(s) == m]) for m in sorted({label(s) for s in scen} - {None})}
     paths = [schedule_path] if isinstance(schedule_path, Path) else list(schedule_path or [])
     schedules = []
     for path in paths:

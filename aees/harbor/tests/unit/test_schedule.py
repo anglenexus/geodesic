@@ -68,3 +68,26 @@ def test_no_batch_starts_once_the_aggregate_budget_is_reached(tmp_path):
     plan = json.loads(plan_path.read_text())
     assert plan["batches"][1]["status"] == "stopped" and "budget reached" in plan["batches"][1]["note"]
     assert not (tmp_path / "b2.harbor.log").exists()  # never launched
+
+
+def test_harbor_cmd_uses_the_plans_harbor_build_and_timeout_multiplier(tmp_path):
+    (tmp_path / "tasks.txt").write_text("mailman\n")
+    plan = {"harbor_bin": "/opt/harbor-miles/.venv/bin/harbor", "timeout_multiplier": 1.0, "env_file": "x.env",
+            "dataset": "d", "agent": "terminus-2", "model": "openai/m", "jobs_root": str(tmp_path),
+            "agent_kwargs": {"reasoning_effort": "medium", "max_turns": 64}, "task_prefix": "terminal-bench/",
+            "tasks_file": str(tmp_path / "tasks.txt")}
+    cmd = schedule.harbor_cmd(plan, {"name": "b1", "concurrency": 4, "attempts": 2})
+    assert cmd[0] == "/opt/harbor-miles/.venv/bin/harbor" and cmd[1] == "run"
+    assert cmd[cmd.index("--timeout-multiplier") + 1] == "1.0"
+    assert 'reasoning_effort="medium"' in cmd and "max_turns=64" in cmd
+    assert cmd[-2:] == ["-i", "terminal-bench/mailman"]
+
+
+def test_a_batch_can_run_its_own_task_list(tmp_path):
+    (tmp_path / "all.txt").write_text("a\nb\n")
+    (tmp_path / "b2.txt").write_text("b\n")
+    plan = {"env_file": "x", "dataset": "d", "agent": "t", "model": "m", "jobs_root": str(tmp_path), "agent_kwargs": {},
+            "task_prefix": "p/", "tasks_file": str(tmp_path / "all.txt")}
+    assert schedule.harbor_cmd(plan, {"name": "b1", "concurrency": 1, "attempts": 1})[-4:] == ["-i", "p/a", "-i", "p/b"]
+    b2 = {"name": "b2", "concurrency": 1, "attempts": 1, "tasks_file": str(tmp_path / "b2.txt")}
+    assert schedule.harbor_cmd(plan, b2)[-2:] == ["-i", "p/b"]

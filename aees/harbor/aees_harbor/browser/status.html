@@ -70,9 +70,9 @@ const dur = m => { if (m === null || m === undefined) return "—"; const t = Ma
 const stat = (k, v, cls) => el("div", { class: "stat" }, el("div", { class: "v " + (cls || "") }, v), el("div", { class: "k" }, k));
 const clock = iso => iso ? new Date(iso).toLocaleTimeString() : "—";
 
-let SELECTED = new Set();  // the tasks chosen for collection, from state/tb21_selected_tasks.txt
-let TEST = new Set();      // post-training test set (orange), from state/tb21_test20_tasks.txt
-let VAL = new Set();       // post-training validation set (green), from state/tb21_val8_tasks.txt
+let SELECTED = new Set();  // the tasks chosen for collection, from state/tb21_split1114_train.txt
+let TEST = new Set();      // post-training test set (orange), from state/tb21_split1114_test.txt
+let VAL = new Set();       // post-training validation set (green), from state/tb21_split1114_val.txt
 const rankT = t => SELECTED.has(t) ? 0 : TEST.has(t) ? 1 : VAL.has(t) ? 2 : 3;
 // Which model to show ("" = all); the same choice as the trajectory browser's drop-down (per browser tab).
 let MODEL = new URLSearchParams(location.search).get("model") ?? sessionStorage.getItem("model") ?? "";
